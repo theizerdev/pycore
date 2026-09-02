@@ -12,6 +12,7 @@ import {
   Users,
   FileText,
   HeartPulse,
+  Stethoscope,
   ChevronRight,
   X,
   Settings,
@@ -101,6 +102,20 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       sectorKey: 'inicio',
       href: '/dashboard',
       icon: LayoutDashboard,
+    },
+    {
+      id: 'sector-clinica',
+      title: 'Clínica',
+      sectorKey: 'clinica',
+      icon: HeartPulse,
+      children: [
+        {
+          title: 'Especialidades',
+          href: '/clinica/especialidades',
+          icon: Stethoscope,
+          permission: 'especialidades.ver',
+        },
+      ],
     },
     {
       id: 'sector-organizacion',

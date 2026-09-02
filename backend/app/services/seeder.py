@@ -84,6 +84,13 @@ PERMISOS_SISTEMA = [
     {"sector": "integraciones", "modulo": "tasas", "accion": "ver", "slug": "tasas.ver", "descripcion": "Ver monitor y panel de tasas de cambio del día"},
     {"sector": "integraciones", "modulo": "tasas", "accion": "sincronizar", "slug": "tasas.sincronizar", "descripcion": "Sincronizar en tiempo real tasas con BCV y Binance"},
     {"sector": "integraciones", "modulo": "tasas", "accion": "editar", "slug": "tasas.editar", "descripcion": "Ajustar manualmente valores de tasas de cambio"},
+
+    # ── Sector: Clínica / Gestión Médica ──
+    # Especialidades Médicas
+    {"sector": "clinica", "modulo": "especialidades", "accion": "ver", "slug": "especialidades.ver", "descripcion": "Ver catálogo de especialidades médicas"},
+    {"sector": "clinica", "modulo": "especialidades", "accion": "crear", "slug": "especialidades.crear", "descripcion": "Crear nuevas especialidades médicas"},
+    {"sector": "clinica", "modulo": "especialidades", "accion": "editar", "slug": "especialidades.editar", "descripcion": "Editar especialidades médicas"},
+    {"sector": "clinica", "modulo": "especialidades", "accion": "eliminar", "slug": "especialidades.eliminar", "descripcion": "Eliminar o inactivar especialidades médicas"},
 ]
 
 PAISES_INICIALES = [
@@ -426,6 +433,13 @@ async def seed_initial_data(db: AsyncSession):
             rol.permisos = r_data["permisos"]
             db.add(rol)
             await db.flush()
+        else:
+            # Sincronizar nuevos permisos en roles administrativos
+            if rol.slug in ["superadmin", "admin-clinica"]:
+                current_perm_ids = {p.id for p in rol.permisos}
+                for p in r_data["permisos"]:
+                    if p.id not in current_perm_ids:
+                        rol.permisos.append(p)
         roles_map[r_data["slug"]] = rol
 
     # 3. Crear Empresa Inicial

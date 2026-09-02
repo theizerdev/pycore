@@ -10,6 +10,7 @@ import {
   Users,
   FileClock,
   HeartPulse,
+  Stethoscope,
   Radio,
   ShieldAlert,
   Activity,
@@ -100,6 +101,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   <LayoutDashboard className="w-4 h-4" />
                   <span>Dashboard</span>
                 </NavLink>
+              </div>
+            </div>
+
+            {/* Clínica & Atención Médica */}
+            <div>
+              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                Clínica
+              </div>
+              <div className="space-y-1">
+                {hasPermission('especialidades.ver') && (
+                  <NavLink to="/clinica/especialidades" onClick={onClose} className={navItemClass}>
+                    <Stethoscope className="w-4 h-4" />
+                    <span>Especialidades</span>
+                  </NavLink>
+                )}
               </div>
             </div>
 

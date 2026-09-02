@@ -319,3 +319,45 @@ export interface WhatsAppMessage {
   error_message?: string | null;
   created_at: string;
 }
+
+// ── CLÍNICA / GESTIÓN ASISTENCIAL ──────────────────────────────────────
+export interface Especialidad {
+  id: number;
+  empresa_id: number;
+  sucursal_id?: number | null;
+  nombre: string;
+  codigo?: string | null;
+  descripcion?: string | null;
+  color?: string | null;
+  icono?: string | null;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+  sucursal?: {
+    id: number;
+    nombre: string;
+    codigo?: string | null;
+  } | null;
+}
+
+export interface EspecialidadCreateInput {
+  nombre: string;
+  codigo?: string | null;
+  descripcion?: string | null;
+  color?: string | null;
+  icono?: string | null;
+  activo?: boolean;
+  sucursal_id?: number | null;
+  empresa_id?: number | null;
+}
+
+export interface EspecialidadUpdateInput {
+  nombre?: string;
+  codigo?: string | null;
+  descripcion?: string | null;
+  color?: string | null;
+  icono?: string | null;
+  activo?: boolean;
+  sucursal_id?: number | null;
+}
+

@@ -27,6 +27,7 @@ import { PlanesBillingPage } from './pages/saas/PlanesBillingPage';
 import { SuscripcionesGlobalesPage } from './pages/saas/SuscripcionesGlobalesPage';
 import { PlanesAdminPage } from './pages/saas/PlanesAdminPage';
 import { SubscriptionExpiredPage } from './pages/saas/SubscriptionExpiredPage';
+import { EspecialidadesPage } from './pages/clinica/EspecialidadesPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
@@ -55,6 +56,16 @@ export const App: React.FC = () => {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="perfil" element={<Perfil />} />
+
+              {/* Módulo Clínico & Asistencial */}
+              <Route
+                path="clinica/especialidades"
+                element={
+                  <ProtectedRoute requiredPermission="especialidades.ver">
+                    <EspecialidadesPage />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Módulos de Seguridad y Multi-Tenant */}
               <Route

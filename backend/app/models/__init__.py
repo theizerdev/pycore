@@ -11,6 +11,7 @@ from app.models.integracion import WhatsAppTemplate, WhatsAppMessage
 from app.models.tasa_cambio import TasaCambio
 from app.models.plan import Plan
 from app.models.suscripcion import Suscripcion, PagoSuscripcion
+from app.models.especialidad import Especialidad
 
 __all__ = [
     "Base",
@@ -30,4 +31,5 @@ __all__ = [
     "Plan",
     "Suscripcion",
     "PagoSuscripcion",
+    "Especialidad",
 ]
