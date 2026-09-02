@@ -107,7 +107,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       title: 'Organización',
       sectorKey: 'organizacion',
       icon: Building2,
-      badge: '4',
       children: [
         {
           title: 'Empresas',
@@ -151,7 +150,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       title: 'Seguridad',
       sectorKey: 'seguridad',
       icon: ShieldCheck,
-      badge: '2',
       children: [
         {
           title: 'Usuarios',
@@ -172,7 +170,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       title: 'Configuración',
       sectorKey: 'configuracion',
       icon: Settings,
-      badge: '1',
       children: [
         {
           title: 'Países & Localización',
@@ -188,7 +185,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       title: 'Monitoreo',
       sectorKey: 'monitoreo',
       icon: Activity,
-      badge: '4',
       children: [
         {
           title: 'Bitácora de Auditoría',
@@ -218,7 +214,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       title: 'Integraciones',
       sectorKey: 'integraciones',
       icon: Layers,
-      badge: '4',
       children: [
         {
           title: 'Catálogo de Servicios',
@@ -251,36 +246,30 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     },
   ];
 
-  // Estado de apertura de menús colapsables (iniciar abiertos los que contengan la ruta activa)
-  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {
-      'sector-equipos': true,
-      'sector-reparaciones': true,
-      'sector-inventario': true,
-      'sector-pos': true,
-      'sector-administracion': true,
-      'sector-contabilidad': true,
-      'sector-organizacion': true,
-      'sector-seguridad': true,
-      'sector-configuracion': true,
-      'sector-monitoreo': true,
-      'sector-integraciones': true,
-    };
-    menuStructure.forEach((item) => {
-      if (item.children && item.children.some((c) => location.pathname.startsWith(c.href))) {
-        initial[item.id] = true;
+  // Determinar qué menú padre debe estar abierto según la ruta activa
+  const getActiveMenuId = (pathname: string): string | null => {
+    for (const item of menuStructure) {
+      if (item.children && item.children.some((c) => pathname.startsWith(c.href))) {
+        return item.id;
       }
-    });
-    return initial;
+    }
+    return null;
+  };
+
+  // Estado de apertura: ÚNICAMENTE abierto el sector que contenga la ruta activa
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
+    const activeId = getActiveMenuId(location.pathname);
+    return activeId ? { [activeId]: true } : {};
   });
 
-  // Auto-expandir menú padre cuando la ruta cambia a un hijo
+  // Auto-expandir ÚNICAMENTE el sector con la ruta activa y contraer los demás
   useEffect(() => {
-    menuStructure.forEach((item) => {
-      if (item.children && item.children.some((c) => location.pathname.startsWith(c.href))) {
-        setOpenMenus((prev) => ({ ...prev, [item.id]: true }));
-      }
-    });
+    const activeId = getActiveMenuId(location.pathname);
+    if (activeId) {
+      setOpenMenus({ [activeId]: true });
+    } else {
+      setOpenMenus({});
+    }
   }, [location.pathname]);
 
   const toggleMenu = (menuId: string) => {
@@ -539,7 +528,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     {menu.badge && (
-                      <span className="rounded bg-primary/10 text-primary px-1.5 py-0.2 text-[9px] font-bold">
+                      <span className={cn("rounded px-1.5 py-0.2 text-[9px] font-bold", isChildActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>
                         {menu.badge}
                       </span>
                     )}
