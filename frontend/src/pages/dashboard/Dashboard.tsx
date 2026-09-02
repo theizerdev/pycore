@@ -65,7 +65,7 @@ export const Dashboard: React.FC = () => {
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-semibold">
-              <img src="/medisoft_favicon.jpg" alt="MediSoft" className="w-3.5 h-3.5 rounded object-contain" />
+              <img src="/medisoft_favicon.png" alt="MediSoft" className="w-3.5 h-3.5 object-contain" />
               <span>MEDISOFT SUITE • Sistema Hospitalario Integral</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">

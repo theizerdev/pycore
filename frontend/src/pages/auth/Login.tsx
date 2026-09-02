@@ -376,18 +376,18 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
         <div className="flex justify-between items-center w-full">
           <Link to="/" className="flex items-center hover:opacity-90 transition">
             <img
-              src="/medisoft_logo_light.jpg"
+              src="/medisoft_logo_light.png"
               alt="MEDISOFT SUITE"
-              className="h-9 w-auto object-contain dark:hidden"
+              className="h-12 md:h-14 w-auto object-contain dark:hidden transition-transform hover:scale-105 duration-200"
             />
             <img
-              src="/medisoft_logo_dark.jpg"
+              src="/medisoft_logo_dark.png"
               alt="MEDISOFT SUITE"
-              className="h-9 w-auto object-contain hidden dark:block"
+              className="h-12 md:h-14 w-auto object-contain hidden dark:block transition-transform hover:scale-105 duration-200"
             />
           </Link>
 
-          <Badge variant="outline" className="text-[11px] font-mono border-border bg-muted/50 text-muted-foreground hidden sm:inline-flex">
+          <Badge variant="outline" className="text-xs font-mono border-primary/30 bg-primary/5 text-primary hidden sm:inline-flex px-3 py-1 font-semibold">
             v2.5 Hospital Enterprise
           </Badge>
         </div>
@@ -1048,9 +1048,9 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
         <div className="relative z-10 flex h-full flex-col justify-between p-12 text-white">
           <div className="flex items-center gap-3">
             <img
-              src="/medisoft_logo_dark.jpg"
+              src="/medisoft_logo_dark.png"
               alt="MEDISOFT SUITE"
-              className="h-10 w-auto object-contain rounded-lg shadow-lg"
+              className="h-14 md:h-16 w-auto object-contain transition-transform hover:scale-105 duration-200 drop-shadow-md"
             />
           </div>
 

@@ -122,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Actualización dinámica de Favicon según el logo mini de la empresa o por defecto MEDISOFT Favicon
   useEffect(() => {
-    const faviconUrl = user?.empresa?.logo_mini_url || user?.empresa?.logo_url || '/medisoft_favicon.jpg';
+    const faviconUrl = user?.empresa?.logo_mini_url || user?.empresa?.logo_url || '/medisoft_favicon.png';
     let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
     if (!link) {
       link = document.createElement('link');

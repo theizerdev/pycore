@@ -324,9 +324,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               />
             ) : (
               <img
-                src="/medisoft_favicon.jpg"
+                src="/medisoft_favicon.png"
                 alt="MEDISOFT SUITE"
-                className="h-9 w-9 shrink-0 object-contain rounded-lg shadow-sm"
+                className="h-9 w-9 shrink-0 object-contain"
               />
             )}
 

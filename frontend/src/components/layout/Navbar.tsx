@@ -50,7 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
             {user?.empresa?.logo_mini_url ? (
               <img src={user.empresa.logo_mini_url} alt="Logo" className="w-4 h-4 object-contain rounded" />
             ) : (
-              <img src="/medisoft_favicon.jpg" alt="Logo" className="w-4 h-4 object-contain rounded" />
+              <img src="/medisoft_favicon.png" alt="Logo" className="w-4 h-4 object-contain" />
             )}
             <span className="font-semibold">{user?.empresa?.nombre || 'MEDISOFT SUITE'}</span>
           </div>

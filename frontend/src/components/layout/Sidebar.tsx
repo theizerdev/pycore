@@ -66,9 +66,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 />
               ) : (
                 <img
-                  src="/medisoft_favicon.jpg"
+                  src="/medisoft_favicon.png"
                   alt="MEDISOFT SUITE"
-                  className="w-9 h-9 object-contain rounded-xl shadow-md"
+                  className="w-9 h-9 object-contain"
                 />
               )}
               <div>
