@@ -65,16 +65,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   className="w-9 h-9 object-contain rounded-xl"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-teal-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-teal-500/20">
-                  <HeartPulse className="w-5 h-5 animate-pulse" />
-                </div>
+                <img
+                  src="/medisoft_favicon.jpg"
+                  alt="MEDISOFT SUITE"
+                  className="w-9 h-9 object-contain rounded-xl shadow-md"
+                />
               )}
               <div>
                 <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-white">
-                  Med<span className="text-teal-500">Flow</span>
+                  MEDISOFT <span className="text-teal-500 text-xs px-1 py-0.5 rounded bg-teal-500/10 font-bold">SUITE</span>
                 </span>
                 <span className="block text-[9px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-widest">
-                  Medical Core
+                  {user?.empresa?.nombre || 'Hospital Suite'}
                 </span>
               </div>
             </div>
@@ -242,8 +244,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         {/* Footer Info */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-800">
           <div className="p-3 rounded-2xl bg-gradient-to-br from-teal-500/10 to-cyan-500/10 border border-teal-500/20 text-center">
-            <p className="text-[11px] font-bold text-teal-800 dark:text-teal-300">PyCore v1.0</p>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">FastAPI + React 19</p>
+            <p className="text-[11px] font-bold text-teal-800 dark:text-teal-300">MEDISOFT SUITE v1.0</p>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Clinical & Hospital OS</p>
           </div>
         </div>
       </aside>

@@ -323,21 +323,23 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 className="h-9 w-9 shrink-0 object-contain rounded-lg"
               />
             ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold shadow-xs">
-                <HeartPulse className="h-5 w-5" />
-              </div>
+              <img
+                src="/medisoft_favicon.jpg"
+                alt="MEDISOFT SUITE"
+                className="h-9 w-9 shrink-0 object-contain rounded-lg shadow-sm"
+              />
             )}
 
             {!collapsed && (
               <div className="flex flex-col truncate">
                 <div className="flex items-center gap-1.5 font-bold text-sm text-sidebar-foreground">
-                  <span>PyCore</span>
+                  <span>MEDISOFT</span>
                   <span className="rounded bg-primary/20 px-1.5 py-0.2 text-[10px] font-semibold text-primary">
-                    PRO
+                    SUITE
                   </span>
                 </div>
                 <span className="truncate text-[11px] text-sidebar-foreground/60">
-                  {user?.empresa?.nombre || 'Gestión Enterprise'}
+                  {user?.empresa?.nombre || 'Gestión Hospitalaria'}
                 </span>
               </div>
             )}

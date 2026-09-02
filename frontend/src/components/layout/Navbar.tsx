@@ -47,8 +47,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
         {/* Empresa & Selector de Sucursal */}
         <div className="hidden sm:flex items-center space-x-2">
           <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300">
-            <Building2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span className="font-semibold">{user?.empresa?.nombre || 'PyCore Enterprise'}</span>
+            {user?.empresa?.logo_mini_url ? (
+              <img src={user.empresa.logo_mini_url} alt="Logo" className="w-4 h-4 object-contain rounded" />
+            ) : (
+              <img src="/medisoft_favicon.jpg" alt="Logo" className="w-4 h-4 object-contain rounded" />
+            )}
+            <span className="font-semibold">{user?.empresa?.nombre || 'MEDISOFT SUITE'}</span>
           </div>
 
           {/* Selector de Sucursal */}

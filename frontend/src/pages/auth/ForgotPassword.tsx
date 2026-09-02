@@ -205,11 +205,17 @@ export const ForgotPassword: React.FC = () => {
         
         {/* Top Header Logo Marca */}
         <div className="flex justify-between items-center w-full">
-          <Link to="/" className="flex items-center gap-2.5 font-black text-xl tracking-tight hover:opacity-90 transition">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/25">
-              <HeartPulse className="size-5 animate-pulse" />
-            </div>
-            <span>Med<span className="text-primary">Flow</span></span>
+          <Link to="/" className="flex items-center hover:opacity-90 transition">
+            <img
+              src="/medisoft_logo_light.jpg"
+              alt="MEDISOFT SUITE"
+              className="h-9 w-auto object-contain dark:hidden"
+            />
+            <img
+              src="/medisoft_logo_dark.jpg"
+              alt="MEDISOFT SUITE"
+              className="h-9 w-auto object-contain hidden dark:block"
+            />
           </Link>
 
           <Badge variant="outline" className="text-[11px] font-mono border-border bg-muted/50 text-muted-foreground hidden sm:inline-flex">
@@ -425,11 +431,12 @@ export const ForgotPassword: React.FC = () => {
         
         {/* Contenido Visual Shadcn Block 02 */}
         <div className="relative z-10 flex h-full flex-col justify-between p-12 text-white">
-          <div className="flex items-center gap-2 font-black text-lg">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Sparkles className="size-5" />
-            </div>
-            <span>PyCore Enterprise</span>
+          <div className="flex items-center gap-3">
+            <img
+              src="/medisoft_logo_dark.jpg"
+              alt="MEDISOFT SUITE"
+              className="h-10 w-auto object-contain rounded-lg shadow-lg"
+            />
           </div>
 
           {/* Testimonial Quote */}

@@ -65,14 +65,14 @@ export const Dashboard: React.FC = () => {
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-semibold">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>PyCore SaaS • Sistema Base Multi-Tenant</span>
+              <img src="/medisoft_favicon.jpg" alt="MediSoft" className="w-3.5 h-3.5 rounded object-contain" />
+              <span>MEDISOFT SUITE • Sistema Hospitalario Integral</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
               Bienvenido, {user?.nombre} {user?.apellido}
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
-              Plataforma base empresarial con aislamiento lógico de datos, roles granulares y alta escalabilidad en tiempo real.
+              Plataforma de gestión hospitalaria y asistencial con expedientes clínicos, control multi-sede, facturación multi-moneda y telemedicina.
             </p>
           </div>
 
