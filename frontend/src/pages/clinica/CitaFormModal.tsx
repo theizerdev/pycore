@@ -48,6 +48,7 @@ interface CitaFormModalProps {
   initialDate?: string;
   initialTime?: string;
   initialMedicoId?: number;
+  existingCitas?: CitaMedica[];
   onSaved: () => void;
 }
 
@@ -72,12 +73,14 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   initialDate,
   initialTime,
   initialMedicoId,
+  existingCitas,
   onSaved,
 }) => {
   const [loading, setLoading] = useState(false);
   const [medicos, setMedicos] = useState<Medico[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
+  const [allCitas, setAllCitas] = useState<CitaMedica[]>([]);
 
   // Buscador de pacientes
   const [pacienteSearch, setPacienteSearch] = useState('');
@@ -123,9 +126,9 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
           setNotas(citaToEdit.notas || '');
           setNotificarWhatsApp(false);
         } else {
-          // Valores iniciales
+          // Tomar siempre la fecha y hora exacta seleccionada/pulsada
           if (initialDate) setFecha(initialDate);
-          if (initialTime && HORAS_DISPONIBLES.includes(initialTime)) {
+          if (initialTime) {
             setHoraInicio(initialTime);
           }
           if (initialMedicoId) {
@@ -140,6 +143,12 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
           setMotivo('');
           setNotas('');
           setNotificarWhatsApp(true);
+        }
+
+        // Cargar citas si no se suministraron
+        if (!existingCitas) {
+          const cData = await citasApi.list();
+          setAllCitas(cData);
         }
       } catch (err) {
         console.error('Error cargando catálogos para cita:', err);
@@ -162,12 +171,128 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
 
   // Calcular hora de fin
   const calcularHoraFin = (inicio: string, minutos: number): string => {
+    if (!inicio) return '';
     const [h, m] = inicio.split(':').map(Number);
-    const totalMin = h * 60 + m + minutos;
+    const totalMin = (h || 0) * 60 + (m || 0) + minutos;
     const finH = Math.floor(totalMin / 60) % 24;
     const finM = totalMin % 60;
     return `${String(finH).padStart(2, '0')}:${String(finM).padStart(2, '0')}`;
   };
+
+  const toMinutes = (timeStr: string): number => {
+    if (!timeStr) return 0;
+    const [h, m] = timeStr.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  const toTimeStr = (totalMin: number): string => {
+    const h = Math.floor(totalMin / 60) % 24;
+    const m = totalMin % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  // Citas agendadas para el médico en la fecha seleccionada
+  const citasDelDia = React.useMemo(() => {
+    if (!medicoId || !fecha) return [];
+    const source = existingCitas || allCitas;
+    return source
+      .filter(
+        (c) =>
+          c.medico_id === medicoId &&
+          c.fecha === fecha &&
+          c.estado !== 'cancelada' &&
+          c.id !== citaToEdit?.id
+      )
+      .sort((a, b) => toMinutes(a.hora_inicio) - toMinutes(b.hora_inicio));
+  }, [existingCitas, allCitas, medicoId, fecha, citaToEdit]);
+
+  // Detección y cálculo de huecos libres entre citas
+  const huecosDisponibles = React.useMemo(() => {
+    const DAY_START = 7 * 60; // 07:00
+    const DAY_END = 19 * 60;  // 19:00
+
+    if (citasDelDia.length === 0) {
+      return [
+        {
+          inicio: toTimeStr(DAY_START),
+          fin: toTimeStr(DAY_END),
+          duracionMinutos: DAY_END - DAY_START,
+          esEntreCitas: false,
+          label: 'Jornada completa disponible (07:00 a 19:00)',
+        },
+      ];
+    }
+
+    const gaps: Array<{
+      inicio: string;
+      fin: string;
+      duracionMinutos: number;
+      esEntreCitas: boolean;
+      citaAnterior?: string;
+      citaSiguiente?: string;
+      label?: string;
+    }> = [];
+
+    // Hueco antes de la primera cita
+    const firstStart = toMinutes(citasDelDia[0].hora_inicio);
+    if (firstStart - DAY_START >= 15) {
+      gaps.push({
+        inicio: toTimeStr(DAY_START),
+        fin: citasDelDia[0].hora_inicio,
+        duracionMinutos: firstStart - DAY_START,
+        esEntreCitas: false,
+        citaSiguiente: citasDelDia[0].paciente_nombre,
+        label: `Antes de ${citasDelDia[0].paciente_nombre}`,
+      });
+    }
+
+    // Huecos entre citas consecutivas
+    for (let i = 0; i < citasDelDia.length - 1; i++) {
+      const finActual = toMinutes(citasDelDia[i].hora_fin);
+      const inicioSiguiente = toMinutes(citasDelDia[i + 1].hora_inicio);
+      const diff = inicioSiguiente - finActual;
+
+      if (diff >= 15) {
+        gaps.push({
+          inicio: citasDelDia[i].hora_fin,
+          fin: citasDelDia[i + 1].hora_inicio,
+          duracionMinutos: diff,
+          esEntreCitas: true,
+          citaAnterior: citasDelDia[i].paciente_nombre,
+          citaSiguiente: citasDelDia[i + 1].paciente_nombre,
+          label: `Entre ${citasDelDia[i].paciente_nombre} y ${citasDelDia[i + 1].paciente_nombre}`,
+        });
+      }
+    }
+
+    // Hueco después de la última cita
+    const lastEnd = toMinutes(citasDelDia[citasDelDia.length - 1].hora_fin);
+    if (DAY_END - lastEnd >= 15) {
+      gaps.push({
+        inicio: citasDelDia[citasDelDia.length - 1].hora_fin,
+        fin: toTimeStr(DAY_END),
+        duracionMinutos: DAY_END - lastEnd,
+        esEntreCitas: false,
+        citaAnterior: citasDelDia[citasDelDia.length - 1].paciente_nombre,
+        label: `Después de ${citasDelDia[citasDelDia.length - 1].paciente_nombre}`,
+      });
+    }
+
+    return gaps;
+  }, [citasDelDia]);
+
+  // Validar solapamiento / conflicto con la hora actual seleccionada
+  const conflictoHorario = React.useMemo(() => {
+    if (!horaInicio) return null;
+    const miInicio = toMinutes(horaInicio);
+    const miFin = miInicio + duracionMinutos;
+
+    return citasDelDia.find((c) => {
+      const cInicio = toMinutes(c.hora_inicio);
+      const cFin = toMinutes(c.hora_fin);
+      return Math.max(miInicio, cInicio) < Math.min(miFin, cFin);
+    });
+  }, [citasDelDia, horaInicio, duracionMinutos]);
 
   // Pacientes filtrados
   const filteredPacientes = pacientes.filter((p) => {
@@ -442,18 +567,13 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
                 <Clock className="size-3 text-muted-foreground" />
                 <span>Hora de Inicio *</span>
               </Label>
-              <Select value={horaInicio} onValueChange={setHoraInicio}>
-                <SelectTrigger className="text-xs h-8 bg-card">
-                  <SelectValue placeholder="Hora" />
-                </SelectTrigger>
-                <SelectContent>
-                  {HORAS_DISPONIBLES.map((h) => (
-                    <SelectItem key={h} value={h}>
-                      {h}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                type="time"
+                value={horaInicio}
+                onChange={(e) => setHoraInicio(e.target.value)}
+                className="text-xs h-8 bg-card font-mono font-semibold"
+                required
+              />
             </div>
 
             {/* Duración */}
@@ -479,6 +599,85 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* ── PANEL DE DISPONIBILIDAD Y HUECOS ENTRE CITAS ────────────── */}
+            <div className="col-span-1 sm:col-span-3 space-y-2 pt-1">
+              {/* Alerta de Conflicto o Disponibilidad */}
+              {conflictoHorario ? (
+                <div className="p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
+                  <AlertCircle className="size-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">
+                      ¡Conflicto de Horario detectado!
+                    </span>
+                    <span>
+                      El especialista ya tiene una cita agendada de{' '}
+                      <strong>{conflictoHorario.hora_inicio} a {conflictoHorario.hora_fin}</strong> con{' '}
+                      <strong>{conflictoHorario.paciente_nombre}</strong>. Por favor seleccione uno de los huecos libres a continuación.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2 rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-800 dark:text-teal-300 text-[11px] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="size-4 text-teal-600 shrink-0" />
+                    <span>
+                      Horario <strong>{horaInicio} - {calcularHoraFin(horaInicio, duracionMinutos)}</strong> libre y disponible sin solapamientos.
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono opacity-80 shrink-0">
+                    {citasDelDia.length} citas hoy
+                  </span>
+                </div>
+              )}
+
+              {/* Lista de Huecos Disponibles entre citas */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-muted-foreground flex items-center gap-1.5">
+                    <Clock className="size-3 text-teal-600" />
+                    <span>Huecos Disponibles para Citas:</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Haga clic en un hueco para asignar la hora
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap max-h-32 overflow-y-auto p-1">
+                  {huecosDisponibles.map((h, idx) => {
+                    const isEntre = h.esEntreCitas;
+                    const isCurrent = horaInicio >= h.inicio && horaInicio < h.fin;
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setHoraInicio(h.inicio)}
+                        className={`text-left px-2.5 py-1.5 rounded-lg border text-xs transition-all cursor-pointer flex items-center gap-2 ${
+                          isEntre
+                            ? 'border-indigo-500/50 bg-indigo-500/10 hover:bg-indigo-500/25 text-indigo-900 dark:text-indigo-200 shadow-2xs'
+                            : 'border-border/80 bg-background hover:bg-muted text-foreground'
+                        } ${isCurrent ? 'ring-2 ring-teal-500 font-semibold' : ''}`}
+                      >
+                        {isEntre ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500 text-white shrink-0">
+                            ✨ Entre citas
+                          </span>
+                        ) : (
+                          <span className="inline-block size-1.5 rounded-full bg-teal-500 shrink-0" />
+                        )}
+                        <span className="font-mono text-[11px] font-bold">
+                          {h.inicio} - {h.fin}
+                        </span>
+                        <span className="text-[10px] opacity-75 font-sans">
+                          ({h.duracionMinutos} min)
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 

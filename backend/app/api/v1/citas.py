@@ -318,6 +318,32 @@ async def update_cita(
     if not cita:
         raise HTTPException(status_code=404, detail="Cita médica no encontrada")
 
+    target_fecha = payload.fecha or cita.fecha
+    target_medico_id = payload.medico_id or cita.medico_id
+    target_hora_inicio = payload.hora_inicio or cita.hora_inicio
+    target_hora_fin = payload.hora_fin or cita.hora_fin
+
+    # Si se cambia horario, fecha o médico, validar que no colisione con otra cita activa
+    if payload.fecha or payload.hora_inicio or payload.hora_fin or payload.medico_id:
+        overlap_query = select(CitaMedica).options(selectinload(CitaMedica.paciente)).where(
+            CitaMedica.id != id,
+            CitaMedica.medico_id == target_medico_id,
+            CitaMedica.fecha == target_fecha,
+            CitaMedica.estado != "cancelada",
+            and_(
+                CitaMedica.hora_inicio < target_hora_fin,
+                CitaMedica.hora_fin > target_hora_inicio,
+            )
+        )
+        overlap_res = await db.execute(overlap_query)
+        overlap_cita = overlap_res.scalar_one_or_none()
+        if overlap_cita:
+            pac_nom = f"{overlap_cita.paciente.nombres} {overlap_cita.paciente.apellidos}" if overlap_cita.paciente else "otro paciente"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Conflicto de horario: El especialista ya tiene una cita de {overlap_cita.hora_inicio} a {overlap_cita.hora_fin} con {pac_nom}"
+            )
+
     update_data = payload.model_dump(exclude_unset=True)
     for field, val in update_data.items():
         setattr(cita, field, val)

@@ -239,6 +239,93 @@ export const AgendaCalendarioPage: React.FC = () => {
     }
   };
 
+  // ── REPROGRAMACIÓN POR ARRASTRE (Drag & Drop a una hora o día específico) ──
+  const handleEventDrop = async (info: any) => {
+    const cita = info.event.extendedProps.cita as CitaMedica;
+    if (!cita) return;
+
+    const newStart = info.event.start;
+    const newEnd = info.event.end;
+    if (!newStart) {
+      info.revert();
+      return;
+    }
+
+    const year = newStart.getFullYear();
+    const month = String(newStart.getMonth() + 1).padStart(2, '0');
+    const day = String(newStart.getDate()).padStart(2, '0');
+    const newDateStr = `${year}-${month}-${day}`;
+
+    const startH = String(newStart.getHours()).padStart(2, '0');
+    const startM = String(newStart.getMinutes()).padStart(2, '0');
+    const newStartTime = `${startH}:${startM}`;
+
+    let newEndTime = cita.hora_fin;
+    let newDuracion = cita.duracion_minutos;
+
+    if (newEnd) {
+      const endH = String(newEnd.getHours()).padStart(2, '0');
+      const endM = String(newEnd.getMinutes()).padStart(2, '0');
+      newEndTime = `${endH}:${endM}`;
+      newDuracion = Math.round((newEnd.getTime() - newStart.getTime()) / (1000 * 60));
+    } else {
+      const totalMin = Number(startH) * 60 + Number(startM) + newDuracion;
+      const finH = Math.floor(totalMin / 60) % 24;
+      const finM = totalMin % 60;
+      newEndTime = `${String(finH).padStart(2, '0')}:${String(finM).padStart(2, '0')}`;
+    }
+
+    try {
+      await citasApi.update(cita.id, {
+        fecha: newDateStr,
+        hora_inicio: newStartTime,
+        hora_fin: newEndTime,
+        duracion_minutos: newDuracion,
+      });
+      toast.success(
+        `Cita de ${cita.paciente_nombre} reprogramada a las ${newStartTime} (${newDateStr})`
+      );
+      await fetchCitas();
+    } catch (err: any) {
+      info.revert();
+      const msg = err.response?.data?.detail || 'No se pudo mover la cita al horario seleccionado';
+      toast.error(msg);
+    }
+  };
+
+  // ── AJUSTE DE DURACIÓN ESTIRANDO EL BORDE INFERIOR DEL EVENTO ──────────
+  const handleEventResize = async (info: any) => {
+    const cita = info.event.extendedProps.cita as CitaMedica;
+    if (!cita) return;
+
+    const newStart = info.event.start;
+    const newEnd = info.event.end;
+    if (!newStart || !newEnd) {
+      info.revert();
+      return;
+    }
+
+    const endH = String(newEnd.getHours()).padStart(2, '0');
+    const endM = String(newEnd.getMinutes()).padStart(2, '0');
+    const newEndTime = `${endH}:${endM}`;
+    const newDuracion = Math.round((newEnd.getTime() - newStart.getTime()) / (1000 * 60));
+
+    try {
+      await citasApi.update(cita.id, {
+        hora_fin: newEndTime,
+        duracion_minutos: newDuracion,
+      });
+      toast.success(
+        `Duración ajustada a ${newDuracion} min (${cita.hora_inicio} a ${newEndTime})`
+      );
+      await fetchCitas();
+    } catch (err: any) {
+      info.revert();
+      const msg = err.response?.data?.detail || 'No se pudo cambiar la duración de la cita';
+      toast.error(msg);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12">
       {/* ── BARRA DE TÍTULO Y ACCIÓN PRINCIPAL ─────────────────────── */}
@@ -551,6 +638,35 @@ export const AgendaCalendarioPage: React.FC = () => {
             background-color: rgba(148, 163, 184, 0.08);
             font-weight: 700;
           }
+          .fc .fc-list {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            border-color: var(--fc-border-color, #e2e8f0);
+          }
+          .fc-list-day-cushion {
+            background-color: rgba(148, 163, 184, 0.12) !important;
+            font-weight: 700 !important;
+            font-size: 0.85rem !important;
+            padding: 8px 14px !important;
+          }
+          .fc-list-event {
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+          }
+          .fc-list-event:hover td {
+            background-color: rgba(148, 163, 184, 0.08) !important;
+          }
+          .fc-list-event-time {
+            font-size: 0.8rem !important;
+            font-weight: 600 !important;
+            padding: 10px 14px !important;
+            white-space: nowrap !important;
+            color: var(--color-foreground, #0f172a) !important;
+          }
+          .fc-list-event-title {
+            padding: 6px 14px !important;
+            width: 100%;
+          }
         `}</style>
 
         <FullCalendar
@@ -568,9 +684,14 @@ export const AgendaCalendarioPage: React.FC = () => {
           slotDuration="00:20:00"
           allDaySlot={false}
           selectable={true}
+          editable={true}
+          eventStartEditable={true}
+          eventDurationEditable={true}
           events={events}
           eventClick={(info: any) => handleEventClick(info)}
           dateClick={(arg: any) => handleDateClick(arg)}
+          eventDrop={handleEventDrop}
+          eventResize={handleEventResize}
           eventContent={(eventInfo) => {
             const cita = eventInfo.event.extendedProps.cita as CitaMedica;
             if (!cita) return <div>{eventInfo.event.title}</div>;
@@ -578,17 +699,99 @@ export const AgendaCalendarioPage: React.FC = () => {
             const timeRange = `${format12Hour(cita.hora_inicio)} - ${format12Hour(cita.hora_fin)}`;
 
             const estadoLabels: Record<string, { label: string; dot: string }> = {
-              programada: { label: 'Por llegar', dot: 'bg-blue-300' },
-              confirmada: { label: 'Confirmada', dot: 'bg-indigo-300' },
-              sala_espera: { label: 'En sala', dot: 'bg-amber-300' },
-              en_consulta: { label: 'En consulta', dot: 'bg-teal-300' },
-              atendida: { label: 'Atendida', dot: 'bg-emerald-300' },
-              cancelada: { label: 'Cancelada', dot: 'bg-rose-300' },
-              no_asistio: { label: 'No asistió', dot: 'bg-slate-300' },
+              programada: { label: 'Por llegar', dot: 'bg-blue-400' },
+              confirmada: { label: 'Confirmada', dot: 'bg-indigo-400' },
+              sala_espera: { label: 'En sala', dot: 'bg-amber-400' },
+              en_consulta: { label: 'En consulta', dot: 'bg-teal-400' },
+              atendida: { label: 'Atendida', dot: 'bg-emerald-400' },
+              cancelada: { label: 'Cancelada', dot: 'bg-rose-400' },
+              no_asistio: { label: 'No asistió', dot: 'bg-slate-400' },
             };
 
-            const cfg = estadoLabels[cita.estado] || { label: cita.estado, dot: 'bg-white' };
+            const cfg = estadoLabels[cita.estado] || { label: cita.estado, dot: 'bg-slate-400' };
+            const isListView = eventInfo.view.type.startsWith('list');
+            const isMonthView = eventInfo.view.type === 'dayGridMonth';
 
+            // ── VISTA DE LISTADO (listWeek) ───────────────────────────
+            if (isListView) {
+              return (
+                <div className="flex items-center justify-between gap-3 py-1 px-1 w-full text-foreground">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    {/* Badge de Especialidad */}
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded text-white shrink-0 shadow-2xs"
+                      style={{ backgroundColor: cita.especialidad_color || '#8b5cf6' }}
+                    >
+                      {cita.especialidad_nombre}
+                    </span>
+
+                    {/* Paciente y Doctor con texto visible y legible */}
+                    <div className="min-w-0">
+                      <span className="font-bold text-xs text-foreground block truncate">
+                        {cita.paciente_nombre}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground block truncate">
+                        {cita.medico_nombre.startsWith('Dr') ? cita.medico_nombre : `Dr(a). ${cita.medico_nombre}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Estado y Botón Ovalado de Acción */}
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-muted/80 text-foreground border border-border">
+                      <span className={`size-2 rounded-full ${cfg.dot}`} />
+                      <span>{cfg.label}</span>
+                    </span>
+
+                    {/* Botón ovalado para cambiar estado */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCitaForStatus(cita);
+                        setStatusModalOpen(true);
+                      }}
+                      className="h-4 w-8 rounded-full border-2 border-amber-400 bg-amber-400/25 hover:bg-amber-400/60 transition-all flex items-center justify-center cursor-pointer shadow-xs group/btn"
+                      title="Cambiar estado de la cita"
+                    >
+                      <span className="sr-only">Cambiar Estado</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            // ── VISTA MENSUAL (dayGridMonth) ───────────────────────────
+            if (isMonthView) {
+              return (
+                <div
+                  className="flex items-center justify-between gap-1 w-full px-1.5 py-0.5 rounded text-white overflow-hidden text-[11px] leading-tight"
+                  style={{ backgroundColor: cita.especialidad_color || '#8b5cf6' }}
+                >
+                  <div className="flex items-center gap-1 truncate min-w-0">
+                    <span className="font-mono text-[9px] opacity-90 shrink-0">
+                      {cita.hora_inicio}
+                    </span>
+                    <span className="font-semibold truncate">
+                      {cita.paciente_nombre}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedCitaForStatus(cita);
+                      setStatusModalOpen(true);
+                    }}
+                    className="h-2.5 w-5 shrink-0 rounded-full border border-amber-300 bg-amber-400/30 hover:bg-amber-400/60 transition-all cursor-pointer"
+                    title="Cambiar estado de la cita"
+                  />
+                </div>
+              );
+            }
+
+            // ── VISTA ASISTENCIAL HORARIA (timeGridWeek / timeGridDay) ─
             return (
               <div className="relative w-full h-full p-2 flex flex-col justify-between text-white select-none overflow-hidden rounded-md group">
                 {/* ── BOTÓN OVALADO DERECHO (Modal para cambiar estado) ── */}
@@ -640,6 +843,7 @@ export const AgendaCalendarioPage: React.FC = () => {
         initialDate={newCitaInitialDate}
         initialTime={newCitaInitialTime}
         initialMedicoId={newCitaInitialMedicoId}
+        existingCitas={citas}
         onSaved={fetchCitas}
       />
 
