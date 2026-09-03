@@ -16,6 +16,7 @@ from app.models.plantilla_especialidad import EspecialidadPlantilla, Especialida
 from app.models.medico import Medico
 from app.models.paciente import Paciente
 from app.models.consulta import ConsultaMedica
+from app.models.cita import CitaMedica
 
 __all__ = [
     "Base",
@@ -41,4 +42,5 @@ __all__ = [
     "Medico",
     "Paciente",
     "ConsultaMedica",
+    "CitaMedica",
 ]

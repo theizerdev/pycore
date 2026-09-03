@@ -30,7 +30,8 @@ import {
   Wallet,
   Briefcase,
   Calculator,
-  UserCheck
+  UserCheck,
+  CalendarDays,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -110,6 +111,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       sectorKey: 'clinica',
       icon: HeartPulse,
       children: [
+        {
+          title: 'Agenda y Citas',
+          href: '/clinica/agenda',
+          icon: CalendarDays,
+          permission: 'citas.ver',
+        },
         {
           title: 'Especialidades',
           href: '/clinica/especialidades',
@@ -447,6 +454,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             const visibleChildren = menu.children.filter((child) => {
               if (child.href === '/seguridad/empresas') {
                 return user?.es_superadmin || hasPermission('empresas.ver') || Boolean(user?.empresa_id);
+              }
+              if (child.href === '/clinica/agenda') {
+                return user?.es_superadmin || hasPermission('citas.ver') || hasPermission('pacientes.ver') || Boolean(user?.empresa_id);
               }
               if (child.href === '/clinica/doctores') {
                 return user?.es_superadmin || hasPermission('medicos.ver') || hasPermission('especialidades.ver') || Boolean(user?.empresa_id);

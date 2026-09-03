@@ -666,3 +666,76 @@ export interface PacienteHistorialResponse {
   signos_vitales_recientes?: Record<string, any> | null;
 }
 
+// ── AGENDA Y CITAS MÉDICAS ─────────────────────────────────────────────
+export type CitaEstado =
+  | 'programada'
+  | 'confirmada'
+  | 'sala_espera'
+  | 'en_consulta'
+  | 'atendida'
+  | 'cancelada'
+  | 'no_asistio';
+
+export interface CitaMedica {
+  id: number;
+  empresa_id: number;
+  sucursal_id: number;
+  medico_id: number;
+  especialidad_id: number;
+  paciente_id: number;
+  fecha: string; // YYYY-MM-DD
+  hora_inicio: string; // HH:MM
+  hora_fin: string; // HH:MM
+  duracion_minutos: number;
+  motivo: string;
+  notas?: string | null;
+  estado: CitaEstado;
+  motivo_cancelacion?: string | null;
+  whatsapp_notificado: boolean;
+  whatsapp_notificado_at?: string | null;
+  paciente_nombre: string;
+  paciente_documento: string;
+  paciente_telefono?: string | null;
+  medico_nombre: string;
+  medico_color: string;
+  especialidad_nombre: string;
+  sucursal_nombre: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CitaCreateInput {
+  sucursal_id: number;
+  medico_id: number;
+  especialidad_id: number;
+  paciente_id: number;
+  fecha: string;
+  hora_inicio: string;
+  hora_fin: string;
+  duracion_minutos: number;
+  motivo: string;
+  notas?: string;
+  notificar_whatsapp?: boolean;
+}
+
+export interface CitaUpdateInput {
+  sucursal_id?: number;
+  medico_id?: number;
+  especialidad_id?: number;
+  paciente_id?: number;
+  fecha?: string;
+  hora_inicio?: string;
+  hora_fin?: string;
+  duracion_minutos?: number;
+  motivo?: string;
+  notas?: string;
+}
+
+export interface CitaNotificarWhatsAppResponse {
+  success: boolean;
+  mensaje_enviado: string;
+  destinatario: string;
+  whatsapp_direct_url?: string;
+  detalle: string;
+}
+

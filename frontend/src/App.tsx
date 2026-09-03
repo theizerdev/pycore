@@ -30,6 +30,7 @@ import { SubscriptionExpiredPage } from './pages/saas/SubscriptionExpiredPage';
 import { EspecialidadesPage } from './pages/clinica/EspecialidadesPage';
 import { DoctoresPage } from './pages/clinica/DoctoresPage';
 import { PacientesPage } from './pages/clinica/PacientesPage';
+import { AgendaCalendarioPage } from './pages/clinica/AgendaCalendarioPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
@@ -60,6 +61,14 @@ export const App: React.FC = () => {
               <Route path="perfil" element={<Perfil />} />
 
               {/* Módulo Clínico & Asistencial */}
+              <Route
+                path="clinica/agenda"
+                element={
+                  <ProtectedRoute requiredPermission="citas.ver">
+                    <AgendaCalendarioPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="clinica/especialidades"
                 element={
