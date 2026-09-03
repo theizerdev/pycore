@@ -530,3 +530,21 @@ export interface MedicoUpdateInput {
   password?: string | null;
 }
 
+export interface EnviarBienvenidaInput {
+  telefono?: string | null;
+  password_temporal?: string | null;
+  mensaje_personalizado?: string | null;
+  canal?: 'whatsapp' | 'email' | 'ambos';
+}
+
+export interface EnviarBienvenidaResponse {
+  success: boolean;
+  mensaje_enviado: string;
+  canal_utilizado: string;
+  destinatario: string;
+  whatsapp_direct_url?: string | null;
+  password_actualizada: boolean;
+  usuario_creado: boolean;
+  detalle?: string | null;
+}
+

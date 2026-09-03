@@ -5,6 +5,7 @@ import { especialidadesApi } from '../../api/especialidades';
 import { sucursalesApi } from '../../api/sucursales';
 import type { Medico, Especialidad, Sucursal } from '../../types';
 import { DoctorFormModal } from './DoctorFormModal';
+import { DoctorWelcomeModal } from './DoctorWelcomeModal';
 import { toast } from 'sonner';
 import {
   UserCheck,
@@ -28,6 +29,7 @@ import {
   Sparkles,
   ShieldCheck,
   RefreshCw,
+  Send,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -84,6 +86,15 @@ export const DoctoresPage: React.FC = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [medicoToDelete, setMedicoToDelete] = useState<Medico | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Modal de envío de bienvenida y credenciales
+  const [welcomeModalOpen, setWelcomeModalOpen] = useState(false);
+  const [medicoForWelcome, setMedicoForWelcome] = useState<Medico | null>(null);
+
+  const handleOpenWelcome = (m: Medico) => {
+    setMedicoForWelcome(m);
+    setWelcomeModalOpen(true);
+  };
 
   const fetchMedicos = async () => {
     setLoading(true);
@@ -443,7 +454,14 @@ export const DoctoresPage: React.FC = () => {
                           <MoreVertical className="size-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="text-xs">
+                      <DropdownMenuContent align="end" className="text-xs min-w-[200px]">
+                        <DropdownMenuItem
+                          onClick={() => handleOpenWelcome(med)}
+                          className="gap-2 text-teal-600 dark:text-teal-400 font-semibold cursor-pointer"
+                        >
+                          <Send className="size-3.5" />
+                          <span>Enviar Bienvenida / Claves</span>
+                        </DropdownMenuItem>
                         {canEdit && (
                           <DropdownMenuItem onClick={() => handleOpenEdit(med)} className="gap-2 cursor-pointer">
                             <Edit2 className="size-3.5 text-primary" />
@@ -659,6 +677,15 @@ export const DoctoresPage: React.FC = () => {
 
                       <td className="p-3 pr-4 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenWelcome(med)}
+                            className="size-7 text-teal-600 hover:text-teal-700 hover:bg-teal-500/10 cursor-pointer"
+                            title="Enviar Bienvenida y Credenciales"
+                          >
+                            <Send className="size-3.5" />
+                          </Button>
                           {canEdit && (
                             <Button
                               variant="ghost"
@@ -717,6 +744,14 @@ export const DoctoresPage: React.FC = () => {
         onOpenChange={setModalOpen}
         medicoToEdit={medicoToEdit}
         onSaved={fetchMedicos}
+      />
+
+      {/* ── MODAL DE ENVÍO DE BIENVENIDA Y CREDENCIALES ─────────────────── */}
+      <DoctorWelcomeModal
+        open={welcomeModalOpen}
+        onOpenChange={setWelcomeModalOpen}
+        medico={medicoForWelcome}
+        onSent={fetchMedicos}
       />
 
       {/* ── DIALOG DE CONFIRMACIÓN DE INACTIVACIÓN ─────────────────────── */}

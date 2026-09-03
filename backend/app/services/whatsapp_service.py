@@ -296,7 +296,14 @@ class WhatsAppService:
             "formattedPhone": formatted
         }
 
-    async def send_message(self, to: str, message: str, variables: Optional[Dict[str, Any]] = None, sync: bool = False) -> Dict[str, Any]:
+    async def send_message(
+        self,
+        to: str,
+        message: str,
+        variables: Optional[Dict[str, Any]] = None,
+        sync: bool = False,
+        simulate_typing: bool = False
+    ) -> Dict[str, Any]:
         """
         Envía un mensaje de texto a través del microservicio Baileys.
         """
@@ -311,11 +318,11 @@ class WhatsAppService:
             "message": processed_msg,
             "variables": variables or {},
             "sync": sync,
-            "simulateTyping": True
+            "simulateTyping": simulate_typing
         }
 
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
+            async with httpx.AsyncClient(timeout=25.0) as client:
                 resp = await client.post(url, json=payload, headers=self._headers())
                 if resp.status_code in [200, 201]:
                     data = resp.json()

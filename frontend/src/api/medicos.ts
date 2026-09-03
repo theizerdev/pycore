@@ -3,6 +3,8 @@ import type {
   Medico,
   MedicoCreateInput,
   MedicoUpdateInput,
+  EnviarBienvenidaInput,
+  EnviarBienvenidaResponse,
 } from '../types';
 
 export interface MedicosFilterParams {
@@ -36,6 +38,13 @@ export const medicosApi = {
 
   delete: async (id: number): Promise<{ message: string }> => {
     const res = await api.delete<{ message: string }>(`/medicos/${id}`);
+    return res.data;
+  },
+
+  enviarBienvenida: async (id: number, data: EnviarBienvenidaInput): Promise<EnviarBienvenidaResponse> => {
+    const res = await api.post<EnviarBienvenidaResponse>(`/medicos/${id}/enviar-bienvenida`, data, {
+      timeout: 30000,
+    });
     return res.data;
   },
 };

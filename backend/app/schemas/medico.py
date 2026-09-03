@@ -70,3 +70,19 @@ class MedicoResponse(MedicoBase):
 
     class Config:
         from_attributes = True
+
+class EnviarBienvenidaRequest(BaseModel):
+    telefono: Optional[str] = None  # Número de destino formateable
+    password_temporal: Optional[str] = None
+    mensaje_personalizado: Optional[str] = None
+    canal: str = "whatsapp"  # "whatsapp", "email", "ambos"
+
+class EnviarBienvenidaResponse(BaseModel):
+    success: bool
+    mensaje_enviado: str
+    canal_utilizado: str
+    destinatario: str
+    whatsapp_direct_url: Optional[str] = None
+    password_actualizada: bool = False
+    usuario_creado: bool = False
+    detalle: Optional[str] = None

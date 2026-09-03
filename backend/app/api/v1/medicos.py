@@ -1,3 +1,6 @@
+import re
+import urllib.parse
+from datetime import datetime
 from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +14,9 @@ from app.core.security import (
     get_password_hash,
     registrar_auditoria
 )
+from app.models.empresa import Empresa
+from app.models.integracion import WhatsAppMessage
+from app.services.whatsapp_service import WhatsAppService
 from app.models.usuario import Usuario, UsuarioSucursal
 from app.models.rol import Rol
 from app.models.especialidad import Especialidad
@@ -20,8 +26,61 @@ from app.models.medico import Medico
 from app.schemas.medico import (
     MedicoCreate,
     MedicoUpdate,
-    MedicoResponse
+    MedicoResponse,
+    EnviarBienvenidaRequest,
+    EnviarBienvenidaResponse
 )
+
+def format_clean_whatsapp_number(phone: str, default_country_code: str = "58") -> str:
+    """
+    Formatea de forma estricta un número telefónico para WhatsApp:
+    - Remueve signos '+', espacios, guiones y paréntesis.
+    - Elimina ceros a la izquierda (ej: '0424...' -> '424...').
+    - Si contiene el código de país seguido de un cero (ej: '580424...' o '+580424...'),
+      elimina el cero intermedio para que sea '58424...'.
+    - Si no tiene código de país, le antepone el código limpio (ej: '58' + '424...' -> '58424...').
+    - Devuelve ÚNICAMENTE los dígitos puros (ej: '584241703465').
+    """
+    if not phone:
+        return ""
+    clean = re.sub(r'[^0-9]', '', str(phone).strip())
+    if not clean:
+        return ""
+    clean_cc = re.sub(r'[^0-9]', '', str(default_country_code or "58"))
+
+    # Si empieza con 0, quitarlo
+    if clean.startswith("0"):
+        clean = clean[1:]
+
+    # Si viene con el prefijo país seguido de un 0 (ej: 580424...)
+    if clean_cc and clean.startswith(f"{clean_cc}0"):
+        clean = clean_cc + clean[len(clean_cc) + 1:]
+
+    # Si es Venezuela (58)
+    if clean_cc == "58" or clean.startswith("58"):
+        if not clean.startswith("58"):
+            clean = "58" + clean
+        if clean.startswith("580"):
+            clean = "58" + clean[3:]
+        return clean
+
+    # Si es México (52)
+    if clean_cc == "52" or clean.startswith("52"):
+        if clean.startswith("520"):
+            clean = "52" + clean[3:]
+        if clean.startswith("521") and len(clean) == 13:
+            return clean
+        if clean.startswith("52") and len(clean) == 12:
+            return "521" + clean[2:]
+        if len(clean) == 10:
+            return "521" + clean
+        return clean
+
+    # Cualquier otro país internacional
+    if clean_cc and not clean.startswith(clean_cc):
+        clean = clean_cc + clean
+
+    return clean
 
 router = APIRouter(prefix="/medicos", tags=["Médicos / Especialistas"])
 
@@ -469,3 +528,196 @@ async def delete_medico(
     )
 
     return {"message": f"Médico {nombre_completo} inactivado con éxito"}
+
+
+@router.post("/{id}/enviar-bienvenida", response_model=EnviarBienvenidaResponse)
+async def enviar_bienvenida_medico(
+    id: int,
+    req: EnviarBienvenidaRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("medicos.ver"))
+):
+    """
+    Prepara y despacha un mensaje corto de bienvenida y credenciales de acceso al médico vía WhatsApp o enlace directo.
+    """
+    stmt = select(Medico).options(
+        selectinload(Medico.especialidad),
+        selectinload(Medico.pais_telefono),
+        selectinload(Medico.sucursal_defecto),
+        selectinload(Medico.usuario),
+        selectinload(Medico.empresa)
+    ).where(Medico.id == id)
+
+    if not current_user.es_superadmin:
+        stmt = stmt.where(Medico.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(stmt)
+    medico = res.scalar_one_or_none()
+    if not medico:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Médico no encontrado")
+
+    password_actualizada = False
+    usuario_creado = False
+
+    # Si se proporciona una contraseña temporal
+    if req.password_temporal and len(req.password_temporal.strip()) >= 4:
+        pass_plain = req.password_temporal.strip()
+        if medico.usuario:
+            medico.usuario.password_hash = get_password_hash(pass_plain)
+            password_actualizada = True
+        else:
+            # Crear usuario si no existía
+            stmt_rol = select(Rol).where(Rol.slug == "medico")
+            res_rol = await db.execute(stmt_rol)
+            rol_medico = res_rol.scalar_one_or_none()
+            nuevo_u = Usuario(
+                empresa_id=medico.empresa_id,
+                sucursal_defecto_id=medico.sucursal_defecto_id,
+                rol_id=rol_medico.id if rol_medico else 1,
+                pais_telefono_id=medico.pais_telefono_id,
+                nombre=medico.nombres,
+                apellido=medico.apellidos,
+                email=medico.email,
+                password_hash=get_password_hash(pass_plain),
+                telefono=medico.telefono,
+                activo=True,
+                es_superadmin=False
+            )
+            db.add(nuevo_u)
+            await db.flush()
+            medico.usuario_id = nuevo_u.id
+            medico.usuario = nuevo_u
+            usuario_creado = True
+            password_actualizada = True
+        await db.commit()
+
+    # 1. Obtener y formatear teléfono con limpieza estricta (ej: 584241703465 sin '+' ni '0' intermedio)
+    codigo_pais = medico.pais_telefono.codigo_telefonico if medico.pais_telefono else "58"
+    tel_origen = req.telefono.strip() if req.telefono and req.telefono.strip() else (medico.telefono or "")
+    tel_formateado = format_clean_whatsapp_number(tel_origen, default_country_code=codigo_pais)
+
+    # Actualizar teléfono del médico si se suministró uno nuevo
+    if req.telefono and req.telefono.strip():
+        medico.telefono = req.telefono.strip()
+        if medico.usuario:
+            medico.usuario.telefono = req.telefono.strip()
+        await db.commit()
+
+    if not tel_formateado:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El médico no dispone de un número telefónico válido para WhatsApp"
+        )
+
+    # 2. Cargar empresa y credenciales de WhatsApp
+    empresa_target = medico.empresa
+    if not empresa_target:
+        res_emp = await db.execute(select(Empresa).where(Empresa.id == medico.empresa_id))
+        empresa_target = res_emp.scalar_one_or_none()
+
+    clinica_nombre = empresa_target.nombre if empresa_target else "Centro Médico"
+    especialidad_nom = medico.especialidad.nombre if medico.especialidad else "Especialista"
+
+    # 3. URL del portal
+    host_url = str(request.base_url).rstrip("/")
+    if ":8000" in host_url:
+        login_url = host_url.replace(":8000", ":5173") + "/login"
+    else:
+        login_url = f"{host_url}/login"
+
+    # 4. Mensaje de bienvenida
+    pass_display = req.password_temporal.strip() if req.password_temporal else "[La asignada por el sistema]"
+    if req.mensaje_personalizado and req.mensaje_personalizado.strip():
+        mensaje = req.mensaje_personalizado.strip()
+    else:
+        mensaje = (
+            f"👋 ¡Hola Dr(a). {medico.nombres} {medico.apellidos}!\n\n"
+            f"Le damos una cordial bienvenida al equipo médico de *{clinica_nombre}* ({especialidad_nom}).\n\n"
+            f"Compartimos sus credenciales de acceso a la plataforma clínica:\n"
+            f"🌐 *Portal:* {login_url}\n"
+            f"👤 *Usuario:* {medico.email}\n"
+            f"🔑 *Contraseña:* {pass_display}\n\n"
+            f"Desde su portal podrá gestionar su agenda médica, atender consultas y revisar historias clínicas.\n\n"
+            f"¡Mucho éxito en su servicio médico! 🩺✨"
+        )
+
+    # Generar enlace directo de WhatsApp como alternativa/respaldo
+    wa_direct_url = f"https://wa.me/{tel_formateado}?text={urllib.parse.quote(mensaje)}"
+
+    envio_exitoso = False
+    detalle = ""
+    canal_usado = req.canal
+
+    # 5. Enviar automáticamente mediante la integración de WhatsApp configurada
+    if req.canal in ["whatsapp", "ambos"]:
+        if empresa_target and empresa_target.whatsapp_active and empresa_target.whatsapp_connected:
+            try:
+                wa_service = WhatsAppService(
+                    api_url=empresa_target.whatsapp_api_url or "https://whatsapp.theizerdev.com",
+                    api_key=empresa_target.whatsapp_api_key,
+                    instance_name=empresa_target.whatsapp_instance or f"empresa_{empresa_target.id}",
+                    company_id=empresa_target.id,
+                    country_code=codigo_pais
+                )
+
+                # Despacho automático e inmediato por Baileys/Evolution API (asíncrono sin bloquear por simulación de tipeo)
+                res_wa = await wa_service.send_message(
+                    to=tel_formateado,
+                    message=mensaje,
+                    sync=False,
+                    simulate_typing=False
+                )
+
+                if res_wa.get("success"):
+                    envio_exitoso = True
+                    canal_usado = "whatsapp_api"
+                    detalle = f"Mensaje enviado automáticamente vía WhatsApp API al número {tel_formateado}."
+
+                    # Guardar registro en historial de mensajes de WhatsApp
+                    wa_msg = WhatsAppMessage(
+                        empresa_id=empresa_target.id,
+                        recipient_phone=tel_formateado,
+                        recipient_name=f"Dr(a). {medico.nombres} {medico.apellidos}",
+                        message_content=mensaje,
+                        status="sent",
+                        direction="outbound",
+                        sent_at=datetime.utcnow()
+                    )
+                    db.add(wa_msg)
+                    await db.commit()
+                else:
+                    error_wa = res_wa.get("error", "Error desconocido")
+                    detalle = f"El servidor WhatsApp reportó un inconveniente: {error_wa}"
+            except Exception as e:
+                detalle = f"Error al procesar envío automático con WhatsApp: {str(e)}"
+        else:
+            detalle = "La integración de WhatsApp de la clínica no se encuentra activa o conectada en este momento."
+
+    await registrar_auditoria(
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=medico.empresa_id,
+        accion="ENVIAR_BIENVENIDA_MEDICO",
+        modulo="medicos",
+        request=request,
+        detalles={
+            "medico_id": medico.id,
+            "medico": f"Dr(a). {medico.nombres} {medico.apellidos}",
+            "destinatario": tel_formateado,
+            "canal": canal_usado,
+            "envio_exitoso": envio_exitoso,
+            "password_actualizada": password_actualizada
+        }
+    )
+
+    return EnviarBienvenidaResponse(
+        success=envio_exitoso,
+        mensaje_enviado=mensaje,
+        canal_utilizado=canal_usado,
+        destinatario=tel_formateado,
+        whatsapp_direct_url=wa_direct_url,
+        password_actualizada=password_actualizada,
+        usuario_creado=usuario_creado,
+        detalle=detalle
+    )
