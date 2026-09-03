@@ -122,6 +122,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           icon: UserCheck,
           permission: 'medicos.ver',
         },
+        {
+          title: 'Pacientes',
+          href: '/clinica/pacientes',
+          icon: Users,
+          permission: 'pacientes.ver',
+        },
       ],
     },
     {
@@ -444,6 +450,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               }
               if (child.href === '/clinica/doctores') {
                 return user?.es_superadmin || hasPermission('medicos.ver') || hasPermission('especialidades.ver') || Boolean(user?.empresa_id);
+              }
+              if (child.href === '/clinica/pacientes') {
+                return user?.es_superadmin || hasPermission('pacientes.ver') || hasPermission('medicos.ver') || hasPermission('especialidades.ver') || Boolean(user?.empresa_id);
               }
               return (
                 (!child.permission || hasPermission(child.permission)) &&

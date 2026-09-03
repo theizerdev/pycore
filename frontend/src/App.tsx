@@ -29,6 +29,7 @@ import { PlanesAdminPage } from './pages/saas/PlanesAdminPage';
 import { SubscriptionExpiredPage } from './pages/saas/SubscriptionExpiredPage';
 import { EspecialidadesPage } from './pages/clinica/EspecialidadesPage';
 import { DoctoresPage } from './pages/clinica/DoctoresPage';
+import { PacientesPage } from './pages/clinica/PacientesPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
@@ -72,6 +73,14 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredPermission="medicos.ver">
                     <DoctoresPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/pacientes"
+                element={
+                  <ProtectedRoute requiredPermission="pacientes.ver">
+                    <PacientesPage />
                   </ProtectedRoute>
                 }
               />

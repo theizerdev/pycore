@@ -548,3 +548,121 @@ export interface EnviarBienvenidaResponse {
   detalle?: string | null;
 }
 
+// ── PACIENTES Y CONSULTAS MÉDICAS ──────────────────────────────────────
+export interface Paciente {
+  id: number;
+  empresa_id: number;
+  sucursal_registro_id?: number | null;
+  pais_telefono_id?: number | null;
+  nombres: string;
+  apellidos: string;
+  tipo_documento: string;
+  documento_identidad: string;
+  fecha_nacimiento?: string | null;
+  genero: 'M' | 'F' | 'O';
+  email?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
+  ciudad?: string | null;
+  estado?: string | null;
+  codigo_postal?: string | null;
+  grupo_sanguineo?: string | null;
+  alergias: string[];
+  antecedentes_patologicos?: string | null;
+  antecedentes_familiares?: string | null;
+  antecedentes_quirurgicos?: string | null;
+  medicacion_habitual?: string | null;
+  observaciones_medicas?: string | null;
+  contacto_emergencia_nombre?: string | null;
+  contacto_emergencia_parentesco?: string | null;
+  contacto_emergencia_telefono?: string | null;
+  seguro_medico?: string | null;
+  numero_poliza?: string | null;
+  activo: boolean;
+  edad?: number | null;
+  edad_texto?: string | null;
+  pais_nombre?: string | null;
+  pais_codigo_iso2?: string | null;
+  pais_codigo_telefonico?: string | null;
+  sucursal_nombre?: string | null;
+  total_consultas: number;
+  ultima_consulta?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PacienteCreateInput {
+  nombres: string;
+  apellidos: string;
+  tipo_documento: string;
+  documento_identidad: string;
+  fecha_nacimiento?: string | null;
+  genero: string;
+  email?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
+  ciudad?: string | null;
+  estado?: string | null;
+  codigo_postal?: string | null;
+  pais_telefono_id?: number | null;
+  sucursal_registro_id?: number | null;
+  grupo_sanguineo?: string | null;
+  alergias?: string[];
+  antecedentes_patologicos?: string | null;
+  antecedentes_familiares?: string | null;
+  antecedentes_quirurgicos?: string | null;
+  medicacion_habitual?: string | null;
+  observaciones_medicas?: string | null;
+  contacto_emergencia_nombre?: string | null;
+  contacto_emergencia_parentesco?: string | null;
+  contacto_emergencia_telefono?: string | null;
+  seguro_medico?: string | null;
+  numero_poliza?: string | null;
+  activo?: boolean;
+}
+
+export interface PacienteUpdateInput extends Partial<PacienteCreateInput> {}
+
+export interface RecetaMedicamentoItem {
+  medicamento: string;
+  dosis: string;
+  frecuencia: string;
+  duracion: string;
+}
+
+export interface ConsultaMedicaHistorial {
+  id: number;
+  fecha_consulta: string;
+  motivo_consulta: string;
+  medico_id: number;
+  medico_nombre?: string | null;
+  especialidad_id: number;
+  especialidad_nombre?: string | null;
+  sucursal_nombre?: string | null;
+  signos_vitales: {
+    peso_kg?: number;
+    talla_cm?: number;
+    imc?: number;
+    masa_corporal?: number;
+    clasificacion_imc?: string;
+    presion_arterial?: string;
+    frecuencia_cardiaca?: number;
+    temperatura?: number;
+    saturacion_oxigeno?: number;
+    [key: string]: any;
+  };
+  diagnostico_principal: string;
+  diagnosticos_secundarios: string[];
+  plan_tratamiento?: string | null;
+  receta_medica: RecetaMedicamentoItem[];
+  indicaciones_generales?: string | null;
+  estado: string;
+}
+
+export interface PacienteHistorialResponse {
+  paciente: Paciente;
+  consultas: ConsultaMedicaHistorial[];
+  alergias: string[];
+  signos_vitales_recientes?: Record<string, any> | null;
+}
+

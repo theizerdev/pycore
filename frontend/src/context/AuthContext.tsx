@@ -96,6 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return false;
     if (user.es_superadmin || permisos.includes('*')) return true;
     if (slug.startsWith('medicos.') && (permisos.includes('especialidades.ver') || permisos.includes('usuarios.ver') || Boolean(user.empresa_id))) return true;
+    if (slug.startsWith('pacientes.') && (permisos.includes('especialidades.ver') || permisos.includes('medicos.ver') || Boolean(user.empresa_id))) return true;
     return permisos.includes(slug);
   };
 
