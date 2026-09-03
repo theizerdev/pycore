@@ -168,7 +168,7 @@ export const AgendaCalendarioPage: React.FC = () => {
   }, [filteredCitas]);
 
   // Click en un evento del calendario
-  const handleEventClick = (info: EventClickArg) => {
+  const handleEventClick = (info: any) => {
     const cita = info.event.extendedProps.cita as CitaMedica;
     if (cita) {
       setSelectedCitaForAction(cita);
@@ -535,13 +535,6 @@ export const AgendaCalendarioPage: React.FC = () => {
             left: 'prev,next today',
             center: 'title',
             right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek',
-          }}
-          buttonText={{
-            today: 'Hoy',
-            month: 'Mes',
-            week: 'Semana',
-            day: 'Día (Turnero)',
-            list: 'Lista',
           }}
           locale="es"
           slotMinTime="07:00:00"
