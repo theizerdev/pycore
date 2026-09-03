@@ -12,6 +12,7 @@ from app.api.v1.monitoreo import router as monitoreo_router
 from app.api.v1.planes import router as planes_router
 from app.api.v1.suscripciones import router as suscripciones_router
 from app.api.v1.especialidades import router as especialidades_router
+from app.api.v1.medicos import router as medicos_router
 
 api_router = APIRouter()
 
@@ -28,3 +29,4 @@ api_router.include_router(monitoreo_router)
 api_router.include_router(planes_router)
 api_router.include_router(suscripciones_router)
 api_router.include_router(especialidades_router)
+api_router.include_router(medicos_router)

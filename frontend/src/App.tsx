@@ -28,6 +28,7 @@ import { SuscripcionesGlobalesPage } from './pages/saas/SuscripcionesGlobalesPag
 import { PlanesAdminPage } from './pages/saas/PlanesAdminPage';
 import { SubscriptionExpiredPage } from './pages/saas/SubscriptionExpiredPage';
 import { EspecialidadesPage } from './pages/clinica/EspecialidadesPage';
+import { DoctoresPage } from './pages/clinica/DoctoresPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
@@ -63,6 +64,14 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredPermission="especialidades.ver">
                     <EspecialidadesPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/doctores"
+                element={
+                  <ProtectedRoute requiredPermission="medicos.ver">
+                    <DoctoresPage />
                   </ProtectedRoute>
                 }
               />

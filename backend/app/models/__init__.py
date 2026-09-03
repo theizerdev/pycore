@@ -13,6 +13,7 @@ from app.models.plan import Plan
 from app.models.suscripcion import Suscripcion, PagoSuscripcion
 from app.models.especialidad import Especialidad
 from app.models.plantilla_especialidad import EspecialidadPlantilla, EspecialidadPlantillaMedico
+from app.models.medico import Medico
 
 __all__ = [
     "Base",
@@ -35,4 +36,5 @@ __all__ = [
     "Especialidad",
     "EspecialidadPlantilla",
     "EspecialidadPlantillaMedico",
+    "Medico",
 ]

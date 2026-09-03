@@ -446,3 +446,87 @@ export interface PlantillaEfectiva {
   total_campos_medico: number;
 }
 
+// ── MÉDICOS Y ESPECIALISTAS ──────────────────────────────────────────
+export interface SubespecialidadItem {
+  id?: string;
+  nombre: string;
+  nivel_experiencia: string;
+  anos_servicio: number;
+  certificado_folio?: string | null;
+}
+
+export interface Medico {
+  id: number;
+  empresa_id: number;
+  usuario_id?: number | null;
+  nombres: string;
+  apellidos: string;
+  tipo_documento: string;
+  documento_identidad: string;
+  email: string;
+  pais_telefono_id?: number | null;
+  telefono?: string | null;
+  licencia_medica?: string | null;
+  especialidad_id: number;
+  subespecialidades: SubespecialidadItem[];
+  color: string;
+  sucursal_defecto_id?: number | null;
+  sucursales_ids: number[];
+  biografia?: string | null;
+  activo: boolean;
+  created_at?: string;
+  updated_at?: string;
+
+  // Enriquecidos
+  especialidad_nombre?: string | null;
+  especialidad_codigo?: string | null;
+  especialidad_color?: string | null;
+  especialidad_icono?: string | null;
+  pais_nombre?: string | null;
+  pais_codigo_iso2?: string | null;
+  pais_codigo_telefonico?: string | null;
+  sucursal_nombre?: string | null;
+  usuario_activo?: boolean | null;
+}
+
+export interface MedicoCreateInput {
+  nombres: string;
+  apellidos: string;
+  tipo_documento?: string;
+  documento_identidad: string;
+  email: string;
+  pais_telefono_id?: number | null;
+  telefono?: string | null;
+  licencia_medica?: string | null;
+  especialidad_id: number;
+  subespecialidades?: SubespecialidadItem[];
+  color?: string;
+  sucursal_defecto_id?: number | null;
+  sucursales_ids?: number[];
+  biografia?: string | null;
+  activo?: boolean;
+  crear_usuario?: boolean;
+  password?: string | null;
+  rol_id?: number | null;
+  empresa_id?: number | null;
+}
+
+export interface MedicoUpdateInput {
+  nombres?: string;
+  apellidos?: string;
+  tipo_documento?: string;
+  documento_identidad?: string;
+  email?: string;
+  pais_telefono_id?: number | null;
+  telefono?: string | null;
+  licencia_medica?: string | null;
+  especialidad_id?: number;
+  subespecialidades?: SubespecialidadItem[];
+  color?: string;
+  sucursal_defecto_id?: number | null;
+  sucursales_ids?: number[];
+  biografia?: string | null;
+  activo?: boolean;
+  password?: string | null;
+}
+

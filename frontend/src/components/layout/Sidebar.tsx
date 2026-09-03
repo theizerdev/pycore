@@ -18,6 +18,7 @@ import {
   MessageSquare,
   CreditCard,
   Sparkles,
+  UserCheck,
   X
 } from 'lucide-react';
 
@@ -114,6 +115,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   <NavLink to="/clinica/especialidades" onClick={onClose} className={navItemClass}>
                     <Stethoscope className="w-4 h-4" />
                     <span>Especialidades</span>
+                  </NavLink>
+                )}
+
+                {(hasPermission('medicos.ver') || user?.es_superadmin) && (
+                  <NavLink to="/clinica/doctores" onClick={onClose} className={navItemClass}>
+                    <UserCheck className="w-4 h-4" />
+                    <span>Médicos y Especialistas</span>
                   </NavLink>
                 )}
               </div>

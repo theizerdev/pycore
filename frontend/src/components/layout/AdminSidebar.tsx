@@ -29,7 +29,8 @@ import {
   Boxes,
   Wallet,
   Briefcase,
-  Calculator
+  Calculator,
+  UserCheck
 } from 'lucide-react';
 import {
   Tooltip,
@@ -114,6 +115,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           href: '/clinica/especialidades',
           icon: Stethoscope,
           permission: 'especialidades.ver',
+        },
+        {
+          title: 'Médicos y Especialistas',
+          href: '/clinica/doctores',
+          icon: UserCheck,
+          permission: 'medicos.ver',
         },
       ],
     },
@@ -434,6 +441,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             const visibleChildren = menu.children.filter((child) => {
               if (child.href === '/seguridad/empresas') {
                 return user?.es_superadmin || hasPermission('empresas.ver') || Boolean(user?.empresa_id);
+              }
+              if (child.href === '/clinica/doctores') {
+                return user?.es_superadmin || hasPermission('medicos.ver') || hasPermission('especialidades.ver') || Boolean(user?.empresa_id);
               }
               return (
                 (!child.permission || hasPermission(child.permission)) &&

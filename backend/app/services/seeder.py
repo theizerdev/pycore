@@ -97,7 +97,11 @@ PERMISOS_SISTEMA = [
     {"sector": "clinica", "modulo": "especialidades", "accion": "ver", "slug": "especialidades.ver", "descripcion": "Ver catálogo de especialidades médicas"},
     {"sector": "clinica", "modulo": "especialidades", "accion": "crear", "slug": "especialidades.crear", "descripcion": "Crear nuevas especialidades médicas"},
     {"sector": "clinica", "modulo": "especialidades", "accion": "editar", "slug": "especialidades.editar", "descripcion": "Editar especialidades médicas"},
-    {"sector": "clinica", "modulo": "especialidades", "accion": "eliminar", "slug": "especialidades.eliminar", "descripcion": "Eliminar o inactivar especialidades médicas"},
+    # Médicos y Especialistas
+    {"sector": "clinica", "modulo": "medicos", "accion": "ver", "slug": "medicos.ver", "descripcion": "Ver directorio de médicos y especialistas"},
+    {"sector": "clinica", "modulo": "medicos", "accion": "crear", "slug": "medicos.crear", "descripcion": "Registrar nuevos médicos y credenciales"},
+    {"sector": "clinica", "modulo": "medicos", "accion": "editar", "slug": "medicos.editar", "descripcion": "Editar fichas de médicos y subespecialidades"},
+    {"sector": "clinica", "modulo": "medicos", "accion": "eliminar", "slug": "medicos.eliminar", "descripcion": "Eliminar o inactivar médicos"},
 ]
 
 PAISES_INICIALES = [
