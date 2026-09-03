@@ -72,6 +72,7 @@ import {
   Calculator,
   Scale,
 } from 'lucide-react';
+import OdontogramaWidget from '../../components/clinica/OdontogramaWidget';
 
 interface EspecialidadPlantillaModalProps {
   open: boolean;
@@ -1059,6 +1060,35 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                       </div>
                     </div>
 
+                    {activeWidgets.includes('odontograma') && (
+                      <div className="p-3.5 rounded-xl border border-teal-500/30 bg-teal-500/5 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Smile className="size-4 text-teal-600 dark:text-teal-400" />
+                            <span className="text-xs font-bold text-foreground">
+                              Widget de Odontograma Dental Activo
+                            </span>
+                            <Badge variant="outline" className="text-[10px] border-teal-500/30 text-teal-600 bg-teal-500/10">
+                              32 Permanentes + 20 Temporales FDI
+                            </Badge>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setActiveTab('preview')}
+                            className="text-xs h-7 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer"
+                          >
+                            <Eye className="size-3.5 mr-1" />
+                            <span>Ver y Probar Odontograma</span>
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          El odontograma anatómico interactivo de 5 caras se cargará automáticamente en la consulta médica de esta especialidad para registrar patologías y restauraciones dentales.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Secciones y Campos de Consulta */}
                     <div className="flex items-center justify-between">
                       <div>
@@ -1505,6 +1535,13 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                           }
                           return null;
                         })()}
+
+                        {/* WIDGET INTERACTIVO DE ODONTOGRAMA SI ESTÁ ACTIVO */}
+                        {(plantillaEfectiva?.widgets_activos || activeWidgets || []).includes('odontograma') && (
+                          <div className="mb-4">
+                            <OdontogramaWidget />
+                          </div>
+                        )}
 
                         {(plantillaEfectiva?.consulta_secciones || []).length === 0 ? (
                           <p className="text-xs text-muted-foreground italic text-center py-6">

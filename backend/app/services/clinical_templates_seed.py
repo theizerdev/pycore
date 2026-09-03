@@ -143,6 +143,13 @@ CATALOGO_ESPECIALIDADES_OFICIALES: List[Dict[str, Any]] = [
         "descripcion": "Aparato urinario masculino y femenino, sistema reproductor masculino y patología prostática",
         "color": "#4f46e5",
         "icono": "Activity"
+    },
+    {
+        "nombre": "Odontología",
+        "codigo": "ODONT-01",
+        "descripcion": "Salud bucodental, periodoncia, endodoncia, ortodoncia, cirugía oral y odontograma interactivo",
+        "color": "#06b6d4",
+        "icono": "Smile"
     }
 ]
 
@@ -729,27 +736,42 @@ DEFAULT_CLINICAL_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "widgets_activos": ["odontograma"],
         "esquema_preconsulta": [
             {
-                "id": "pre_odonto_salud",
-                "titulo": "Salud Bucal y Hábitos Odontológicos",
-                "descripcion": "Motivo dental, sensibilidad y antecedentes",
+                "id": "pre_odonto_seguridad",
+                "titulo": "Triaje Odontológico y Seguridad Quirúrgica",
+                "descripcion": "Antecedentes anestésicos, dolor pulpar y riesgos farmacológicos",
                 "icono": "Smile",
                 "campos": [
-                    {"key": "motivo_atencion_dental", "label": "Motivo principal de consulta", "tipo": "select", "opciones": ["Limpieza / Profilaxis y revisión", "Dolor agudo de muela o diente", "Caries visible", "Estética / Blanqueamiento", "Valoración ortodoncia", "Prótesis o implante"], "requerido": True, "grid_cols": 12},
-                    {"key": "sangrado_encias", "label": "¿Sangran sus encías al cepillarse?", "tipo": "boolean", "requerido": True, "grid_cols": 6},
-                    {"key": "sensibilidad_dental", "label": "¿Presenta sensibilidad intensa al frío o calor?", "tipo": "boolean", "requerido": True, "grid_cols": 6}
+                    {"key": "motivo_atencion_dental", "label": "Motivo principal de consulta odontológica", "tipo": "select", "opciones": ["Limpieza / Profilaxis y revisión periódica", "Dolor agudo / Urgencia odontológica", "Caries visible / Cavidad dental", "Estética / Blanqueamiento / Diseño de sonrisa", "Valoración para Ortodoncia / Brackets", "Prótesis dental o Implante osteointegrado", "Extracción dental / Cirugía de cordales", "Sensibilidad dental al frío o calor"], "requerido": True, "grid_cols": 12},
+                    {"key": "semiologia_dolor_dental", "label": "Características del dolor dental (si presenta)", "tipo": "select", "opciones": ["Sin dolor actual", "Provocado por frío, calor o dulce (cede en segundos - Pulpitis reversible)", "Espontáneo, pulsátil y nocturno continuo (Pulpitis irreversible)", "Dolor sordo y constante al masticar o morder (Afección periapical)", "Dolor en encías al cepillarse"], "requerido": True, "grid_cols": 6},
+                    {"key": "alergia_anestesia_local", "label": "¿Ha presentado reacciones adversas o mareos con anestesia dental?", "tipo": "boolean", "requerido": True, "grid_cols": 6},
+                    {"key": "anticoagulantes_bifosfonatos", "label": "¿Consume anticoagulantes o bifosfonatos (para osteoporosis)?", "tipo": "select", "opciones": ["No consume ninguno", "Antiagregante plaquetario (Aspirina / Clopidogrel)", "Anticoagulante oral (Warfarina / Rivaroxabán)", "Bifosfonatos orales o intravenosos (Riesgo osteonecrosis)", "Ambos grupos de medicamentos"], "requerido": True, "grid_cols": 6},
+                    {"key": "bruxismo_habitos", "label": "Hábitos bucales y parafunciones", "tipo": "multiselect", "opciones": ["Rechina o aprieta los dientes al dormir (Bruxismo)", "Muerde objetos, uñas o bolígrafos (Onicofagia)", "Usa o utilizó férula de descarga nocturna", "Fuma cigarrillos o vapea con frecuencia", "Ningún hábito relevante"], "requerido": False, "grid_cols": 6}
                 ]
             }
         ],
         "esquema_consulta": [
             {
-                "id": "con_odonto_periodonto",
-                "titulo": "Periodonto, Mucosas y ATM",
-                "descripcion": "Exploración de encías, articulación y oclusión",
+                "id": "con_odonto_basales",
+                "titulo": "Constantes Basales y Seguridad Pre-anestésica",
+                "descripcion": "Presión arterial y signos antes de procedimientos clínicos",
+                "icono": "Activity",
+                "campos": [
+                    {"key": "ta_preanestesia", "label": "Presión Arterial Pre-anestesia", "tipo": "text", "placeholder": "Ej. 120/80 mmHg", "requerido": True, "grid_cols": 4},
+                    {"key": "frecuencia_cardiaca", "label": "Frecuencia Cardíaca", "tipo": "number", "unidad": "lpm", "min_val": 40, "max_val": 200, "requerido": True, "grid_cols": 4},
+                    {"key": "glicemia_capilar_dental", "label": "Glicemia Capilar (en diabéticos)", "tipo": "number", "unidad": "mg/dL", "min_val": 40, "max_val": 500, "requerido": False, "grid_cols": 4}
+                ]
+            },
+            {
+                "id": "con_odonto_examen",
+                "titulo": "Examen Clínico Estomatológico, Periodonto y ATM",
+                "descripcion": "Articulación temporomandibular, tejidos blandos, encías y oclusión",
                 "icono": "Smile",
                 "campos": [
-                    {"key": "higiene_bucal", "label": "Índice de Higiene Bucal", "tipo": "select", "opciones": ["Excelente / Sin placa bacteriana", "Buena con placa leve", "Deficiente con abundante sarro"], "requerido": True, "grid_cols": 6},
-                    {"key": "estado_periodontal", "label": "Diagnóstico Periodontal", "tipo": "select", "opciones": ["Periodonto sano", "Gingivitis inducida por placa", "Periodontitis Estadio I-II"], "requerido": True, "grid_cols": 6},
-                    {"key": "notas_odontograma", "label": "Plan de Tratamiento Odontológico", "tipo": "textarea", "placeholder": "Detalle de piezas a obturar, endodoncias requeridas...", "requerido": False, "grid_cols": 12}
+                    {"key": "atm_articulacion", "label": "Articulación Temporomandibular (ATM)", "tipo": "select", "opciones": ["Apertura simétrica normal sin chasquidos ni dolor", "Chasquido / Clic unilateral en apertura o cierre", "Chasquido bilateral con dolor preauricular", "Limitación de apertura bucal (< 35 mm)", "Desviación mandibular al abrir"], "requerido": True, "grid_cols": 6},
+                    {"key": "tejidos_blandos_mucosas", "label": "Mucosas Orales y Tejidos Blandos", "tipo": "select", "opciones": ["Mucosas normocoloreadas, hidratadas sin lesiones", "Aftas o úlceras orales activas", "Leucoplasia o placas blanquecinas a estudio", "Hipertrofia gingival inflamatoria / medicamentosa", "Lengua geográfica o saburral"], "requerido": True, "grid_cols": 6},
+                    {"key": "diagnostico_periodontal", "label": "Estado Periodontal e Higiene Bucal", "tipo": "select", "opciones": ["Periodonto clínicamente sano / Excelente higiene", "Gingivitis inducida por placa con sangrado al sondaje", "Periodontitis Estadio I-II (Pérdida ósea leve-moderada)", "Periodontitis Estadio III-IV (Bolsas profundas y movilidad dental)", "Recesión gingival localizada con hipersensibilidad"], "requerido": True, "grid_cols": 6},
+                    {"key": "relacion_oclusal_angle", "label": "Relación Oclusal (Clasificación de Angle)", "tipo": "select", "opciones": ["Clase I (Normoclusión molar y canina)", "Clase II División 1 (Resalte aumentado)", "Clase II División 2 (Sobremordida profunda)", "Clase III (Mordida cruzada anterior / Prognatismo)", "Mordida abierta anterior"], "requerido": False, "grid_cols": 6},
+                    {"key": "plan_tratamiento_dental", "label": "Plan de Tratamiento Odontológico General", "tipo": "textarea", "placeholder": "Fase 1: Profilaxis y destartraje ultrasónico. Fase 2: Resinas piezas 16, 24 y 36. Fase 3: Endodoncia pieza 11. Presupuesto y consentimientos...", "requerido": False, "grid_cols": 12}
                 ]
             }
         ]
