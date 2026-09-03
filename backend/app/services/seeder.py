@@ -1,12 +1,19 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from app.models.pais import Pais
 from app.models.empresa import Empresa
 from app.models.sucursal import Sucursal
 from app.models.permiso import Permiso
 from app.models.rol import Rol
 from app.models.usuario import Usuario, UsuarioSucursal
+from app.models.especialidad import Especialidad
+from app.models.plantilla_especialidad import EspecialidadPlantilla
 from app.core.security import get_password_hash
+from app.services.clinical_templates_seed import (
+    CATALOGO_ESPECIALIDADES_OFICIALES,
+    get_template_for_specialty
+)
 
 PERMISOS_SISTEMA = [
     # ── Sector: Organización ──
@@ -526,5 +533,58 @@ async def seed_initial_data(db: AsyncSession):
         if not res_asig.first():
             asig = UsuarioSucursal(usuario_id=user.id, sucursal_id=sucursal1.id)
             db.add(asig)
+
+    # 6. Sembrar Catálogo Oficial de Especialidades Médicas y Plantillas Clínicas
+    for esp_def in CATALOGO_ESPECIALIDADES_OFICIALES:
+        stmt_esp = select(Especialidad).where(
+            Especialidad.empresa_id == empresa.id,
+            func.lower(Especialidad.nombre) == esp_def["nombre"].lower()
+        )
+        res_esp = await db.execute(stmt_esp)
+        esp = res_esp.scalar_one_or_none()
+
+        if not esp:
+            esp = Especialidad(
+                empresa_id=empresa.id,
+                sucursal_id=None,
+                nombre=esp_def["nombre"],
+                codigo=esp_def["codigo"],
+                descripcion=esp_def["descripcion"],
+                color=esp_def["color"],
+                icono=esp_def["icono"],
+                activo=True
+            )
+            db.add(esp)
+            await db.flush()
+        else:
+            if not esp.codigo:
+                esp.codigo = esp_def["codigo"]
+            if not esp.descripcion:
+                esp.descripcion = esp_def["descripcion"]
+            if esp_def.get("color"):
+                esp.color = esp_def["color"]
+            if esp_def.get("icono"):
+                esp.icono = esp_def["icono"]
+
+        # Asegurar plantilla clínica para cada especialidad
+        stmt_p = select(EspecialidadPlantilla).where(
+            EspecialidadPlantilla.especialidad_id == esp.id,
+            EspecialidadPlantilla.empresa_id == empresa.id
+        )
+        res_p = await db.execute(stmt_p)
+        plantilla = res_p.scalar_one_or_none()
+
+        sugerencia = get_template_for_specialty(esp.nombre)
+        if not plantilla:
+            plantilla = EspecialidadPlantilla(
+                empresa_id=empresa.id,
+                especialidad_id=esp.id,
+                esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
+                esquema_consulta=sugerencia.get("esquema_consulta", []),
+                widgets_activos=sugerencia.get("widgets_activos", []),
+                version=1,
+                activo=True
+            )
+            db.add(plantilla)
 
     await db.commit()

@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 
 from app.core.database import get_db, ensure_tables_exist
 from app.core.security import get_current_active_user, require_permission, registrar_auditoria
@@ -20,24 +20,13 @@ from app.schemas.plantilla_especialidad import (
     SeccionClinica,
     CampoClinico,
 )
-from app.services.clinical_templates_seed import DEFAULT_CLINICAL_TEMPLATES
+from app.services.clinical_templates_seed import (
+    DEFAULT_CLINICAL_TEMPLATES,
+    CATALOGO_ESPECIALIDADES_OFICIALES,
+    get_template_for_specialty,
+)
 
 router = APIRouter(prefix="/especialidades", tags=["Especialidades"])
-
-DEFAULT_CLINICAL_SPECIALTIES = [
-    {"nombre": "Medicina General", "codigo": "MED-GEN", "descripcion": "Atención primaria, diagnóstico preventivo y control médico general", "color": "#0ea5e9", "icono": "Stethoscope"},
-    {"nombre": "Pediatría", "codigo": "PED-01", "descripcion": "Cuidado integral y desarrollo médico desde la infancia hasta la adolescencia", "color": "#ec4899", "icono": "Baby"},
-    {"nombre": "Ginecología y Obstetricia", "codigo": "GIN-01", "descripcion": "Salud integral femenina, control prenatal y salud reproductiva", "color": "#a855f7", "icono": "HeartPulse"},
-    {"nombre": "Cardiología", "codigo": "CARD-01", "descripcion": "Diagnóstico y tratamiento de patologías cardiovasculares y ritmo cardíaco", "color": "#ef4444", "icono": "Activity"},
-    {"nombre": "Traumatología y Ortopedia", "codigo": "TRAUM-01", "descripcion": "Atención de lesiones músculo-esqueléticas, fracturas y rehabilitación articular", "color": "#f97316", "icono": "Bone"},
-    {"nombre": "Odontología", "codigo": "ODONT-01", "descripcion": "Salud bucodental, ortodoncia, endodoncia y estética dental", "color": "#06b6d4", "icono": "Sparkles"},
-    {"nombre": "Oftalmología", "codigo": "OFT-01", "descripcion": "Salud visual, fondo de ojo, refracción y tratamientos oculares", "color": "#3b82f6", "icono": "Eye"},
-    {"nombre": "Dermatología", "codigo": "DERM-01", "descripcion": "Diagnóstico y cuidado clínico de afecciones de la piel, cabello y uñas", "color": "#14b8a6", "icono": "ShieldCheck"},
-    {"nombre": "Neurología", "codigo": "NEUR-01", "descripcion": "Tratamiento de trastornos del sistema nervioso central y periférico", "color": "#6366f1", "icono": "Brain"},
-    {"nombre": "Nutrición y Dietética", "codigo": "NUTR-01", "descripcion": "Evaluación nutricional, planes alimenticios y soporte metabólico", "color": "#84cc16", "icono": "Apple"},
-    {"nombre": "Psicología y Psiquiatría", "codigo": "PSIC-01", "descripcion": "Salud mental, bienestar emocional, psicoterapia y acompañamiento cognitivo", "color": "#8b5cf6", "icono": "Smile"},
-    {"nombre": "Urología", "codigo": "URO-01", "descripcion": "Diagnóstico y tratamiento del sistema urinario y aparato reproductor masculino", "color": "#f59e0b", "icono": "Activity"},
-]
 
 @router.get("", response_model=List[EspecialidadResponse])
 async def list_especialidades(
@@ -133,6 +122,20 @@ async def create_especialidad(
     await db.commit()
     await db.refresh(nueva_esp)
 
+    # Inicializar automáticamente su plantilla clínica sugerida oficial
+    sugerencia = get_template_for_specialty(nueva_esp.nombre)
+    nueva_plantilla = EspecialidadPlantilla(
+        empresa_id=target_empresa_id,
+        especialidad_id=nueva_esp.id,
+        esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
+        esquema_consulta=sugerencia.get("esquema_consulta", []),
+        widgets_activos=sugerencia.get("widgets_activos", []),
+        version=1,
+        activo=True
+    )
+    db.add(nueva_plantilla)
+    await _safe_commit(db)
+
     await registrar_auditoria(
         db=db,
         usuario_id=current_user.id,
@@ -147,6 +150,89 @@ async def create_especialidad(
     )
 
     return nueva_esp
+
+
+@router.post("/seed-catalogo", response_model=List[EspecialidadResponse])
+async def seed_catalogo_especialidades(
+    request: Request,
+    empresa_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("especialidades.crear"))
+):
+    """
+    Siembra o sincroniza el catálogo oficial de las 14 especialidades médicas requeridas
+    junto con sus plantillas clínicas estructuradas para la empresa activa.
+    """
+    target_empresa_id = empresa_id if (current_user.es_superadmin and empresa_id) else current_user.empresa_id
+    if not target_empresa_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Se requiere una empresa activa para registrar el catálogo")
+
+    await ensure_tables_exist()
+
+    for esp_def in CATALOGO_ESPECIALIDADES_OFICIALES:
+        stmt = select(Especialidad).where(
+            Especialidad.empresa_id == target_empresa_id,
+            func.lower(Especialidad.nombre) == esp_def["nombre"].lower()
+        )
+        res = await db.execute(stmt)
+        esp = res.scalar_one_or_none()
+
+        if not esp:
+            esp = Especialidad(
+                empresa_id=target_empresa_id,
+                sucursal_id=None,
+                nombre=esp_def["nombre"],
+                codigo=esp_def["codigo"],
+                descripcion=esp_def["descripcion"],
+                color=esp_def["color"],
+                icono=esp_def["icono"],
+                activo=True
+            )
+            db.add(esp)
+            await db.flush()
+        else:
+            if not esp.codigo:
+                esp.codigo = esp_def["codigo"]
+            if not esp.descripcion:
+                esp.descripcion = esp_def["descripcion"]
+            if esp_def.get("color"):
+                esp.color = esp_def["color"]
+            if esp_def.get("icono"):
+                esp.icono = esp_def["icono"]
+
+        # Asegurar plantilla clínica
+        stmt_p = select(EspecialidadPlantilla).where(
+            EspecialidadPlantilla.especialidad_id == esp.id,
+            EspecialidadPlantilla.empresa_id == target_empresa_id
+        )
+        res_p = await _safe_execute_select(db, stmt_p)
+        plantilla = res_p.scalar_one_or_none()
+
+        sugerencia = get_template_for_specialty(esp.nombre)
+        if not plantilla:
+            plantilla = EspecialidadPlantilla(
+                empresa_id=target_empresa_id,
+                especialidad_id=esp.id,
+                esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
+                esquema_consulta=sugerencia.get("esquema_consulta", []),
+                widgets_activos=sugerencia.get("widgets_activos", []),
+                version=1,
+                activo=True
+            )
+            db.add(plantilla)
+        else:
+            if not plantilla.esquema_consulta or len(plantilla.esquema_consulta) == 0:
+                plantilla.esquema_preconsulta = sugerencia.get("esquema_preconsulta", [])
+                plantilla.esquema_consulta = sugerencia.get("esquema_consulta", [])
+                plantilla.widgets_activos = sugerencia.get("widgets_activos", [])
+            else:
+                _upgrade_signos_vitales_if_needed(plantilla.esquema_consulta)
+
+    await _safe_commit(db)
+
+    stmt_all = select(Especialidad).where(Especialidad.empresa_id == target_empresa_id).order_by(Especialidad.nombre.asc())
+    res_all = await db.execute(stmt_all)
+    return res_all.scalars().all()
 
 @router.put("/{id}", response_model=EspecialidadResponse)
 async def update_especialidad(
@@ -383,12 +469,7 @@ async def get_plantilla_especialidad(
     plantilla = res_p.scalar_one_or_none()
 
     if not plantilla:
-        nombre_norm = esp.nombre.lower().strip()
-        sugerencia = DEFAULT_CLINICAL_TEMPLATES.get(nombre_norm, {
-            "esquema_preconsulta": [],
-            "esquema_consulta": [],
-            "widgets_activos": []
-        })
+        sugerencia = get_template_for_specialty(esp.nombre)
         plantilla = EspecialidadPlantilla(
             empresa_id=esp.empresa_id,
             especialidad_id=esp.id,
@@ -496,15 +577,7 @@ async def seed_plantilla_defaults(
     if not esp:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Especialidad no encontrada")
 
-    nombre_norm = esp.nombre.lower().strip()
-    sugerencia = DEFAULT_CLINICAL_TEMPLATES.get(nombre_norm)
-    if not sugerencia:
-        # Fallback genérico de medicina si no tiene plantilla predefinida
-        sugerencia = DEFAULT_CLINICAL_TEMPLATES.get("medicina general", {
-            "esquema_preconsulta": [],
-            "esquema_consulta": [],
-            "widgets_activos": []
-        })
+    sugerencia = get_template_for_specialty(esp.nombre)
 
     stmt_p = select(EspecialidadPlantilla).where(
         EspecialidadPlantilla.especialidad_id == id,
@@ -684,12 +757,7 @@ async def get_plantilla_efectiva(
     plantilla = res_p.scalar_one_or_none()
 
     if not plantilla:
-        nombre_norm = esp.nombre.lower().strip()
-        sugerencia = DEFAULT_CLINICAL_TEMPLATES.get(nombre_norm, {
-            "esquema_preconsulta": [],
-            "esquema_consulta": [],
-            "widgets_activos": []
-        })
+        sugerencia = get_template_for_specialty(esp.nombre)
         base_pre = sugerencia.get("esquema_preconsulta", [])
         base_con = sugerencia.get("esquema_consulta", [])
         widgets = sugerencia.get("widgets_activos", [])
