@@ -699,6 +699,7 @@ export interface CitaMedica {
   medico_nombre: string;
   medico_color: string;
   especialidad_nombre: string;
+  especialidad_color?: string;
   sucursal_nombre: string;
   created_at: string;
   updated_at: string;

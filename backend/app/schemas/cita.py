@@ -58,6 +58,7 @@ class CitaResponse(BaseModel):
     medico_nombre: str
     medico_color: str
     especialidad_nombre: str
+    especialidad_color: str = "#8b5cf6"
     sucursal_nombre: str
 
     created_at: datetime

@@ -16,6 +16,7 @@ import type { CitaMedica, Medico, Especialidad, Sucursal, Paciente, CitaEstado }
 import { CitaFormModal } from './CitaFormModal';
 import { CitaQuickActionDialog } from './CitaQuickActionDialog';
 import { PatientRecordDrawer } from './PatientRecordDrawer';
+import { CitaStatusModal } from './CitaStatusModal';
 import { toast } from 'sonner';
 
 import { Button } from '../../components/ui/button';
@@ -70,11 +71,16 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [newCitaInitialTime, setNewCitaInitialTime] = useState<string | undefined>(undefined);
   const [newCitaInitialMedicoId, setNewCitaInitialMedicoId] = useState<number | undefined>(undefined);
 
+  
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [selectedCitaForAction, setSelectedCitaForAction] = useState<CitaMedica | null>(null);
 
   const [recordDrawerOpen, setRecordDrawerOpen] = useState(false);
   const [patientForRecord, setPatientForRecord] = useState<Paciente | null>(null);
+
+  // Modal para cambio rápido de estado (botón ovalado del evento)
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [selectedCitaForStatus, setSelectedCitaForStatus] = useState<CitaMedica | null>(null);
 
   // Cargar Citas
   const fetchCitas = async () => {
@@ -148,13 +154,25 @@ export const AgendaCalendarioPage: React.FC = () => {
     return citas.filter((c) => c.fecha === todayStr && c.estado === 'atendida');
   }, [citas, todayStr]);
 
-  // Mapear eventos a FullCalendar
+  // Formateador a formato de 12 Horas con AM/PM (Ej: 08:00 AM - 08:20 AM)
+  const format12Hour = (time24: string): string => {
+    if (!time24) return '';
+    const [hStr, mStr] = time24.split(':');
+    let h = parseInt(hStr, 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h ? h : 12;
+    return `${String(h).padStart(2, '0')}:${mStr || '00'} ${ampm}`;
+  };
+
+  // Mapear eventos a FullCalendar con color de Especialidad
   const events = useMemo(() => {
     return filteredCitas.map((c) => {
-      const color = c.medico_color || '#0d9488';
+      // El fondo del bloque representa la especialidad clínica
+      const color = c.especialidad_color || '#8b5cf6';
       return {
         id: String(c.id),
-        title: `${c.hora_inicio} - ${c.paciente_nombre}`,
+        title: `${c.paciente_nombre} - ${c.medico_nombre}`,
         start: `${c.fecha}T${c.hora_inicio}:00`,
         end: `${c.fecha}T${c.hora_fin}:00`,
         backgroundColor: color,
@@ -507,18 +525,26 @@ export const AgendaCalendarioPage: React.FC = () => {
             border-color: #115e59 !important;
           }
           .fc-timegrid-slot {
-            height: 2.2rem !important;
+            height: 2.7rem !important;
+          }
+          .fc-timegrid-event {
+            border-radius: 0.375rem !important;
+            border-width: 0 !important;
+            overflow: hidden !important;
+          }
+          .fc-event-main {
+            padding: 0 !important;
+            height: 100% !important;
           }
           .fc-event {
             cursor: pointer;
             border-radius: 0.375rem;
-            padding: 2px 4px;
-            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
             transition: transform 0.15s ease, box-shadow 0.15s ease;
           }
           .fc-event:hover {
-            transform: scale(1.01);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            transform: scale(1.005);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15);
           }
           .fc-col-header-cell {
             padding: 6px 0;
@@ -539,7 +565,7 @@ export const AgendaCalendarioPage: React.FC = () => {
           locale="es"
           slotMinTime="07:00:00"
           slotMaxTime="20:00:00"
-          slotDuration="00:30:00"
+          slotDuration="00:20:00"
           allDaySlot={false}
           selectable={true}
           events={events}
@@ -549,28 +575,56 @@ export const AgendaCalendarioPage: React.FC = () => {
             const cita = eventInfo.event.extendedProps.cita as CitaMedica;
             if (!cita) return <div>{eventInfo.event.title}</div>;
 
-            const estadoIcon =
-              cita.estado === 'sala_espera'
-                ? '⏳ '
-                : cita.estado === 'en_consulta'
-                ? '🩺 '
-                : cita.estado === 'atendida'
-                ? '✅ '
-                : '';
+            const timeRange = `${format12Hour(cita.hora_inicio)} - ${format12Hour(cita.hora_fin)}`;
+
+            const estadoLabels: Record<string, { label: string; dot: string }> = {
+              programada: { label: 'Por llegar', dot: 'bg-blue-300' },
+              confirmada: { label: 'Confirmada', dot: 'bg-indigo-300' },
+              sala_espera: { label: 'En sala', dot: 'bg-amber-300' },
+              en_consulta: { label: 'En consulta', dot: 'bg-teal-300' },
+              atendida: { label: 'Atendida', dot: 'bg-emerald-300' },
+              cancelada: { label: 'Cancelada', dot: 'bg-rose-300' },
+              no_asistio: { label: 'No asistió', dot: 'bg-slate-300' },
+            };
+
+            const cfg = estadoLabels[cita.estado] || { label: cita.estado, dot: 'bg-white' };
 
             return (
-              <div className="flex flex-col text-[11px] leading-tight overflow-hidden p-0.5">
-                <div className="flex items-center justify-between font-bold">
-                  <span className="truncate">
-                    {estadoIcon}{cita.paciente_nombre}
+              <div className="relative w-full h-full p-2 flex flex-col justify-between text-white select-none overflow-hidden rounded-md group">
+                {/* ── BOTÓN OVALADO DERECHO (Modal para cambiar estado) ── */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedCitaForStatus(cita);
+                    setStatusModalOpen(true);
+                  }}
+                  className="absolute top-2 right-2 h-3.5 w-7 rounded-full border-2 border-amber-300 bg-amber-400/30 hover:bg-amber-400/60 transition-all flex items-center justify-center cursor-pointer shadow-xs z-20 group/btn"
+                  title="Cambiar estado de la cita"
+                >
+                  <span className="sr-only">Cambiar Estado</span>
+                </button>
+
+                {/* ── DATOS: Paciente y Especialista ──────────────────── */}
+                <div className="space-y-0.5 pr-8">
+                  <span className="font-bold text-xs leading-tight block truncate text-white drop-shadow-xs">
+                    {cita.paciente_nombre}
                   </span>
-                  <span className="text-[9px] opacity-90 font-mono ml-1 shrink-0">
-                    {cita.hora_inicio}
+                  <span className="text-[10.5px] text-white/90 leading-tight block truncate font-medium">
+                    {cita.medico_nombre.startsWith('Dr') ? cita.medico_nombre : `Dr(a). ${cita.medico_nombre}`}
                   </span>
                 </div>
-                <span className="text-[10px] opacity-80 truncate">
-                  {cita.medico_nombre}
-                </span>
+
+                {/* ── FILA INFERIOR: Pastilla de Estado + Rango de Hora ── */}
+                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold px-2 py-0.5 rounded-full bg-black/35 backdrop-blur-xs border border-white/20 text-white shrink-0">
+                    <span className={`size-1.5 rounded-full ${cfg.dot}`} />
+                    <span>{cfg.label}</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-white/95 font-medium shrink-0">
+                    {timeRange}
+                  </span>
+                </div>
               </div>
             );
           }}
@@ -600,6 +654,14 @@ export const AgendaCalendarioPage: React.FC = () => {
           setFormModalOpen(true);
         }}
         onOpenPatientRecord={handleOpenPatientRecord}
+      />
+
+      {/* ── MODAL CAMBIAR ESTADO (Desde el botón ovalado del bloque) ── */}
+      <CitaStatusModal
+        open={statusModalOpen}
+        onOpenChange={setStatusModalOpen}
+        cita={selectedCitaForStatus}
+        onUpdated={fetchCitas}
       />
 
       {/* ── FICHA CLÍNICA DEL PACIENTE (Si se solicita) ────────────── */}

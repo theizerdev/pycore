@@ -49,6 +49,7 @@ def build_cita_response(c: CitaMedica) -> CitaResponse:
     medico_color = c.medico.color if c.medico and c.medico.color else "#0d9488"
 
     esp_nombre = c.especialidad.nombre if c.especialidad else "Medicina General"
+    esp_color = c.especialidad.color if c.especialidad and c.especialidad.color else "#8b5cf6"
     suc_nombre = c.sucursal.nombre if c.sucursal else "Sede Central"
 
     return CitaResponse(
@@ -74,6 +75,7 @@ def build_cita_response(c: CitaMedica) -> CitaResponse:
         medico_nombre=medico_nombre,
         medico_color=medico_color,
         especialidad_nombre=esp_nombre,
+        especialidad_color=esp_color,
         sucursal_nombre=suc_nombre,
         created_at=c.created_at,
         updated_at=c.updated_at,
