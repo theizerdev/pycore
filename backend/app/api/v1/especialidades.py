@@ -152,10 +152,12 @@ async def create_especialidad(
     return nueva_esp
 
 
+@router.post("/seed-defaults", response_model=List[EspecialidadResponse])
 @router.post("/seed-catalogo", response_model=List[EspecialidadResponse])
 async def seed_catalogo_especialidades(
     request: Request,
     empresa_id: Optional[int] = Query(None),
+    sucursal_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(require_permission("especialidades.crear"))
 ):

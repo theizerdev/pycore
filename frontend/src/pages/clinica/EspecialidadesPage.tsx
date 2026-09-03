@@ -387,7 +387,7 @@ export const EspecialidadesPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {canCreate && especialidades.length === 0 && (
+          {canCreate && (
             <Button
               variant="outline"
               size="sm"
@@ -395,7 +395,7 @@ export const EspecialidadesPage: React.FC = () => {
               className="border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer"
             >
               <Sparkles className="size-4 mr-1.5 text-teal-500" />
-              <span>Cargar Sugeridas</span>
+              <span>Sincronizar Catálogo Oficial (14)</span>
             </Button>
           )}
 
