@@ -215,3 +215,71 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 }
+
+/* ── Custom Sleek Scrollbar (Estilo moderno sin flechas nativas) ── */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.custom-scrollbar::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Light mode support para custom-scrollbar */
+:root:not(.dark) [data-sidebar="light"] .custom-scrollbar,
+:root:not(.dark):not([data-sidebar="dark"]) .custom-scrollbar {
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+:root:not(.dark) [data-sidebar="light"] .custom-scrollbar::-webkit-scrollbar-thumb,
+:root:not(.dark):not([data-sidebar="dark"]) .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+:root:not(.dark) [data-sidebar="light"] .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+:root:not(.dark):not([data-sidebar="dark"]) .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+/* Global scrollbar estilizado para toda la aplicación */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}

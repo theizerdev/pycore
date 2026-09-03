@@ -356,11 +356,50 @@ export const AgendaCalendarioPage: React.FC = () => {
             <span>Agenda Médica y Turnos de Citas</span>
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Calendario asistencial interactivo, gestión de flujo de estados y recordatorios automáticos por WhatsApp.
+            Calendario asistencial interactivo.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Filtro Rápido de Médico */}
+          <Select value={selectedMedico} onValueChange={setSelectedMedico}>
+            <SelectTrigger className="text-xs h-9 w-[170px]">
+              <SelectValue placeholder="Médico" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Médicos: Todos</SelectItem>
+              {medicos.map((m) => (
+                <SelectItem key={m.id} value={String(m.id)}>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="size-2 rounded-full shrink-0"
+                      style={{ backgroundColor: m.color || '#0d9488' }}
+                    />
+                    <span className="truncate">
+                      {m.nombres} {m.apellidos}
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Filtro Rápido de Estado */}
+          <Select value={selectedEstado} onValueChange={setSelectedEstado}>
+            <SelectTrigger className="text-xs h-9 w-[150px]">
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Estados: Todos</SelectItem>
+              <SelectItem value="programada">📅 Programadas</SelectItem>
+              <SelectItem value="confirmada">✅ Confirmadas</SelectItem>
+              <SelectItem value="sala_espera">⏳ Sala de Espera</SelectItem>
+              <SelectItem value="en_consulta">🩺 En Consulta</SelectItem>
+              <SelectItem value="atendida">🎉 Atendidas</SelectItem>
+              <SelectItem value="cancelada">❌ Canceladas</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Button
             type="button"
             variant="outline"
@@ -379,7 +418,7 @@ export const AgendaCalendarioPage: React.FC = () => {
             onClick={() => {
               setCitaToEdit(null);
               setNewCitaInitialDate(new Date().toISOString().split('T')[0]);
-              setNewCitaInitialTime('09:00');
+              setNewCitaInitialTime('08:00');
               setFormModalOpen(true);
             }}
             className="h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer shadow-xs gap-1.5"
@@ -390,216 +429,13 @@ export const AgendaCalendarioPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ── PANEL DE ESTADO ASISTENCIAL EN VIVO (HOY) ──────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* Citas de Hoy */}
-        <Card className="shadow-2xs border-border/70 hover:border-teal-500/30 transition-colors">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-                Citas de Hoy
-              </span>
-              <span className="text-2xl font-extrabold text-foreground mt-0.5 block">
-                {citasHoy.length}
-              </span>
-              <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold mt-0.5 block">
-                Programadas para la fecha
-              </span>
-            </div>
-            <div className="flex size-11 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
-              <Calendar className="size-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* En Sala de Espera */}
-        <Card className="shadow-2xs border-amber-500/30 bg-amber-500/5 dark:bg-amber-950/10 hover:border-amber-500/50 transition-colors">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider block">
-                En Sala de Espera
-              </span>
-              <span className="text-2xl font-extrabold text-amber-700 dark:text-amber-400 mt-0.5 block">
-                {pacientesEnEspera.length}
-              </span>
-              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5 block">
-                {pacientesEnEspera.length > 0 ? 'Pacientes esperando' : 'Sin espera actual'}
-              </span>
-            </div>
-            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-400 animate-pulse">
-              <Clock className="size-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* En Consulta Activa */}
-        <Card className="shadow-2xs border-teal-500/30 bg-teal-500/5 dark:bg-teal-950/10 hover:border-teal-500/50 transition-colors">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wider block">
-                En Consulta
-              </span>
-              <span className="text-2xl font-extrabold text-teal-700 dark:text-teal-300 mt-0.5 block">
-                {pacientesEnConsulta.length}
-              </span>
-              <span className="text-[10px] text-teal-600 dark:text-teal-400 font-medium mt-0.5 block">
-                En atención médica
-              </span>
-            </div>
-            <div className="flex size-11 items-center justify-center rounded-xl bg-teal-500/20 text-teal-700 dark:text-teal-300">
-              <Stethoscope className="size-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Atendidas Hoy */}
-        <Card className="shadow-2xs border-emerald-500/30 hover:border-emerald-500/50 transition-colors">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
-                Atendidas Hoy
-              </span>
-              <span className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400 mt-0.5 block">
-                {pacientesAtendidosHoy.length}
-              </span>
-              <span className="text-[10px] text-muted-foreground font-medium mt-0.5 block">
-                Consultas finalizadas
-              </span>
-            </div>
-            <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="size-5" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── MINI-BANNER SALA DE ESPERA EN VIVO (Si hay pacientes esperando) ── */}
-      {pacientesEnEspera.length > 0 && (
-        <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 dark:bg-amber-950/20 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-2 uppercase tracking-wide">
-              <span className="size-2 rounded-full bg-amber-500 animate-ping" />
-              Turnero: Pacientes Presentes en Sala de Espera ({pacientesEnEspera.length})
-            </span>
-            <span className="text-[11px] text-amber-700 dark:text-amber-400">
-              Haga clic para llamar a consultorio
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {pacientesEnEspera.map((c) => (
-              <div
-                key={c.id}
-                className="p-3 rounded-lg bg-background border border-amber-500/30 flex items-center justify-between gap-2 shadow-2xs"
-              >
-                <div>
-                  <span className="font-bold text-foreground text-xs block">
-                    {c.paciente_nombre}
-                  </span>
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
-                    <span className="font-mono">{c.hora_inicio}</span>
-                    <span>•</span>
-                    <span className="truncate">{c.medico_nombre}</span>
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => handleLlamarAConsulta(c.id)}
-                  className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer shrink-0 shadow-2xs gap-1"
-                >
-                  <Stethoscope className="size-3" />
-                  <span>Llamar</span>
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── BARRA DE FILTROS ASISTENCIALES ─────────────────────────── */}
-      <Card className="shadow-2xs border-border/70">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {/* Sucursal */}
-            <Select value={selectedSucursal} onValueChange={setSelectedSucursal}>
-              <SelectTrigger className="text-xs h-8">
-                <SelectValue placeholder="Sede" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Sedes: Todas</SelectItem>
-                {sucursales.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Especialidad */}
-            <Select value={selectedEspecialidad} onValueChange={setSelectedEspecialidad}>
-              <SelectTrigger className="text-xs h-8">
-                <SelectValue placeholder="Especialidad" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Especialidad: Todas</SelectItem>
-                {especialidades.map((e) => (
-                  <SelectItem key={e.id} value={String(e.id)}>
-                    {e.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Médico con Color */}
-            <Select value={selectedMedico} onValueChange={setSelectedMedico}>
-              <SelectTrigger className="text-xs h-8">
-                <SelectValue placeholder="Médico" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Médicos: Todos</SelectItem>
-                {medicos.map((m) => (
-                  <SelectItem key={m.id} value={String(m.id)}>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="size-2 rounded-full shrink-0"
-                        style={{ backgroundColor: m.color || '#0d9488' }}
-                      />
-                      <span>
-                        {m.nombres} {m.apellidos}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Estado */}
-            <Select value={selectedEstado} onValueChange={setSelectedEstado}>
-              <SelectTrigger className="text-xs h-8">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Estados: Todos</SelectItem>
-                <SelectItem value="programada">📅 Programadas</SelectItem>
-                <SelectItem value="confirmada">✅ Confirmadas</SelectItem>
-                <SelectItem value="sala_espera">⏳ En Sala de Espera</SelectItem>
-                <SelectItem value="en_consulta">🩺 En Consulta</SelectItem>
-                <SelectItem value="atendida">🎉 Atendidas</SelectItem>
-                <SelectItem value="cancelada">❌ Canceladas</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── CONTENEDOR DEL FULLCALENDAR INTERACTIVO ───────────────── */}
+      {/* ── CONTENEDOR DEL FULLCALENDAR INTERACTIVO (Espacio Maximizado) ── */}
       <Card className="overflow-hidden border-border/80 shadow-2xs bg-card p-4">
         <style>{`
           .fc {
             --fc-border-color: var(--color-border, #e2e8f0);
             --fc-page-bg-color: transparent;
+            --fc-now-indicator-color: #ef4444 !important;
             font-size: 0.825rem;
           }
           .dark .fc {
@@ -690,17 +526,20 @@ export const AgendaCalendarioPage: React.FC = () => {
           /* Barra roja que indica la hora en curso */
           .fc .fc-timegrid-now-indicator-line {
             border-color: #ef4444 !important;
-            border-width: 2.5px !important;
-            z-index: 10 !important;
-            box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+            border-top: 3px solid #ef4444 !important;
+            border-bottom: none !important;
+            border-left: none !important;
+            border-right: none !important;
+            z-index: 50 !important;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.8) !important;
           }
           .fc .fc-timegrid-now-indicator-arrow {
             border-color: #ef4444 !important;
             border-top-color: transparent !important;
             border-bottom-color: transparent !important;
-            border-width: 6px !important;
+            border-width: 6px 0 6px 8px !important;
             margin-top: -6px !important;
-            z-index: 11 !important;
+            z-index: 51 !important;
           }
         `}</style>
 
@@ -709,15 +548,26 @@ export const AgendaCalendarioPage: React.FC = () => {
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin] as any}
           initialView="timeGridDay"
           nowIndicator={true}
+          now={new Date()}
+          scrollTime={`${new Date().getHours().toString().padStart(2, '0')}:00:00`}
+          nowIndicatorContent={() => (
+            <div className="flex items-center -mt-3 ml-2 pointer-events-none">
+              <span className="bg-red-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-md tracking-wider uppercase flex items-center gap-1">
+                <span className="size-1.5 rounded-full bg-white animate-pulse" />
+                Hora Actual
+              </span>
+            </div>
+          )}
           headerToolbar={{
             left: 'prev,next today',
             center: 'title',
             right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek',
           }}
           locale="es"
-          slotMinTime="07:00:00"
-          slotMaxTime="20:00:00"
-          slotDuration="00:20:00"
+          slotMinTime="08:00:00"
+          slotMaxTime="17:00:00"
+          slotDuration="00:30:00"
+          height="auto"
           allDaySlot={false}
           selectable={true}
           editable={true}
@@ -867,7 +717,6 @@ export const AgendaCalendarioPage: React.FC = () => {
               </div>
             );
           }}
-          height="auto"
         />
       </Card>
 
