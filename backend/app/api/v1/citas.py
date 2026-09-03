@@ -7,7 +7,7 @@ from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.security import get_current_user, check_permission
+from app.core.security import get_current_user, require_permission
 from app.models.usuario import Usuario
 from app.models.empresa import Empresa
 from app.models.sucursal import Sucursal
@@ -45,8 +45,8 @@ def build_cita_response(c: CitaMedica) -> CitaResponse:
     paciente_doc = f"{c.paciente.tipo_documento}-{c.paciente.documento_identidad}" if c.paciente else "S/D"
     paciente_tel = c.paciente.telefono if c.paciente else None
 
-    medico_nombre = f"{c.medico.usuario.nombres} {c.medico.usuario.apellidos}" if c.medico and c.medico.usuario else "Dr(a). Desconocido"
-    medico_color = c.medico.color_agenda if c.medico and c.medico.color_agenda else "#0d9488"
+    medico_nombre = f"{c.medico.nombres} {c.medico.apellidos}" if c.medico else "Dr(a). Desconocido"
+    medico_color = c.medico.color if c.medico and c.medico.color else "#0d9488"
 
     esp_nombre = c.especialidad.nombre if c.especialidad else "Medicina General"
     suc_nombre = c.sucursal.nombre if c.sucursal else "Sede Central"
@@ -90,7 +90,7 @@ async def list_citas(
     paciente_id: Optional[int] = Query(None),
     estado: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(check_permission("citas.ver")),
+    current_user: Usuario = Depends(require_permission("citas.ver")),
 ):
     """
     Listar citas médicas con filtros asistenciales por rango de fechas, médico, sucursal o estado.
@@ -99,7 +99,7 @@ async def list_citas(
         select(CitaMedica)
         .options(
             selectinload(CitaMedica.paciente),
-            selectinload(CitaMedica.medico).selectinload(Medico.usuario),
+            selectinload(CitaMedica.medico),
             selectinload(CitaMedica.especialidad),
             selectinload(CitaMedica.sucursal),
         )
@@ -133,7 +133,7 @@ async def list_citas(
 async def get_cita(
     id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(check_permission("citas.ver")),
+    current_user: Usuario = Depends(require_permission("citas.ver")),
 ):
     """
     Obtener detalle completo de una cita médica.
@@ -142,7 +142,7 @@ async def get_cita(
         select(CitaMedica)
         .options(
             selectinload(CitaMedica.paciente),
-            selectinload(CitaMedica.medico).selectinload(Medico.usuario),
+            selectinload(CitaMedica.medico),
             selectinload(CitaMedica.especialidad),
             selectinload(CitaMedica.sucursal),
         )
@@ -163,7 +163,7 @@ async def get_cita(
 async def create_cita(
     payload: CitaCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(check_permission("citas.crear")),
+    current_user: Usuario = Depends(require_permission("citas.crear")),
 ):
     """
     Agendar una nueva cita médica con validación de traslapes y opción de notificación WhatsApp automática.
@@ -252,7 +252,7 @@ async def create_cita(
                 res_emp_nombre = await db.execute(select(Empresa.nombre).where(Empresa.id == empresa_id))
                 nombre_clinica = res_emp_nombre.scalar() or "Centro Médico"
 
-                nombre_doc = f"{medico.usuario.nombres} {medico.usuario.apellidos}" if medico.usuario else "Especialista"
+                nombre_doc = f"{medico.nombres} {medico.apellidos}" if medico else "Especialista"
                 fecha_str = payload.fecha.strftime("%d/%m/%Y")
 
                 mensaje_ws = (
@@ -303,7 +303,7 @@ async def update_cita(
     id: int,
     payload: CitaUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(check_permission("citas.editar")),
+    current_user: Usuario = Depends(require_permission("citas.editar")),
 ):
     """
     Modificar datos u horario de una cita médica.
@@ -332,7 +332,7 @@ async def cambiar_estado_cita(
     id: int,
     payload: CitaCambiarEstado,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(check_permission("citas.cambiar_estado")),
+    current_user: Usuario = Depends(require_permission("citas.cambiar_estado")),
 ):
     """
     Transición del estado asistencial de la cita:
@@ -382,7 +382,7 @@ async def cambiar_estado_cita(
 async def notificar_whatsapp(
     id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(check_permission("citas.ver")),
+    current_user: Usuario = Depends(require_permission("citas.ver")),
 ):
     """
     Enviar confirmación o recordatorio automático de cita médica al WhatsApp del paciente.
@@ -391,7 +391,7 @@ async def notificar_whatsapp(
         select(CitaMedica)
         .options(
             selectinload(CitaMedica.paciente),
-            selectinload(CitaMedica.medico).selectinload(Medico.usuario),
+            selectinload(CitaMedica.medico),
             selectinload(CitaMedica.especialidad),
             selectinload(CitaMedica.sucursal),
             selectinload(CitaMedica.empresa),
@@ -417,7 +417,7 @@ async def notificar_whatsapp(
         raise HTTPException(status_code=400, detail="El número de teléfono del paciente no es válido")
 
     nombre_clinica = cita.empresa.nombre if cita.empresa else "Centro Médico"
-    nombre_doc = f"{cita.medico.usuario.nombres} {cita.medico.usuario.apellidos}" if cita.medico and cita.medico.usuario else "Especialista"
+    nombre_doc = f"{cita.medico.nombres} {cita.medico.apellidos}" if cita.medico else "Especialista"
     fecha_str = cita.fecha.strftime("%d/%m/%Y")
 
     mensaje = (
@@ -462,7 +462,7 @@ async def notificar_whatsapp(
 async def delete_cita(
     id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(check_permission("citas.eliminar")),
+    current_user: Usuario = Depends(require_permission("citas.eliminar")),
 ):
     """
     Inactivar o cancelar una cita médica.
