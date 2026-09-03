@@ -176,6 +176,15 @@ async def create_cita(
         res_emp = await db.execute(select(Empresa.id).limit(1))
         empresa_id = res_emp.scalar() or 1
 
+    # Validar que no sea en fecha u hora anterior a la actual
+    today = date.today()
+    now_time_str = datetime.now().strftime("%H:%M")
+    if payload.fecha < today or (payload.fecha == today and payload.hora_inicio < now_time_str):
+        raise HTTPException(
+            status_code=400,
+            detail="No es permitido registrar citas en horas anteriores"
+        )
+
     # Validar existencia de entidades
     res_pac = await db.execute(
         select(Paciente).where(Paciente.id == payload.paciente_id, Paciente.empresa_id == empresa_id)
@@ -322,6 +331,17 @@ async def update_cita(
     target_medico_id = payload.medico_id or cita.medico_id
     target_hora_inicio = payload.hora_inicio or cita.hora_inicio
     target_hora_fin = payload.hora_fin or cita.hora_fin
+
+    # Validar que no se reprograme a horas o fechas anteriores a la actual
+    today = date.today()
+    now_time_str = datetime.now().strftime("%H:%M")
+    if (payload.fecha and payload.fecha < today) or (
+        target_fecha == today and payload.hora_inicio and payload.hora_inicio < now_time_str
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="No es permitido registrar citas en horas anteriores"
+        )
 
     # Si se cambia horario, fecha o médico, validar que no colisione con otra cita activa
     if payload.fecha or payload.hora_inicio or payload.hora_fin or payload.medico_id:

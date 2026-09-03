@@ -324,6 +324,19 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
 
     const horaFin = calcularHoraFin(horaInicio, duracionMinutos);
 
+    // Validar que no sea en fecha u hora anterior a la actual
+    const [y, m, d] = fecha.split('-').map(Number);
+    const [h, min] = horaInicio.split(':').map(Number);
+    const citaStartDateTime = new Date(y, m - 1, d, h, min);
+    const now = new Date();
+
+    if (citaStartDateTime < now) {
+      toast.error('No es permitido registrar citas en horas anteriores', {
+        description: 'Por favor elija una fecha y hora posterior a la hora actual en curso.',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       if (citaToEdit) {

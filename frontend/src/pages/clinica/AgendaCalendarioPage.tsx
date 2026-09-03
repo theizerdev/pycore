@@ -195,7 +195,7 @@ export const AgendaCalendarioPage: React.FC = () => {
   };
 
   // Click en un slot de fecha / hora vacía
-  const handleDateClick = (arg: { dateStr: string; allDay: boolean }) => {
+  const handleDateClick = (arg: { dateStr: string; allDay: boolean; date?: Date }) => {
     // Si viene con hora "YYYY-MM-DDTHH:mm:ss"
     let fecha = arg.dateStr;
     let hora = '09:00';
@@ -204,6 +204,17 @@ export const AgendaCalendarioPage: React.FC = () => {
       const parts = arg.dateStr.split('T');
       fecha = parts[0];
       hora = parts[1].substring(0, 5);
+    }
+
+    // Validar si la hora o fecha pulsada es anterior a la hora actual (debajo o antes de la barra roja)
+    const slotDate = arg.date || new Date(arg.dateStr.includes('T') ? arg.dateStr : `${fecha}T${hora}:00`);
+    const now = new Date();
+
+    if (slotDate < now) {
+      toast.error('No es permitido registrar citas en horas anteriores', {
+        description: 'Por favor seleccione un horario posterior a la hora en curso (indicada por la línea roja).',
+      });
+      return;
     }
 
     setNewCitaInitialDate(fecha);
@@ -248,6 +259,15 @@ export const AgendaCalendarioPage: React.FC = () => {
     const newEnd = info.event.end;
     if (!newStart) {
       info.revert();
+      return;
+    }
+
+    const now = new Date();
+    if (newStart < now) {
+      info.revert();
+      toast.error('No es permitido registrar citas en horas anteriores', {
+        description: 'No se puede mover la cita a un horario previo a la hora en curso.',
+      });
       return;
     }
 
@@ -667,12 +687,28 @@ export const AgendaCalendarioPage: React.FC = () => {
             padding: 6px 14px !important;
             width: 100%;
           }
+          /* Barra roja que indica la hora en curso */
+          .fc .fc-timegrid-now-indicator-line {
+            border-color: #ef4444 !important;
+            border-width: 2.5px !important;
+            z-index: 10 !important;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+          }
+          .fc .fc-timegrid-now-indicator-arrow {
+            border-color: #ef4444 !important;
+            border-top-color: transparent !important;
+            border-bottom-color: transparent !important;
+            border-width: 6px !important;
+            margin-top: -6px !important;
+            z-index: 11 !important;
+          }
         `}</style>
 
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin] as any}
-          initialView="timeGridWeek"
+          initialView="timeGridDay"
+          nowIndicator={true}
           headerToolbar={{
             left: 'prev,next today',
             center: 'title',
