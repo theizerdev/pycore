@@ -4,12 +4,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import or_, and_
 
-from app.core.database import get_db
+from app.core.database import get_db, ensure_tables_exist
 from app.core.security import get_current_active_user, require_permission, registrar_auditoria
 from app.models.usuario import Usuario
 from app.models.especialidad import Especialidad
 from app.models.sucursal import Sucursal
+from app.models.plantilla_especialidad import EspecialidadPlantilla, EspecialidadPlantillaMedico
 from app.schemas.especialidad import EspecialidadCreate, EspecialidadUpdate, EspecialidadResponse
+from app.schemas.plantilla_especialidad import (
+    PlantillaEspecialidadSave,
+    PlantillaEspecialidadResponse,
+    PlantillaMedicoSave,
+    PlantillaMedicoResponse,
+    PlantillaEfectivaResponse,
+    SeccionClinica,
+    CampoClinico,
+)
+from app.services.clinical_templates_seed import DEFAULT_CLINICAL_TEMPLATES
 
 router = APIRouter(prefix="/especialidades", tags=["Especialidades"])
 
@@ -296,3 +307,515 @@ async def seed_default_especialidades(
     stmt_all = select(Especialidad).where(Especialidad.empresa_id == target_empresa_id).order_by(Especialidad.nombre.asc())
     res_all = await db.execute(stmt_all)
     return res_all.scalars().all()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLANTILLAS DINÁMICAS (PRECONSULTA, CONSULTA Y PERSONALIZACIÓN DE MÉDICOS)
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def _safe_execute_select(db: AsyncSession, stmt):
+    """Ejecuta una consulta select asegurando que las tablas existan si hubo migración pendiente."""
+    try:
+        return await db.execute(stmt)
+    except Exception:
+        await db.rollback()
+        await ensure_tables_exist()
+        return await db.execute(stmt)
+
+async def _safe_commit(db: AsyncSession):
+    """Realiza commit asegurando que las tablas existan si hubo migración pendiente."""
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await ensure_tables_exist()
+        await db.commit()
+
+
+def _upgrade_signos_vitales_if_needed(esquema_consulta: list) -> bool:
+    """Inserta automáticamente peso, talla, imc y masa muscular si no existen en la sección de signos vitales."""
+    if not isinstance(esquema_consulta, list):
+        return False
+    updated = False
+    for sec in esquema_consulta:
+        if not isinstance(sec, dict):
+            continue
+        id_l = str(sec.get("id", "")).lower()
+        titulo_l = str(sec.get("titulo", "")).lower()
+        if "signo" in id_l or "signo" in titulo_l or "vital" in titulo_l or "hemodinamia" in id_l:
+            campos = sec.get("campos", [])
+            keys = [c.get("key") for c in campos if isinstance(c, dict)]
+            if "peso" not in keys:
+                nuevos = [
+                    {"key": "peso", "label": "Peso Corporal", "tipo": "number", "unidad": "kg", "min_val": 1.0, "max_val": 350.0, "requerido": True, "grid_cols": 3},
+                    {"key": "talla", "label": "Talla / Altura", "tipo": "number", "unidad": "cm", "min_val": 30.0, "max_val": 250.0, "requerido": True, "grid_cols": 3},
+                    {"key": "imc", "label": "Índice Masa Corporal (IMC)", "tipo": "calculated", "unidad": "kg/m²", "requerido": False, "grid_cols": 3, "placeholder": "Auto (Peso / Talla²)"},
+                    {"key": "masa_muscular", "label": "Masa Muscular / Magra", "tipo": "calculated", "unidad": "kg", "requerido": False, "grid_cols": 3, "placeholder": "Auto Boer"}
+                ]
+                sec["campos"] = nuevos + campos
+                updated = True
+    return updated
+
+
+@router.get("/{id}/plantilla", response_model=PlantillaEspecialidadResponse)
+async def get_plantilla_especialidad(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_active_user)
+):
+    """
+    Obtiene la plantilla base institucional de una especialidad (preguntas de preconsulta,
+    campos de examen clínico y widgets activos). Si no existe, genera la sugerencia oficial.
+    """
+    stmt_esp = select(Especialidad).where(Especialidad.id == id)
+    if not current_user.es_superadmin:
+        stmt_esp = stmt_esp.where(Especialidad.empresa_id == current_user.empresa_id)
+    res_esp = await db.execute(stmt_esp)
+    esp = res_esp.scalar_one_or_none()
+    if not esp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Especialidad no encontrada")
+
+    stmt_p = select(EspecialidadPlantilla).where(
+        EspecialidadPlantilla.especialidad_id == id,
+        EspecialidadPlantilla.empresa_id == esp.empresa_id
+    )
+    res_p = await _safe_execute_select(db, stmt_p)
+    plantilla = res_p.scalar_one_or_none()
+
+    if not plantilla:
+        nombre_norm = esp.nombre.lower().strip()
+        sugerencia = DEFAULT_CLINICAL_TEMPLATES.get(nombre_norm, {
+            "esquema_preconsulta": [],
+            "esquema_consulta": [],
+            "widgets_activos": []
+        })
+        plantilla = EspecialidadPlantilla(
+            empresa_id=esp.empresa_id,
+            especialidad_id=esp.id,
+            esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
+            esquema_consulta=sugerencia.get("esquema_consulta", []),
+            widgets_activos=sugerencia.get("widgets_activos", []),
+            version=1,
+            activo=True
+        )
+        db.add(plantilla)
+        await _safe_commit(db)
+        await db.refresh(plantilla)
+    else:
+        if plantilla.esquema_consulta and _upgrade_signos_vitales_if_needed(plantilla.esquema_consulta):
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(plantilla, "esquema_consulta")
+            await _safe_commit(db)
+            await db.refresh(plantilla)
+
+    return plantilla
+
+
+@router.put("/{id}/plantilla", response_model=PlantillaEspecialidadResponse)
+async def update_plantilla_especialidad(
+    id: int,
+    req: PlantillaEspecialidadSave,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("especialidades.editar"))
+):
+    """
+    Guarda o actualiza la plantilla clínica base institucional de la especialidad.
+    """
+    stmt_esp = select(Especialidad).where(Especialidad.id == id)
+    if not current_user.es_superadmin:
+        stmt_esp = stmt_esp.where(Especialidad.empresa_id == current_user.empresa_id)
+    res_esp = await db.execute(stmt_esp)
+    esp = res_esp.scalar_one_or_none()
+    if not esp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Especialidad no encontrada")
+
+    stmt_p = select(EspecialidadPlantilla).where(
+        EspecialidadPlantilla.especialidad_id == id,
+        EspecialidadPlantilla.empresa_id == esp.empresa_id
+    )
+    res_p = await _safe_execute_select(db, stmt_p)
+    plantilla = res_p.scalar_one_or_none()
+
+    preconsulta_data = [s.model_dump() for s in req.esquema_preconsulta]
+    consulta_data = [s.model_dump() for s in req.esquema_consulta]
+    widgets_data = req.widgets_activos or []
+
+    if not plantilla:
+        plantilla = EspecialidadPlantilla(
+            empresa_id=esp.empresa_id,
+            especialidad_id=esp.id,
+            esquema_preconsulta=preconsulta_data,
+            esquema_consulta=consulta_data,
+            widgets_activos=widgets_data,
+            version=1,
+            activo=True
+        )
+        db.add(plantilla)
+    else:
+        plantilla.esquema_preconsulta = preconsulta_data
+        plantilla.esquema_consulta = consulta_data
+        plantilla.widgets_activos = widgets_data
+        plantilla.version += 1
+
+    await _safe_commit(db)
+    await db.refresh(plantilla)
+
+    await registrar_auditoria(
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=esp.empresa_id,
+        accion="ACTUALIZAR_PLANTILLA_CLINICA",
+        modulo="especialidades",
+        request=request,
+        detalles={
+            "mensaje": f"Plantilla clínica de '{esp.nombre}' actualizada (Versión {plantilla.version})",
+            "especialidad_id": id,
+            "version": plantilla.version
+        }
+    )
+
+    return plantilla
+
+
+@router.post("/{id}/plantilla/seed-defaults", response_model=PlantillaEspecialidadResponse)
+async def seed_plantilla_defaults(
+    id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("especialidades.editar"))
+):
+    """
+    Restaura o inicializa la plantilla de la especialidad con el catálogo clínico sugerido.
+    """
+    stmt_esp = select(Especialidad).where(Especialidad.id == id)
+    if not current_user.es_superadmin:
+        stmt_esp = stmt_esp.where(Especialidad.empresa_id == current_user.empresa_id)
+    res_esp = await db.execute(stmt_esp)
+    esp = res_esp.scalar_one_or_none()
+    if not esp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Especialidad no encontrada")
+
+    nombre_norm = esp.nombre.lower().strip()
+    sugerencia = DEFAULT_CLINICAL_TEMPLATES.get(nombre_norm)
+    if not sugerencia:
+        # Fallback genérico de medicina si no tiene plantilla predefinida
+        sugerencia = DEFAULT_CLINICAL_TEMPLATES.get("medicina general", {
+            "esquema_preconsulta": [],
+            "esquema_consulta": [],
+            "widgets_activos": []
+        })
+
+    stmt_p = select(EspecialidadPlantilla).where(
+        EspecialidadPlantilla.especialidad_id == id,
+        EspecialidadPlantilla.empresa_id == esp.empresa_id
+    )
+    res_p = await _safe_execute_select(db, stmt_p)
+    plantilla = res_p.scalar_one_or_none()
+
+    if not plantilla:
+        plantilla = EspecialidadPlantilla(
+            empresa_id=esp.empresa_id,
+            especialidad_id=esp.id,
+            esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
+            esquema_consulta=sugerencia.get("esquema_consulta", []),
+            widgets_activos=sugerencia.get("widgets_activos", []),
+            version=1,
+            activo=True
+        )
+        db.add(plantilla)
+    else:
+        plantilla.esquema_preconsulta = sugerencia.get("esquema_preconsulta", [])
+        plantilla.esquema_consulta = sugerencia.get("esquema_consulta", [])
+        plantilla.widgets_activos = sugerencia.get("widgets_activos", [])
+        plantilla.version += 1
+
+    await _safe_commit(db)
+    await db.refresh(plantilla)
+
+    await registrar_auditoria(
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=esp.empresa_id,
+        accion="RESTAURAR_PLANTILLA_SUGERIDA",
+        modulo="especialidades",
+        request=request,
+        detalles={
+            "mensaje": f"Plantilla sugerida restablecida para '{esp.nombre}'",
+            "especialidad_id": id
+        }
+    )
+
+    return plantilla
+
+
+@router.get("/{id}/plantilla/medico", response_model=PlantillaMedicoResponse)
+async def get_plantilla_medico(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_active_user)
+):
+    """
+    Obtiene la configuración personalizada de preguntas y campos de consulta del médico en sesión.
+    """
+    stmt_esp = select(Especialidad).where(Especialidad.id == id)
+    if not current_user.es_superadmin:
+        stmt_esp = stmt_esp.where(Especialidad.empresa_id == current_user.empresa_id)
+    res_esp = await db.execute(stmt_esp)
+    esp = res_esp.scalar_one_or_none()
+    if not esp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Especialidad no encontrada")
+
+    stmt_m = select(EspecialidadPlantillaMedico).where(
+        EspecialidadPlantillaMedico.especialidad_id == id,
+        EspecialidadPlantillaMedico.empresa_id == esp.empresa_id,
+        EspecialidadPlantillaMedico.usuario_id == current_user.id
+    )
+    res_m = await _safe_execute_select(db, stmt_m)
+    p_medico = res_m.scalar_one_or_none()
+
+    if not p_medico:
+        return PlantillaMedicoResponse(
+            id=None,
+            empresa_id=esp.empresa_id,
+            especialidad_id=esp.id,
+            usuario_id=current_user.id,
+            campos_preconsulta=[],
+            campos_consulta=[],
+            campos_ocultos=[],
+            activo=True
+        )
+
+    return p_medico
+
+
+@router.put("/{id}/plantilla/medico", response_model=PlantillaMedicoResponse)
+async def update_plantilla_medico(
+    id: int,
+    req: PlantillaMedicoSave,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_active_user)
+):
+    """
+    Permite al médico en sesión guardar o actualizar sus campos personalizados para esta especialidad.
+    """
+    stmt_esp = select(Especialidad).where(Especialidad.id == id)
+    if not current_user.es_superadmin:
+        stmt_esp = stmt_esp.where(Especialidad.empresa_id == current_user.empresa_id)
+    res_esp = await db.execute(stmt_esp)
+    esp = res_esp.scalar_one_or_none()
+    if not esp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Especialidad no encontrada")
+
+    stmt_m = select(EspecialidadPlantillaMedico).where(
+        EspecialidadPlantillaMedico.especialidad_id == id,
+        EspecialidadPlantillaMedico.empresa_id == esp.empresa_id,
+        EspecialidadPlantillaMedico.usuario_id == current_user.id
+    )
+    res_m = await _safe_execute_select(db, stmt_m)
+    p_medico = res_m.scalar_one_or_none()
+
+    campos_pre = [c.model_dump() for c in req.campos_preconsulta]
+    campos_con = [c.model_dump() for c in req.campos_consulta]
+    ocultos = req.campos_ocultos or []
+
+    if not p_medico:
+        p_medico = EspecialidadPlantillaMedico(
+            empresa_id=esp.empresa_id,
+            especialidad_id=esp.id,
+            usuario_id=current_user.id,
+            campos_preconsulta=campos_pre,
+            campos_consulta=campos_con,
+            campos_ocultos=ocultos,
+            activo=True
+        )
+        db.add(p_medico)
+    else:
+        p_medico.campos_preconsulta = campos_pre
+        p_medico.campos_consulta = campos_con
+        p_medico.campos_ocultos = ocultos
+
+    await _safe_commit(db)
+    await db.refresh(p_medico)
+
+    await registrar_auditoria(
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=esp.empresa_id,
+        accion="PERSONALIZAR_PLANTILLA_MEDICO",
+        modulo="especialidades",
+        request=request,
+        detalles={
+            "mensaje": f"El Dr(a). {current_user.nombre} {current_user.apellido} actualizó sus campos personalizados para '{esp.nombre}'",
+            "especialidad_id": id,
+            "cant_campos_pre": len(campos_pre),
+            "cant_campos_con": len(campos_con)
+        }
+    )
+
+    return p_medico
+
+
+@router.get("/{id}/plantilla/efectiva", response_model=PlantillaEfectivaResponse)
+async def get_plantilla_efectiva(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_active_user)
+):
+    """
+    Retorna la plantilla unificada efectiva (Plantilla base institucional + Campos personalizados del médico actual).
+    Esta es la respuesta que consume el formulario clínico para renderizar la pantalla en vivo.
+    """
+    stmt_esp = select(Especialidad).where(Especialidad.id == id)
+    if not current_user.es_superadmin:
+        stmt_esp = stmt_esp.where(Especialidad.empresa_id == current_user.empresa_id)
+    res_esp = await db.execute(stmt_esp)
+    esp = res_esp.scalar_one_or_none()
+    if not esp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Especialidad no encontrada")
+
+    # 1. Obtener plantilla base institucional
+    stmt_p = select(EspecialidadPlantilla).where(
+        EspecialidadPlantilla.especialidad_id == id,
+        EspecialidadPlantilla.empresa_id == esp.empresa_id
+    )
+    res_p = await _safe_execute_select(db, stmt_p)
+    plantilla = res_p.scalar_one_or_none()
+
+    if not plantilla:
+        nombre_norm = esp.nombre.lower().strip()
+        sugerencia = DEFAULT_CLINICAL_TEMPLATES.get(nombre_norm, {
+            "esquema_preconsulta": [],
+            "esquema_consulta": [],
+            "widgets_activos": []
+        })
+        base_pre = sugerencia.get("esquema_preconsulta", [])
+        base_con = sugerencia.get("esquema_consulta", [])
+        widgets = sugerencia.get("widgets_activos", [])
+        tiene_base = False
+    else:
+        if plantilla.esquema_consulta and _upgrade_signos_vitales_if_needed(plantilla.esquema_consulta):
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(plantilla, "esquema_consulta")
+            await _safe_commit(db)
+            await db.refresh(plantilla)
+        base_pre = plantilla.esquema_preconsulta or []
+        base_con = plantilla.esquema_consulta or []
+        widgets = plantilla.widgets_activos or []
+        tiene_base = True
+
+    # 2. Obtener personalización del médico
+    stmt_m = select(EspecialidadPlantillaMedico).where(
+        EspecialidadPlantillaMedico.especialidad_id == id,
+        EspecialidadPlantillaMedico.empresa_id == esp.empresa_id,
+        EspecialidadPlantillaMedico.usuario_id == current_user.id
+    )
+    res_m = await _safe_execute_select(db, stmt_m)
+    p_medico = res_m.scalar_one_or_none()
+
+    medico_pre = p_medico.campos_preconsulta if p_medico else []
+    medico_con = p_medico.campos_consulta if p_medico else []
+    ocultos = set(p_medico.campos_ocultos if p_medico else [])
+
+    nombre_medico = f"Dr(a). {current_user.nombre} {current_user.apellido}"
+
+    # 3. Fusionar Preconsulta
+    merged_pre: List[SeccionClinica] = []
+    total_pre_count = 0
+    for sec in base_pre:
+        sec_dict = sec if isinstance(sec, dict) else (sec.model_dump() if hasattr(sec, "model_dump") else sec.__dict__)
+        campos_filtrados = []
+        for c in sec_dict.get("campos", []):
+            c_dict = dict(c if isinstance(c, dict) else (c.model_dump() if hasattr(c, "model_dump") else c.__dict__))
+            if c_dict.get("key") in ocultos and not c_dict.get("requerido", False):
+                continue
+            c_dict["es_medico"] = False
+            campo_obj = CampoClinico(**c_dict)
+            campos_filtrados.append(campo_obj)
+            total_pre_count += 1
+        sec_obj = SeccionClinica(
+            id=sec_dict.get("id", "sec_pre"),
+            titulo=sec_dict.get("titulo", "Preconsulta"),
+            descripcion=sec_dict.get("descripcion"),
+            icono=sec_dict.get("icono", "ClipboardList"),
+            campos=campos_filtrados
+        )
+        merged_pre.append(sec_obj)
+
+    # Añadir sección de campos adicionales del médico en preconsulta si existen
+    if medico_pre:
+        campos_med_pre = []
+        for c in medico_pre:
+            c_dict = dict(c if isinstance(c, dict) else (c.model_dump() if hasattr(c, "model_dump") else c.__dict__))
+            c_dict["es_medico"] = True
+            c_dict["medico_nombre"] = nombre_medico
+            campos_med_pre.append(CampoClinico(**c_dict))
+            total_pre_count += 1
+        merged_pre.append(
+            SeccionClinica(
+                id="sec_medico_preconsulta",
+                titulo=f"Preguntas Personales - {nombre_medico}",
+                descripcion="Preguntas adicionales configuradas exclusivamente para sus pacientes",
+                icono="UserCheck",
+                campos=campos_med_pre
+            )
+        )
+
+    # 4. Fusionar Consulta
+    merged_con: List[SeccionClinica] = []
+    total_con_count = 0
+    for sec in base_con:
+        sec_dict = sec if isinstance(sec, dict) else (sec.model_dump() if hasattr(sec, "model_dump") else sec.__dict__)
+        campos_filtrados = []
+        for c in sec_dict.get("campos", []):
+            c_dict = dict(c if isinstance(c, dict) else (c.model_dump() if hasattr(c, "model_dump") else c.__dict__))
+            if c_dict.get("key") in ocultos and not c_dict.get("requerido", False):
+                continue
+            c_dict["es_medico"] = False
+            campo_obj = CampoClinico(**c_dict)
+            campos_filtrados.append(campo_obj)
+            total_con_count += 1
+        sec_obj = SeccionClinica(
+            id=sec_dict.get("id", "sec_con"),
+            titulo=sec_dict.get("titulo", "Examen de Consulta"),
+            descripcion=sec_dict.get("descripcion"),
+            icono=sec_dict.get("icono", "Stethoscope"),
+            campos=campos_filtrados
+        )
+        merged_con.append(sec_obj)
+
+    # Añadir sección de campos adicionales del médico en consulta si existen
+    if medico_con:
+        campos_med_con = []
+        for c in medico_con:
+            c_dict = dict(c if isinstance(c, dict) else (c.model_dump() if hasattr(c, "model_dump") else c.__dict__))
+            c_dict["es_medico"] = True
+            c_dict["medico_nombre"] = nombre_medico
+            campos_med_con.append(CampoClinico(**c_dict))
+            total_con_count += 1
+        merged_con.append(
+            SeccionClinica(
+                id="sec_medico_consulta",
+                titulo=f"Campos Adicionales - {nombre_medico}",
+                descripcion="Variables de evaluación médica añadidas por su preferencia clínica",
+                icono="UserCheck",
+                campos=campos_med_con
+            )
+        )
+
+    total_medico_count = len(medico_pre) + len(medico_con)
+
+    return PlantillaEfectivaResponse(
+        especialidad_id=esp.id,
+        especialidad_nombre=esp.nombre,
+        especialidad_color=esp.color,
+        especialidad_icono=esp.icono,
+        tiene_plantilla_base=tiene_base,
+        widgets_activos=widgets,
+        preconsulta_secciones=merged_pre,
+        consulta_secciones=merged_con,
+        total_campos_preconsulta=total_pre_count,
+        total_campos_consulta=total_con_count,
+        total_campos_medico=total_medico_count
+    )

@@ -361,3 +361,88 @@ export interface EspecialidadUpdateInput {
   sucursal_id?: number | null;
 }
 
+// ── PLANTILLAS CLÍNICAS DINÁMICAS (PRECONSULTA, CONSULTA Y MÉDICOS) ────
+export type TipoCampoClinico =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'select'
+  | 'multiselect'
+  | 'boolean'
+  | 'date'
+  | 'scale_1_10'
+  | 'calculated';
+
+export interface CampoClinico {
+  key: string;
+  label: string;
+  tipo: TipoCampoClinico;
+  placeholder?: string | null;
+  requerido?: boolean;
+  unidad?: string | null;
+  opciones?: string[];
+  min_val?: number | null;
+  max_val?: number | null;
+  grid_cols?: number; // 12 (completo), 6 (medio), 4 (tercio), 3 (cuarto)
+  es_medico?: boolean;
+  medico_nombre?: string | null;
+}
+
+export interface SeccionClinica {
+  id: string;
+  titulo: string;
+  descripcion?: string | null;
+  icono?: string | null;
+  campos: CampoClinico[];
+}
+
+export interface EspecialidadPlantilla {
+  id: number;
+  empresa_id: number;
+  especialidad_id: number;
+  version: number;
+  activo: boolean;
+  esquema_preconsulta: SeccionClinica[];
+  esquema_consulta: SeccionClinica[];
+  widgets_activos: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EspecialidadPlantillaSaveInput {
+  esquema_preconsulta: SeccionClinica[];
+  esquema_consulta: SeccionClinica[];
+  widgets_activos?: string[];
+}
+
+export interface EspecialidadPlantillaMedico {
+  id?: number | null;
+  empresa_id: number;
+  especialidad_id: number;
+  usuario_id: number;
+  campos_preconsulta: CampoClinico[];
+  campos_consulta: CampoClinico[];
+  campos_ocultos: string[];
+  activo: boolean;
+}
+
+export interface PlantillaMedicoSaveInput {
+  campos_preconsulta: CampoClinico[];
+  campos_consulta: CampoClinico[];
+  campos_ocultos?: string[];
+}
+
+export interface PlantillaEfectiva {
+  especialidad_id: number;
+  especialidad_nombre: string;
+  especialidad_color?: string | null;
+  especialidad_icono?: string | null;
+  tiene_plantilla_base: boolean;
+  widgets_activos: string[];
+  preconsulta_secciones: SeccionClinica[];
+  consulta_secciones: SeccionClinica[];
+  total_campos_preconsulta: number;
+  total_campos_consulta: number;
+  total_campos_medico: number;
+}
+

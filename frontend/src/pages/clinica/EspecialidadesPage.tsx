@@ -31,8 +31,10 @@ import {
   LayoutGrid,
   List as ListIcon,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Sliders
 } from 'lucide-react';
+import { EspecialidadPlantillaModal } from './EspecialidadPlantillaModal';
 import {
   Dialog,
   DialogContent,
@@ -114,6 +116,15 @@ export const EspecialidadesPage: React.FC = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<boolean>(false);
   const [itemToDelete, setItemToDelete] = useState<Especialidad | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
+
+  // Modal Plantilla Clínica Dinámica
+  const [plantillaModalOpen, setPlantillaModalOpen] = useState<boolean>(false);
+  const [selectedEspForPlantilla, setSelectedEspForPlantilla] = useState<Especialidad | null>(null);
+
+  const handleOpenPlantilla = (esp: Especialidad) => {
+    setSelectedEspForPlantilla(esp);
+    setPlantillaModalOpen(true);
+  };
 
   // Form State
   const [formData, setFormData] = useState<{
@@ -638,6 +649,16 @@ export const EspecialidadesPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenPlantilla(esp)}
+                      className="h-7 text-[10px] sm:text-[11px] px-2 border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer font-medium"
+                      title="Configurar preguntas de preconsulta y campos de consulta"
+                    >
+                      <Sliders className="size-3 mr-1 text-teal-600 dark:text-teal-400" />
+                      <span>Plantilla</span>
+                    </Button>
                     {canEdit && (
                       <Button
                         variant="ghost"
@@ -727,6 +748,16 @@ export const EspecialidadesPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenPlantilla(esp)}
+                            className="h-6 text-[10px] px-2 border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer font-medium"
+                            title="Configurar Plantilla Clínica"
+                          >
+                            <Sliders className="size-3 mr-1 text-teal-600 dark:text-teal-400" />
+                            <span>Plantilla</span>
+                          </Button>
                           {canEdit && (
                             <Button
                               variant="ghost"
@@ -990,6 +1021,14 @@ export const EspecialidadesPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── MODAL: CONFIGURACIÓN DE PLANTILLA CLÍNICA DINÁMICA ──────────── */}
+      <EspecialidadPlantillaModal
+        open={plantillaModalOpen}
+        onOpenChange={setPlantillaModalOpen}
+        especialidad={selectedEspForPlantilla}
+        onSaved={fetchEspecialidades}
+      />
     </div>
   );
 };

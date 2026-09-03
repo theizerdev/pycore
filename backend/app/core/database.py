@@ -53,6 +53,14 @@ AsyncSessionLocal = async_sessionmaker(
 
 Base = declarative_base()
 
+async def ensure_tables_exist():
+    """Crea tablas pendientes en la base de datos automáticamente si faltan."""
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        print(f"Error asegurando tablas: {e}")
+
 async def get_db():
     async with AsyncSessionLocal() as session:
         try:

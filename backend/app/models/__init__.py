@@ -12,6 +12,7 @@ from app.models.tasa_cambio import TasaCambio
 from app.models.plan import Plan
 from app.models.suscripcion import Suscripcion, PagoSuscripcion
 from app.models.especialidad import Especialidad
+from app.models.plantilla_especialidad import EspecialidadPlantilla, EspecialidadPlantillaMedico
 
 __all__ = [
     "Base",
@@ -32,4 +33,6 @@ __all__ = [
     "Suscripcion",
     "PagoSuscripcion",
     "Especialidad",
+    "EspecialidadPlantilla",
+    "EspecialidadPlantillaMedico",
 ]
