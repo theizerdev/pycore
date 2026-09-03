@@ -287,10 +287,9 @@ async def create_cita(
         AuditoriaLog(
             empresa_id=empresa_id,
             usuario_id=current_user.id,
-            accion="citas.crear",
-            tabla="citas_medicas",
-            registro_id=nueva_cita.id,
-            valores_nuevos={"fecha": str(payload.fecha), "hora": payload.hora_inicio, "paciente_id": payload.paciente_id},
+            accion="CREAR",
+            modulo="citas",
+            detalles={"cita_id": nueva_cita.id, "fecha": str(payload.fecha), "hora": payload.hora_inicio, "paciente_id": payload.paciente_id},
         )
     )
 
@@ -368,11 +367,14 @@ async def cambiar_estado_cita(
         AuditoriaLog(
             empresa_id=cita.empresa_id,
             usuario_id=current_user.id,
-            accion="citas.cambiar_estado",
-            tabla="citas_medicas",
-            registro_id=cita.id,
-            valores_anteriores={"estado": estado_anterior},
-            valores_nuevos={"estado": payload.estado, "motivo_cancelacion": payload.motivo_cancelacion},
+            accion="CAMBIAR_ESTADO",
+            modulo="citas",
+            detalles={
+                "cita_id": cita.id,
+                "estado_anterior": estado_anterior,
+                "estado_nuevo": payload.estado,
+                "motivo_cancelacion": payload.motivo_cancelacion,
+            },
         )
     )
 
