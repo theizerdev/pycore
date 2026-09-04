@@ -12,6 +12,7 @@ export interface PacienteMini {
   genero?: string;
   fecha_nacimiento?: string;
   edad?: number;
+  edad_texto?: string;
   grupo_sanguineo?: string;
   alergias?: any;
   antecedentes_patologicos?: string;

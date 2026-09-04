@@ -14,10 +14,13 @@ class PacienteMini(BaseModel):
     genero: Optional[str] = None
     fecha_nacimiento: Optional[Any] = None
     edad: Optional[int] = None
+    edad_texto: Optional[str] = None
     grupo_sanguineo: Optional[str] = None
     alergias: Optional[Any] = None
     antecedentes_patologicos: Optional[str] = None
     medicacion_habitual: Optional[str] = None
+    contacto_emergencia_nombre: Optional[str] = None
+    contacto_emergencia_parentesco: Optional[str] = None
 
     class Config:
         from_attributes = True

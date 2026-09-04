@@ -49,3 +49,35 @@ class Paciente(Base, TimestampMixin):
     sucursal_registro = relationship("Sucursal", foreign_keys=[sucursal_registro_id], lazy="selectin")
     pais_telefono = relationship("Pais", foreign_keys=[pais_telefono_id], lazy="selectin")
     consultas = relationship("ConsultaMedica", back_populates="paciente", order_by="desc(ConsultaMedica.fecha_consulta)", lazy="selectin")
+
+    @property
+    def edad(self):
+        if not self.fecha_nacimiento:
+            return None
+        from datetime import date
+        today = date.today()
+        return today.year - self.fecha_nacimiento.year - (
+            (today.month, today.day) < (self.fecha_nacimiento.month, self.fecha_nacimiento.day)
+        )
+
+    @property
+    def edad_texto(self):
+        if not self.fecha_nacimiento:
+            return None
+        from datetime import date
+        today = date.today()
+        anios = today.year - self.fecha_nacimiento.year - (
+            (today.month, today.day) < (self.fecha_nacimiento.month, self.fecha_nacimiento.day)
+        )
+        if anios > 0:
+            return f"{anios} años" if anios != 1 else "1 año"
+        
+        meses = (today.year - self.fecha_nacimiento.year) * 12 + (today.month - self.fecha_nacimiento.month)
+        if today.day < self.fecha_nacimiento.day:
+            meses -= 1
+        if meses > 0:
+            return f"{meses} meses" if meses != 1 else "1 mes"
+            
+        dias = (today - self.fecha_nacimiento).days
+        return f"{dias} días" if dias != 1 else "1 día"
+

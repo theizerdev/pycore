@@ -148,6 +148,54 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
   const documentoPaciente = paciente?.documento_identidad || paciente?.numero_documento || 'S/N';
   const tipoDoc = paciente?.tipo_documento || 'CI/DNI';
 
+  const edadPacienteFormateada = (() => {
+    if (!paciente) return 'N/E';
+    if (paciente.edad_texto && paciente.edad_texto.trim()) {
+      return paciente.edad_texto;
+    }
+    if (paciente.edad !== undefined && paciente.edad !== null && paciente.edad > 0) {
+      return `${paciente.edad} ${paciente.edad === 1 ? 'año' : 'años'}`;
+    }
+    if (paciente.fecha_nacimiento) {
+      try {
+        const rawDate = String(paciente.fecha_nacimiento).split('T')[0];
+        const parts = rawDate.split('-');
+        if (parts.length === 3) {
+          const birthYear = parseInt(parts[0], 10);
+          const birthMonth = parseInt(parts[1], 10) - 1;
+          const birthDay = parseInt(parts[2], 10);
+          const birth = new Date(birthYear, birthMonth, birthDay);
+          const today = new Date();
+
+          let age = today.getFullYear() - birth.getFullYear();
+          const m = today.getMonth() - birth.getMonth();
+          if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+            age--;
+          }
+          if (age > 0) {
+            return `${age} ${age === 1 ? 'año' : 'años'}`;
+          }
+          // Menor a 1 año: calcular meses
+          let months =
+            (today.getFullYear() - birth.getFullYear()) * 12 +
+            (today.getMonth() - birth.getMonth());
+          if (today.getDate() < birth.getDate()) {
+            months--;
+          }
+          if (months > 0) {
+            return `${months} ${months === 1 ? 'mes' : 'meses'}`;
+          }
+          const diffTime = Math.abs(today.getTime() - birth.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return `${diffDays > 0 ? diffDays : 1} ${diffDays === 1 ? 'día' : 'días'}`;
+        }
+      } catch (e) {
+        console.error('Error calculando edad:', e);
+      }
+    }
+    return paciente.edad ? `${paciente.edad} años` : 'N/E';
+  })();
+
   const nombreMedico = medico
     ? `Dr(a). ${medico.nombres} ${medico.apellidos}`
     : `Dr(a). ${user?.nombre || ''} ${user?.apellido || ''}`.trim() || 'Médico Tratante';
@@ -498,7 +546,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                       <strong className="text-zinc-700">Documento:</strong> {tipoDoc} {documentoPaciente}
                     </p>
                     <p>
-                      <strong className="text-zinc-700">Edad:</strong> {paciente?.edad ? `${paciente.edad} años` : 'N/E'}
+                      <strong className="text-zinc-700">Edad:</strong> {edadPacienteFormateada}
                     </p>
                     <p>
                       <strong className="text-zinc-700">Género:</strong> {paciente?.genero || 'N/E'}
@@ -991,7 +1039,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                       Habiendo evaluado clínicamente en la fecha al paciente{' '}
                       <strong className="text-zinc-950 font-bold">{nombrePaciente}</strong>, titular del documento de identidad{' '}
                       <strong className="text-zinc-950 font-bold">{tipoDoc} {documentoPaciente}</strong>, de{' '}
-                      <strong>{paciente?.edad ? `${paciente.edad} años` : 'edad no registrada'}</strong>, quien presenta un cuadro clínico compatible con{' '}
+                      <strong>{edadPacienteFormateada !== 'N/E' ? edadPacienteFormateada : 'edad no registrada'}</strong>, quien presenta un cuadro clínico compatible con{' '}
                       <strong className="text-primary font-bold">
                         {consulta.reposo_medico?.motivo_diagnostico || consulta.diagnostico_principal || 'Afección clínica en estudio'}
                       </strong>.
