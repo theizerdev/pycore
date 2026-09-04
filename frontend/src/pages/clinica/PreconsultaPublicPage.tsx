@@ -36,7 +36,8 @@ export const PreconsultaPublicPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
+    const cleanToken = (token || '').split('?')[0].split('#')[0].trim();
+    if (!cleanToken) {
       setErrorMsg('Token de preconsulta no proporcionado.');
       setLoading(false);
       return;
@@ -45,7 +46,7 @@ export const PreconsultaPublicPage: React.FC = () => {
     const loadData = async () => {
       try {
         setLoading(true);
-        const res = await preconsultaApi.getPublic(token);
+        const res = await preconsultaApi.getPublic(cleanToken);
         setData(res);
         setRespuestas(res.respuestas || {});
         if (res.estado === 'completada') {
@@ -73,11 +74,12 @@ export const PreconsultaPublicPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    const cleanToken = (token || '').split('?')[0].split('#')[0].trim();
+    if (!cleanToken) return;
 
     setSubmitting(true);
     try {
-      await preconsultaApi.responder(token, respuestas);
+      await preconsultaApi.responder(cleanToken, respuestas);
       setCompleted(true);
       toast.success('¡Preconsulta completada exitosamente!');
     } catch (err: any) {
