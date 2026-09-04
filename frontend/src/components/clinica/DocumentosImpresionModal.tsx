@@ -140,6 +140,9 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
   const especialidad = consulta.especialidad;
   const sucursal = consulta.sucursal || sucursalActiva;
   const empresaNombre = user?.empresa?.nombre || 'MEDISOFT CLÍNICA';
+  const empresaDocumento = user?.empresa?.identificacion_fiscal || user?.empresa?.documento || '';
+  const empresaLogo = user?.empresa?.logo_mini_url || user?.empresa?.logo_url || user?.empresa?.logo || null;
+  const sucursalNombre = sucursal?.nombre || sucursalActiva?.nombre || 'Sede Principal';
 
   const nombrePaciente = paciente
     ? `${paciente.nombres} ${paciente.apellidos}`.trim()
@@ -498,25 +501,40 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
             <div>
               <div className="flex items-start justify-between border-b-2 border-primary/40 pb-3 gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white font-black text-xl shadow-sm">
-                    <Stethoscope className="h-5 w-5" />
-                  </div>
+                  {empresaLogo ? (
+                    <img
+                      src={empresaLogo}
+                      alt={empresaNombre}
+                      className="h-11 w-11 object-contain rounded-xl border border-zinc-200/80 bg-white p-0.5 shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-white font-black text-xl shadow-xs shrink-0">
+                      <Stethoscope className="h-5 w-5" />
+                    </div>
+                  )}
                   <div>
-                    <h1 className="text-base font-black text-zinc-900 tracking-tight uppercase leading-tight">
-                      {empresaNombre}
-                    </h1>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h1 className="text-base font-black text-zinc-900 tracking-tight uppercase leading-tight">
+                        {empresaNombre}
+                      </h1>
+                      {empresaDocumento && (
+                        <span className="text-[10px] font-bold text-zinc-500 font-mono">
+                          ({empresaDocumento})
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[10px] font-semibold text-primary uppercase tracking-wide">
                       Centro de Especialidades Médicas & Salud Integral
                     </p>
                     <p className="text-[10px] text-zinc-500 flex items-center gap-1.5">
-                      <span>{sucursal?.nombre || 'Sede Principal'}</span>
+                      <span className="font-semibold text-zinc-700">{sucursalNombre}</span>
                       <span>•</span>
                       <span>Atención Especializada</span>
                     </p>
                   </div>
                 </div>
 
-                <div className="text-right space-y-0.5">
+                <div className="text-right space-y-0.5 shrink-0">
                   <div className="inline-block px-2.5 py-0.5 bg-primary/10 text-primary font-bold text-[10px] rounded-md uppercase tracking-wider border border-primary/20">
                     {documentoActivo === 'informe' && 'INFORME MÉDICO CLÍNICO'}
                     {documentoActivo === 'receta' && 'RECETA MÉDICA / PRESCRIPCIÓN'}
@@ -1141,8 +1159,11 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
               <div className="grid grid-cols-2 gap-6 items-end">
                 {/* Leyenda y Sello institucional */}
                 <div className="text-[9px] text-zinc-500 space-y-0.5">
-                  <p className="font-bold text-zinc-700">{empresaNombre}</p>
-                  <p>{sucursal?.nombre || 'Atención Médica Integral'}</p>
+                  <p className="font-bold text-zinc-800 uppercase">{empresaNombre}</p>
+                  {empresaDocumento && (
+                    <p className="font-mono text-[8.5px] text-zinc-600 font-semibold">{empresaDocumento}</p>
+                  )}
+                  <p className="font-medium text-zinc-600">{sucursalNombre}</p>
                   <p className="font-mono text-[8.5px] text-zinc-400">Verificación: {consulta.codigo || `CON-${consulta.id}`}</p>
                 </div>
 
