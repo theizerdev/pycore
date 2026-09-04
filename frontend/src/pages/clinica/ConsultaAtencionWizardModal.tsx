@@ -221,6 +221,8 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
   // ── ESTADOS DE LA CONSULTA MÉDICA ──
   const [motivoConsulta, setMotivoConsulta] = useState<string>('');
   const [enfermedadActual, setEnfermedadActual] = useState<string>('');
+  const [observacionesAdicionales, setObservacionesAdicionales] = useState<string>('');
+  const [referidoPara, setReferidoPara] = useState<string>('');
 
   // Signos Vitales
   const [signosVitales, setSignosVitales] = useState<Record<string, any>>({
@@ -285,7 +287,9 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
     if (consulta && open) {
       setCurrentStep(1);
       setMotivoConsulta(consulta.motivo_consulta || '');
-      setEnfermedadActual(consulta.enfermedad_actual || '');
+      setEnfermedadActual(consulta.enfermedad_actual || consulta.datos_plantilla?.enfermedad_actual || '');
+      setObservacionesAdicionales(consulta.observaciones_adicionales || consulta.datos_plantilla?.observaciones_adicionales || '');
+      setReferidoPara(consulta.referido_para || consulta.datos_plantilla?.referido_para || '');
 
       setSignosVitales({
         peso: consulta.signos_vitales?.peso || '',
@@ -477,8 +481,15 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
     return {
       motivo_consulta: motivoConsulta,
       enfermedad_actual: enfermedadActual,
+      observaciones_adicionales: observacionesAdicionales,
+      referido_para: referidoPara,
       signos_vitales: signosVitales,
-      datos_plantilla: datosPlantilla,
+      datos_plantilla: {
+        ...datosPlantilla,
+        enfermedad_actual: enfermedadActual,
+        observaciones_adicionales: observacionesAdicionales,
+        referido_para: referidoPara,
+      },
       estudios_solicitados: estudios,
       receta_medica: medicamentos,
       reposo_medico: reposo.requiere_reposo ? reposo : { requiere_reposo: false },
@@ -845,7 +856,7 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
                   )}
                 </div>
 
-                {/* Columna Derecha: Motivo de Consulta y Enfermedad Actual (Médico) */}
+                {/* Columna Derecha: Motivo de Consulta Principal */}
                 <div className="lg:col-span-6 space-y-4">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                     <Stethoscope className="h-4 w-4 text-primary" />
@@ -853,43 +864,33 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
                   </h4>
 
                   <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="motivo_consulta" className="text-xs font-semibold">
-                        Motivo Principal de Consulta <span className="text-destructive">*</span>
+                    <div className="space-y-2">
+                      <Label htmlFor="motivo_consulta" className="text-sm font-bold flex items-center justify-between">
+                        <span>
+                          Motivo Principal de Consulta <span className="text-destructive">*</span>
+                        </span>
+                        <span className="text-xs font-normal text-muted-foreground">
+                          Razón de visita
+                        </span>
                       </Label>
-                      <Input
+                      <Textarea
                         id="motivo_consulta"
                         value={motivoConsulta}
                         onChange={(e) => setMotivoConsulta(e.target.value)}
-                        placeholder="Ej: Dolor abdominal recurrente en fosa ilíaca derecha..."
+                        placeholder="Describa el motivo o síntoma principal por el cual acude el paciente a la consulta médica..."
                         disabled={readOnly}
-                        className="h-10"
+                        rows={4}
+                        className="resize-y text-sm font-medium"
                       />
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="enfermedad_actual" className="text-xs font-semibold">
-                        Enfermedad Actual / Anamnesis Próxima (Evolución y Semiología)
-                      </Label>
-                      <Textarea
-                        id="enfermedad_actual"
-                        value={enfermedadActual}
-                        onChange={(e) => setEnfermedadActual(e.target.value)}
-                        placeholder="Paciente refiere cuadro clínico de 3 días de evolución caracterizado por dolor de tipo cólico de inicio súbito, acompañado de..."
-                        disabled={readOnly}
-                        rows={7}
-                        className="resize-y"
-                      />
-                    </div>
-
-                    <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-xs text-muted-foreground space-y-1">
+                    <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-xs text-muted-foreground space-y-1.5">
                       <div className="font-semibold text-foreground flex items-center gap-1.5">
                         <Info className="h-3.5 w-3.5 text-primary" />
-                        Consejo de Documentación
+                        Flujo Clínico
                       </div>
                       <p>
-                        Asegúrese de registrar cronología, carácter del dolor, factores agravantes o
-                        atenuantes y síntomas acompañantes para un historial clínico completo.
+                        En este primer paso valide las respuestas previas del paciente y registre el motivo de la consulta. En el <strong>Paso 2</strong> registrará las constantes vitales y en el <strong>Paso 3</strong> detallará la anamnesis próxima, evolución semiológica, datos de interconsulta/referencia y el examen físico especializado.
                       </p>
                     </div>
                   </div>
@@ -1213,6 +1214,37 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
                 </div>
               ) : (
                 <div className="space-y-6">
+                  {/* ── ENFERMEDAD ACTUAL / ANAMNESIS PRÓXIMA ── */}
+                  <Card className="border-border/80 shadow-2xs">
+                    <CardContent className="p-5 space-y-4">
+                      <div className="border-b border-border/60 pb-2.5">
+                        <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                          <Stethoscope className="h-4 w-4 text-primary" />
+                          Enfermedad Actual / Anamnesis Próxima (Evolución y Semiología)
+                        </h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Registro cronológico, evolución del cuadro clínico, semiología y síntomas referidos por el paciente.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Textarea
+                          id="enfermedad_actual"
+                          value={enfermedadActual}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEnfermedadActual(val);
+                            setDatosPlantilla((prev) => ({ ...prev, enfermedad_actual: val }));
+                          }}
+                          placeholder="Paciente refiere cuadro clínico de X días de evolución caracterizado por... cronología, localización, intensidad, factores desencadenantes y evolución sintomática..."
+                          disabled={readOnly}
+                          rows={4}
+                          className="resize-y w-full"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
                   {/* WIDGET INTERACTIVO DE ODONTOGRAMA SI APLICA */}
                   {(plantillaEfectiva?.widgets_activos || []).includes('odontograma') && (
                     <div className="p-4 rounded-2xl border border-border/80 bg-card shadow-xs space-y-3">
@@ -1241,7 +1273,7 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
                     </div>
                   )}
 
-                  {/* SECCIONES DINÁMICAS DE LA PLANTILLA (FILTRANDO DUPLICADOS DE SIGNOS VITALES) */}
+                  {/* SECCIONES DINÁMICAS DE LA EVALUACIÓN / ESPECIALIDAD (FILTRANDO DUPLICADOS DE SIGNOS VITALES) */}
                   {(() => {
                     const seccionesFiltradas = (plantillaEfectiva?.consulta_secciones || []).filter(
                       (seccion: SeccionClinica) => {
@@ -1447,6 +1479,64 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
                       </Card>
                     ));
                   })()}
+
+                  {/* ── REFERIDO PARA Y OBSERVACIONES ADICIONALES (DESPUÉS DE LA EVALUACIÓN - OCUPACIÓN 12) ── */}
+                  <Card className="border-border/80 shadow-2xs">
+                    <CardContent className="p-5 space-y-5">
+                      <div className="border-b border-border/60 pb-2.5">
+                        <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                          <FileCheck className="h-4 w-4 text-primary" />
+                          Referencia y Observaciones Adicionales
+                        </h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Indique si el paciente es referido a otra especialidad o interconsulta, y registre observaciones adicionales.
+                        </p>
+                      </div>
+
+                      <div className="space-y-4">
+                        {/* Referido Para / Interconsulta (12 cols) */}
+                        <div className="space-y-1.5 w-full">
+                          <Label htmlFor="referido_para" className="text-xs font-semibold">
+                            Referido para (Interconsulta, Especialidad o Derivación)
+                          </Label>
+                          <Textarea
+                            id="referido_para"
+                            value={referidoPara}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setReferidoPara(val);
+                              setDatosPlantilla((prev) => ({ ...prev, referido_para: val }));
+                            }}
+                            placeholder="Ej: Se refiere al paciente para valoración por Cardiología y evaluación prequirúrgica por Medicina Interna..."
+                            disabled={readOnly}
+                            rows={3}
+                            className="resize-y w-full"
+                          />
+                        </div>
+
+                        {/* Observaciones Adicionales (12 cols) */}
+                        <div className="space-y-1.5 w-full">
+                          <Label htmlFor="observaciones_adicionales" className="text-xs font-semibold">
+                            Observaciones Adicionales
+                          </Label>
+                          <Textarea
+                            id="observaciones_adicionales"
+                            value={observacionesAdicionales}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setObservacionesAdicionales(val);
+                              setDatosPlantilla((prev) => ({ ...prev, observaciones_adicionales: val }));
+                            }}
+                            placeholder="Ej: Trae estudios previos de laboratorio, paciente asiste acompañado por familiar, se explican pautas de alarma..."
+                            disabled={readOnly}
+                            rows={3}
+                            className="resize-y w-full"
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
                 </div>
               )}
             </div>
@@ -2178,6 +2268,16 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
                       </p>
                     </div>
                   </div>
+
+                  {/* Fila intermedia: Referido para si aplica */}
+                  {referidoPara && (
+                    <div className="pb-3 border-b border-border/60 flex items-center gap-2">
+                      <span className="text-muted-foreground font-semibold">Referido para / Interconsulta:</span>
+                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs font-bold">
+                        {referidoPara}
+                      </Badge>
+                    </div>
+                  )}
 
                   {/* Fila 2: Medicamentos prescritos y Estudios */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

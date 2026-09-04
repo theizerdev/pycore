@@ -104,6 +104,8 @@ export interface ConsultaMedica {
   fecha_consulta: string;
   motivo_consulta: string;
   enfermedad_actual?: string;
+  observaciones_adicionales?: string;
+  referido_para?: string;
   signos_vitales: Record<string, any>;
   datos_plantilla: Record<string, any>;
   estudios_solicitados: EstudioSolicitado[];

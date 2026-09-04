@@ -371,6 +371,7 @@ export type TipoCampoClinico =
   | 'boolean'
   | 'date'
   | 'scale_1_10'
+  | 'range'
   | 'calculated';
 
 export interface CampoClinico {

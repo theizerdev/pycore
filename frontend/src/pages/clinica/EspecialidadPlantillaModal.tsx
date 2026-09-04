@@ -90,6 +90,7 @@ const TIPO_CAMPO_LABELS: Record<TipoCampoClinico, { label: string; icon: any }> 
   boolean: { label: 'Sí / No (Interruptor)', icon: CheckCircle2 },
   date: { label: 'Fecha', icon: Calendar },
   scale_1_10: { label: 'Escala Analógica (1 al 10)', icon: Activity },
+  range: { label: 'Rango Numérico', icon: Activity },
   calculated: { label: 'Cálculo Automático (IMC / Masa)', icon: Calculator },
 };
 
