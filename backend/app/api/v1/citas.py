@@ -445,6 +445,19 @@ async def cambiar_estado_cita(
 
     cita.updated_at = datetime.now()
 
+    # Sincronizar estado con la consulta médica si ya existe
+    if payload.estado in ["en_consulta", "atendida", "cancelada"]:
+        res_con_sync = await db.execute(select(ConsultaMedica).where(ConsultaMedica.cita_id == cita.id))
+        con_sync = res_con_sync.scalar_one_or_none()
+        if con_sync:
+            if payload.estado == "en_consulta":
+                con_sync.estado = "en_curso"
+            elif payload.estado == "atendida":
+                con_sync.estado = "finalizada"
+            elif payload.estado == "cancelada":
+                con_sync.estado = "anulada"
+            con_sync.updated_at = datetime.now()
+
     # Si el nuevo estado es "sala_espera", se inserta en la tabla de consulta y se genera la preconsulta
     if payload.estado == "sala_espera":
         # 1. Crear o recuperar el registro de preconsulta

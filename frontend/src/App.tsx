@@ -32,6 +32,7 @@ import { DoctoresPage } from './pages/clinica/DoctoresPage';
 import { PacientesPage } from './pages/clinica/PacientesPage';
 import { AgendaCalendarioPage } from './pages/clinica/AgendaCalendarioPage';
 import { PreconsultaPublicPage } from './pages/clinica/PreconsultaPublicPage';
+import { ConsultasPage } from './pages/clinica/ConsultasPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
@@ -70,6 +71,34 @@ export const App: React.FC = () => {
                     <AgendaCalendarioPage />
                   </ProtectedRoute>
                 }
+              />
+              <Route
+                path="clinica/consultas/sala-espera"
+                element={
+                  <ProtectedRoute requiredPermission="consultas.sala_espera">
+                    <ConsultasPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/consultas/en-consulta"
+                element={
+                  <ProtectedRoute requiredPermission="consultas.en_consulta">
+                    <ConsultasPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/consultas/atendidas"
+                element={
+                  <ProtectedRoute requiredPermission="consultas.atendidas">
+                    <ConsultasPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/consultas"
+                element={<Navigate to="/clinica/consultas/sala-espera" replace />}
               />
               <Route
                 path="clinica/especialidades"

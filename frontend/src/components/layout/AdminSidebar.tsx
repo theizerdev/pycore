@@ -32,6 +32,8 @@ import {
   Calculator,
   UserCheck,
   CalendarDays,
+  Hourglass,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -60,21 +62,22 @@ interface AdminSidebarProps {
 export interface SubMenuItem {
   title: string;
   href: string;
-  icon?: React.ComponentType<{ className?: string }>;
+  icon: React.ElementType;
+  badge?: string;
+  badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline';
   permission?: string;
   superAdminOnly?: boolean;
   venezuelaOnly?: boolean;
-  badge?: string;
-  badgeVariant?: 'default' | 'secondary' | 'outline' | 'destructive';
 }
 
 export interface SectorMenuItem {
   id: string;
   title: string;
   sectorKey: string;
-  icon: React.ComponentType<{ className?: string }>;
-  href?: string; // Si es link directo sin submenú
+  href?: string;
+  icon: React.ElementType;
   badge?: string;
+  badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline';
   permission?: string;
   superAdminOnly?: boolean;
   venezuelaOnly?: boolean;
@@ -134,6 +137,32 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           href: '/clinica/pacientes',
           icon: Users,
           permission: 'pacientes.ver',
+        },
+      ],
+    },
+    {
+      id: 'sector-consultas',
+      title: 'Consultas',
+      sectorKey: 'consultas',
+      icon: Stethoscope,
+      children: [
+        {
+          title: 'Sala de Espera',
+          href: '/clinica/consultas/sala-espera',
+          icon: Hourglass,
+          permission: 'consultas.sala_espera',
+        },
+        {
+          title: 'En Consulta',
+          href: '/clinica/consultas/en-consulta',
+          icon: Activity,
+          permission: 'consultas.en_consulta',
+        },
+        {
+          title: 'Atendidas',
+          href: '/clinica/consultas/atendidas',
+          icon: CheckCircle2,
+          permission: 'consultas.atendidas',
         },
       ],
     },
@@ -463,6 +492,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               }
               if (child.href === '/clinica/pacientes') {
                 return user?.es_superadmin || hasPermission('pacientes.ver') || hasPermission('medicos.ver') || hasPermission('especialidades.ver') || Boolean(user?.empresa_id);
+              }
+              if (child.href.startsWith('/clinica/consultas/')) {
+                return user?.es_superadmin || (child.permission && hasPermission(child.permission)) || hasPermission('consultas.ver') || Boolean(user?.empresa_id);
               }
               return (
                 (!child.permission || hasPermission(child.permission)) &&

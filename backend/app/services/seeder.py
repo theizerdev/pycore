@@ -97,11 +97,39 @@ PERMISOS_SISTEMA = [
     {"sector": "clinica", "modulo": "especialidades", "accion": "ver", "slug": "especialidades.ver", "descripcion": "Ver catálogo de especialidades médicas"},
     {"sector": "clinica", "modulo": "especialidades", "accion": "crear", "slug": "especialidades.crear", "descripcion": "Crear nuevas especialidades médicas"},
     {"sector": "clinica", "modulo": "especialidades", "accion": "editar", "slug": "especialidades.editar", "descripcion": "Editar especialidades médicas"},
+    
     # Médicos y Especialistas
     {"sector": "clinica", "modulo": "medicos", "accion": "ver", "slug": "medicos.ver", "descripcion": "Ver directorio de médicos y especialistas"},
     {"sector": "clinica", "modulo": "medicos", "accion": "crear", "slug": "medicos.crear", "descripcion": "Registrar nuevos médicos y credenciales"},
     {"sector": "clinica", "modulo": "medicos", "accion": "editar", "slug": "medicos.editar", "descripcion": "Editar fichas de médicos y subespecialidades"},
     {"sector": "clinica", "modulo": "medicos", "accion": "eliminar", "slug": "medicos.eliminar", "descripcion": "Eliminar o inactivar médicos"},
+
+    # Pacientes
+    {"sector": "clinica", "modulo": "pacientes", "accion": "ver", "slug": "pacientes.ver", "descripcion": "Ver directorio de pacientes y expedientes"},
+    {"sector": "clinica", "modulo": "pacientes", "accion": "crear", "slug": "pacientes.crear", "descripcion": "Registrar nuevos pacientes"},
+    {"sector": "clinica", "modulo": "pacientes", "accion": "editar", "slug": "pacientes.editar", "descripcion": "Editar datos y antecedentes de pacientes"},
+    {"sector": "clinica", "modulo": "pacientes", "accion": "eliminar", "slug": "pacientes.eliminar", "descripcion": "Eliminar o archivar pacientes"},
+    {"sector": "clinica", "modulo": "pacientes", "accion": "historial", "slug": "pacientes.historial", "descripcion": "Ver historial clínico completo"},
+
+    # Citas Médicas
+    {"sector": "clinica", "modulo": "citas", "accion": "ver", "slug": "citas.ver", "descripcion": "Ver agenda y listado de citas médicas"},
+    {"sector": "clinica", "modulo": "citas", "accion": "crear", "slug": "citas.crear", "descripcion": "Agendar nuevas citas médicas"},
+    {"sector": "clinica", "modulo": "citas", "accion": "editar", "slug": "citas.editar", "descripcion": "Modificar o reprogramar citas médicas"},
+    {"sector": "clinica", "modulo": "citas", "accion": "cancelar", "slug": "citas.cancelar", "descripcion": "Cancelar citas médicas"},
+    {"sector": "clinica", "modulo": "citas", "accion": "cambiar_estado", "slug": "citas.cambiar_estado", "descripcion": "Cambiar estado de citas a sala de espera u otros"},
+    {"sector": "clinica", "modulo": "citas", "accion": "eliminar", "slug": "citas.eliminar", "descripcion": "Eliminar registros de citas"},
+    {"sector": "clinica", "modulo": "citas", "accion": "atender", "slug": "citas.atender", "descripcion": "Atender o pasar citas a consulta"},
+
+    # Consultas Médicas y Vistas por Estado
+    {"sector": "clinica", "modulo": "consultas", "accion": "ver", "slug": "consultas.ver", "descripcion": "Ver listado general de consultas médicas"},
+    {"sector": "clinica", "modulo": "consultas", "accion": "sala_espera", "slug": "consultas.sala_espera", "descripcion": "Acceso a la sala de espera de pacientes en clínica"},
+    {"sector": "clinica", "modulo": "consultas", "accion": "en_consulta", "slug": "consultas.en_consulta", "descripcion": "Acceso al módulo de pacientes en consulta activa"},
+    {"sector": "clinica", "modulo": "consultas", "accion": "atendidas", "slug": "consultas.atendidas", "descripcion": "Acceso al registro histórico de consultas atendidas"},
+    {"sector": "clinica", "modulo": "consultas", "accion": "atender", "slug": "consultas.atender", "descripcion": "Llamar a consultorio y atender consultas"},
+    {"sector": "clinica", "modulo": "consultas", "accion": "crear", "slug": "consultas.crear", "descripcion": "Crear o iniciar consultas médicas"},
+    {"sector": "clinica", "modulo": "consultas", "accion": "editar", "slug": "consultas.editar", "descripcion": "Editar evolución, diagnósticos y datos de consulta"},
+    {"sector": "clinica", "modulo": "consultas", "accion": "eliminar", "slug": "consultas.eliminar", "descripcion": "Anular o eliminar consultas médicas"},
+    {"sector": "clinica", "modulo": "consultas", "accion": "recetar", "slug": "consultas.recetar", "descripcion": "Emitir y recetar prescripciones médicas"},
 ]
 
 PAISES_INICIALES = [
@@ -393,8 +421,9 @@ async def seed_initial_data(db: AsyncSession):
             "permisos": [
                 permisos_map[slug] for slug in [
                     "pacientes.ver", "pacientes.crear", "pacientes.editar", "pacientes.historial",
-                    "citas.ver", "citas.atender",
-                    "consultas.ver", "consultas.crear", "consultas.recetar",
+                    "citas.ver", "citas.atender", "citas.cambiar_estado",
+                    "consultas.ver", "consultas.sala_espera", "consultas.en_consulta", "consultas.atendidas",
+                    "consultas.atender", "consultas.crear", "consultas.editar", "consultas.recetar",
                     "turnero.ver", "turnero.llamar",
                     "teleconsulta.iniciar"
                 ] if slug in permisos_map
@@ -408,7 +437,8 @@ async def seed_initial_data(db: AsyncSession):
             "permisos": [
                 permisos_map[slug] for slug in [
                     "pacientes.ver", "pacientes.crear", "pacientes.editar",
-                    "citas.ver", "citas.crear", "citas.editar", "citas.cancelar",
+                    "citas.ver", "citas.crear", "citas.editar", "citas.cancelar", "citas.cambiar_estado",
+                    "consultas.ver", "consultas.sala_espera", "consultas.atendidas",
                     "turnero.ver"
                 ] if slug in permisos_map
             ]
@@ -421,8 +451,9 @@ async def seed_initial_data(db: AsyncSession):
             "permisos": [
                 permisos_map[slug] for slug in [
                     "pacientes.ver", "pacientes.historial",
-                    "citas.ver", "citas.atender",
-                    "consultas.ver", "turnero.ver"
+                    "citas.ver", "citas.atender", "citas.cambiar_estado",
+                    "consultas.ver", "consultas.sala_espera", "consultas.en_consulta", "consultas.atendidas",
+                    "turnero.ver"
                 ] if slug in permisos_map
             ]
         }
@@ -445,12 +476,11 @@ async def seed_initial_data(db: AsyncSession):
             db.add(rol)
             await db.flush()
         else:
-            # Sincronizar nuevos permisos en roles administrativos
-            if rol.slug in ["superadmin", "admin-clinica"]:
-                current_perm_ids = {p.id for p in rol.permisos}
-                for p in r_data["permisos"]:
-                    if p.id not in current_perm_ids:
-                        rol.permisos.append(p)
+            # Sincronizar nuevos permisos en roles configurados
+            current_perm_ids = {p.id for p in rol.permisos}
+            for p in r_data["permisos"]:
+                if p.id not in current_perm_ids:
+                    rol.permisos.append(p)
         roles_map[r_data["slug"]] = rol
 
     # 3. Crear Empresa Inicial
