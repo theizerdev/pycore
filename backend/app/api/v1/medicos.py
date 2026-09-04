@@ -11,6 +11,7 @@ from sqlalchemy import or_, func
 from app.core.database import get_db
 from app.core.security import (
     require_permission,
+    get_current_active_user,
     get_password_hash,
     registrar_auditoria
 )
@@ -128,7 +129,7 @@ async def list_medicos(
     activo: Optional[bool] = None,
     empresa_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(require_permission("medicos.ver"))
+    current_user: Usuario = Depends(get_current_active_user)
 ):
     """
     Lista el directorio médico asistencial con filtros por especialidad, sucursal y estado.

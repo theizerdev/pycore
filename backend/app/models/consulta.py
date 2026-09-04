@@ -38,6 +38,12 @@ class ConsultaMedica(Base, TimestampMixin):
     receta_medica = Column(JSON, default=list, nullable=False)
     indicaciones_generales = Column(Text, nullable=True)
 
+    # Estudios solicitados / Carrito de exámenes de laboratorio e imagenología
+    estudios_solicitados = Column(JSON, default=list, nullable=False)
+
+    # Orden de reposo médico
+    reposo_medico = Column(JSON, default=dict, nullable=False)
+
     # Estado de la atención: 'en_espera', 'en_curso', 'finalizada', 'anulada'
     estado = Column(String(30), default="en_espera", nullable=False, index=True)
 

@@ -7,12 +7,17 @@ class PacienteMini(BaseModel):
     nombres: str
     apellidos: str
     tipo_documento: Optional[str] = None
+    documento_identidad: Optional[str] = None
     numero_documento: Optional[str] = None
     telefono: Optional[str] = None
     email: Optional[str] = None
     genero: Optional[str] = None
     fecha_nacimiento: Optional[Any] = None
     edad: Optional[int] = None
+    grupo_sanguineo: Optional[str] = None
+    alergias: Optional[Any] = None
+    antecedentes_patologicos: Optional[str] = None
+    medicacion_habitual: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -73,12 +78,14 @@ class CitaMini(BaseModel):
 class ConsultaBase(BaseModel):
     motivo_consulta: str
     enfermedad_actual: Optional[str] = None
-    signos_vitales: Dict[str, Any] = {}
-    datos_plantilla: Dict[str, Any] = {}
+    signos_vitales: Optional[Dict[str, Any]] = {}
+    datos_plantilla: Optional[Dict[str, Any]] = {}
+    estudios_solicitados: Optional[List[Any]] = []
+    receta_medica: Optional[List[Any]] = []
+    reposo_medico: Optional[Dict[str, Any]] = {}
     diagnostico_principal: Optional[str] = None
-    diagnosticos_secundarios: List[Any] = []
+    diagnosticos_secundarios: Optional[List[Any]] = []
     plan_tratamiento: Optional[str] = None
-    receta_medica: List[Any] = []
     indicaciones_generales: Optional[str] = None
     estado: str = "en_espera"
 
@@ -95,10 +102,12 @@ class ConsultaUpdate(BaseModel):
     enfermedad_actual: Optional[str] = None
     signos_vitales: Optional[Dict[str, Any]] = None
     datos_plantilla: Optional[Dict[str, Any]] = None
+    estudios_solicitados: Optional[List[Any]] = None
+    receta_medica: Optional[List[Any]] = None
+    reposo_medico: Optional[Dict[str, Any]] = None
     diagnostico_principal: Optional[str] = None
     diagnosticos_secundarios: Optional[List[Any]] = None
     plan_tratamiento: Optional[str] = None
-    receta_medica: Optional[List[Any]] = None
     indicaciones_generales: Optional[str] = None
     estado: Optional[str] = None
 
@@ -120,12 +129,14 @@ class ConsultaResponse(BaseModel):
     fecha_consulta: datetime
     motivo_consulta: str
     enfermedad_actual: Optional[str] = None
-    signos_vitales: Dict[str, Any] = {}
-    datos_plantilla: Dict[str, Any] = {}
+    signos_vitales: Optional[Dict[str, Any]] = {}
+    datos_plantilla: Optional[Dict[str, Any]] = {}
+    estudios_solicitados: Optional[List[Any]] = []
+    receta_medica: Optional[List[Any]] = []
+    reposo_medico: Optional[Dict[str, Any]] = {}
     diagnostico_principal: Optional[str] = None
-    diagnosticos_secundarios: List[Any] = []
+    diagnosticos_secundarios: Optional[List[Any]] = []
     plan_tratamiento: Optional[str] = None
-    receta_medica: List[Any] = []
     indicaciones_generales: Optional[str] = None
     estado: str
     created_at: Optional[datetime] = None

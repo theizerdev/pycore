@@ -33,6 +33,7 @@ import { PacientesPage } from './pages/clinica/PacientesPage';
 import { AgendaCalendarioPage } from './pages/clinica/AgendaCalendarioPage';
 import { PreconsultaPublicPage } from './pages/clinica/PreconsultaPublicPage';
 import { ConsultasPage } from './pages/clinica/ConsultasPage';
+import { ConsultaAtencionPage } from './pages/clinica/ConsultaAtencionPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
@@ -93,6 +94,22 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredPermission="consultas.atendidas">
                     <ConsultasPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/consultas/:id/atencion"
+                element={
+                  <ProtectedRoute requiredPermission="consultas.en_consulta">
+                    <ConsultaAtencionPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/consultas/:id/detalle"
+                element={
+                  <ProtectedRoute requiredPermission="consultas.atendidas">
+                    <ConsultaAtencionPage readOnly={true} />
                   </ProtectedRoute>
                 }
               />

@@ -240,13 +240,14 @@ export const ConsultasPage: React.FC = () => {
       open: true,
       title: 'Llamar a Consultorio',
       description: `¿Desea llamar al paciente ${consulta.paciente?.nombres} ${consulta.paciente?.apellidos} para ingresar a consulta con el Dr(a). ${consulta.medico?.nombres} ${consulta.medico?.apellidos}?`,
-      confirmLabel: 'Llamar a Consulta',
+      confirmLabel: 'Llamar y Atender',
       confirmVariant: 'default',
       action: async () => {
         try {
           await consultasApi.cambiarEstado(consulta.id, 'en_curso');
           toast.success(`Paciente ${consulta.paciente?.nombres} ingresó a consulta médica.`);
-          fetchConsultasData();
+          // Redirigir a la vista completa de atención
+          navigate(`/clinica/consultas/${consulta.id}/atencion`);
         } catch (err: any) {
           toast.error(err.response?.data?.detail || 'Error al cambiar estado de consulta');
         }
@@ -316,6 +317,33 @@ export const ConsultasPage: React.FC = () => {
     const url = `${window.location.origin}/preconsulta/${token}`;
     navigator.clipboard.writeText(url);
     toast.success('Enlace de preconsulta copiado al portapapeles');
+  };
+
+  // Helpers de paciente
+  const calculateAge = (
+    birthDateStr?: string | null,
+    fallbackAge?: number | null
+  ): string => {
+    if (fallbackAge !== undefined && fallbackAge !== null && fallbackAge > 0) {
+      return `${fallbackAge} años`;
+    }
+    if (birthDateStr) {
+      try {
+        const birth = new Date(birthDateStr);
+        const today = new Date();
+        let age = today.getFullYear() - birth.getFullYear();
+        const m = today.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+          age--;
+        }
+        if (age >= 0 && !isNaN(age)) {
+          return `${age} años`;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return 'Edad N/A';
   };
 
   // Formatear hora de inicio
@@ -686,15 +714,14 @@ export const ConsultasPage: React.FC = () => {
                             </Badge>
                           )}
 
-                          {consulta.paciente?.edad !== undefined && (
-                            <Badge variant="secondary" className="text-xs font-normal">
-                              {consulta.paciente.edad} años
-                            </Badge>
-                          )}
+                          <Badge variant="secondary" className="text-xs font-normal">
+                            {calculateAge(consulta.paciente?.fecha_nacimiento, consulta.paciente?.edad)}
+                          </Badge>
 
-                          {consulta.paciente?.numero_documento && (
+                          {(consulta.paciente?.documento_identidad || consulta.paciente?.numero_documento) && (
                             <span className="text-xs text-muted-foreground font-mono">
-                              Doc: {consulta.paciente.tipo_documento || 'V'}-{consulta.paciente.numero_documento}
+                              Doc: {consulta.paciente.tipo_documento || 'V'}-
+                              {consulta.paciente.documento_identidad || consulta.paciente.numero_documento}
                             </span>
                           )}
                         </div>
@@ -850,6 +877,15 @@ export const ConsultasPage: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <Button
                             size="sm"
+                            onClick={() => navigate(`/clinica/consultas/${consulta.id}/atencion`)}
+                            className="h-9 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-xs"
+                          >
+                            <Stethoscope className="h-4 w-4" />
+                            <span>Atender Paciente</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => handleDevolverSalaEspera(consulta)}
                             className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
@@ -859,15 +895,6 @@ export const ConsultasPage: React.FC = () => {
                             <span className="hidden sm:inline">A Espera</span>
                           </Button>
 
-                          <Button
-                            size="sm"
-                            onClick={() => handleFinalizarConsulta(consulta)}
-                            className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                            <span>Finalizar Atención</span>
-                          </Button>
-
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-9 w-9">
@@ -875,6 +902,12 @@ export const ConsultasPage: React.FC = () => {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => navigate(`/clinica/consultas/${consulta.id}/atencion`)}
+                              >
+                                <Stethoscope className="mr-2 h-4 w-4 text-primary" />
+                                Abrir Consulta Médica
+                              </DropdownMenuItem>
                               {isPreconsultaCompletada && (
                                 <DropdownMenuItem
                                   onClick={() => {
@@ -886,6 +919,12 @@ export const ConsultasPage: React.FC = () => {
                                   Ver Respuestas de Preconsulta
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuItem
+                                onClick={() => handleFinalizarConsulta(consulta)}
+                              >
+                                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" />
+                                Finalización Rápida
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => handleAnularConsulta(consulta)}
@@ -901,6 +940,16 @@ export const ConsultasPage: React.FC = () => {
 
                       {currentTab === 'atendidas' && (
                         <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/clinica/consultas/${consulta.id}/detalle`)}
+                            className="h-9 gap-1.5 border-primary/30 text-primary hover:bg-primary/5 font-semibold"
+                          >
+                            <FileText className="h-4 w-4" />
+                            <span>Ver Ficha de Consulta</span>
+                          </Button>
+
                           <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 py-1 px-2.5">
                             <Check className="h-3.5 w-3.5 text-emerald-600" />
                             <span>Atendida</span>
@@ -908,16 +957,16 @@ export const ConsultasPage: React.FC = () => {
 
                           {isPreconsultaCompletada && (
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
                               onClick={() => {
                                 setSelectedPreconsulta(consulta);
                                 setPreconsultaDrawerOpen(true);
                               }}
-                              className="h-9 gap-1.5"
+                              className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
                             >
-                              <FileText className="h-4 w-4 text-primary" />
-                              <span>Ver Preconsulta</span>
+                              <ClipboardList className="h-4 w-4" />
+                              <span className="hidden lg:inline">Preconsulta</span>
                             </Button>
                           )}
                         </div>

@@ -5,12 +5,17 @@ export interface PacienteMini {
   nombres: string;
   apellidos: string;
   tipo_documento?: string;
+  documento_identidad?: string;
   numero_documento?: string;
   telefono?: string;
   email?: string;
   genero?: string;
   fecha_nacimiento?: string;
   edad?: number;
+  grupo_sanguineo?: string;
+  alergias?: any;
+  antecedentes_patologicos?: string;
+  medicacion_habitual?: string;
 }
 
 export interface MedicoMini {
@@ -56,6 +61,35 @@ export interface CitaMini {
   motivo?: string;
 }
 
+export interface EstudioSolicitado {
+  id?: string;
+  nombre: string;
+  categoria?: string; // 'Laboratorio', 'Rayos X', 'Ecografía', 'Tomografía', 'Resonancia', 'Endoscopía', 'Otro'
+  justificacion_clinica?: string;
+  urgente?: boolean;
+  indicaciones_preparacion?: string;
+}
+
+export interface MedicamentoPrescrito {
+  id?: string;
+  medicamento: string;
+  presentacion?: string; // Ej: 'Tabletas 500mg', 'Jarabe 250mg/5ml'
+  dosis?: string; // Ej: '1 tableta'
+  via_administracion?: string; // 'Oral', 'Intravenosa', 'Intramuscular', 'Tópica', 'Oftálmica', 'Inhalatoria'
+  frecuencia?: string; // Ej: 'Cada 8 horas'
+  duracion?: string; // Ej: '7 días'
+  instrucciones?: string; // Ej: 'Tomar después de las comidas'
+}
+
+export interface ReposoMedico {
+  requiere_reposo: boolean;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  dias_reposo?: number;
+  motivo_diagnostico?: string;
+  observaciones?: string;
+}
+
 export interface ConsultaMedica {
   id: number;
   codigo?: string;
@@ -72,10 +106,12 @@ export interface ConsultaMedica {
   enfermedad_actual?: string;
   signos_vitales: Record<string, any>;
   datos_plantilla: Record<string, any>;
+  estudios_solicitados: EstudioSolicitado[];
+  receta_medica: MedicamentoPrescrito[];
+  reposo_medico?: ReposoMedico;
   diagnostico_principal?: string;
   diagnosticos_secundarios: any[];
   plan_tratamiento?: string;
-  receta_medica: any[];
   indicaciones_generales?: string;
   estado: 'en_espera' | 'en_curso' | 'finalizada' | 'anulada';
   created_at?: string;
