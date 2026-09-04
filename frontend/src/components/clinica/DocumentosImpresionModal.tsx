@@ -108,7 +108,80 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
   });
 
   const handlePrint = () => {
-    window.print();
+    const printableElement = document.getElementById('area-imprimible-clinica');
+    if (!printableElement) {
+      window.print();
+      return;
+    }
+
+    const printWin = window.open('', '_blank', 'width=900,height=1050');
+    if (!printWin) {
+      window.print();
+      return;
+    }
+
+    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((el) => el.outerHTML)
+      .join('\n');
+
+    const tituloDocumento =
+      {
+        informe: `Informe_Medico_${consulta.codigo || consulta.id}`,
+        receta: `Receta_Medica_${consulta.codigo || consulta.id}`,
+        estudios: `Orden_Estudios_${consulta.codigo || consulta.id}`,
+        reposo: `Reposo_Medico_${consulta.codigo || consulta.id}`,
+        constancia: `Constancia_Asistencia_${consulta.codigo || consulta.id}`,
+      }[documentoActivo] || 'Documento_Clinico';
+
+    printWin.document.open();
+    printWin.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>${tituloDocumento}</title>
+          ${styles}
+          <style>
+            @page {
+              size: letter portrait;
+              margin: 8mm 12mm 8mm 12mm;
+            }
+            body {
+              background-color: white !important;
+              color: #18181b !important;
+              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            #area-imprimible-clinica {
+              box-shadow: none !important;
+              border: none !important;
+              border-radius: 0 !important;
+              padding: 0 !important;
+              max-width: 100% !important;
+              min-height: auto !important;
+            }
+          </style>
+        </head>
+        <body class="bg-white text-zinc-900">
+          <div id="area-imprimible-clinica" class="p-6">
+            ${printableElement.innerHTML}
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+              }, 300);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWin.document.close();
   };
 
   const documentosList = [
@@ -321,97 +394,236 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
               {/* ══════════════════════════════════════════════════════════ */}
 
               {/* ── 1. INFORME MÉDICO ── */}
-              {documentoActivo === 'informe' && (
-                <div className="space-y-4 text-xs text-zinc-800">
-                  {/* Motivo de Consulta & Enfermedad Actual */}
-                  <div className="space-y-3">
-                    <div>
+              {documentoActivo === 'informe' && (() => {
+                // Consolidación de Signos Vitales
+                const sv = {
+                  peso: consulta.signos_vitales?.peso || consulta.datos_plantilla?.peso,
+                  talla: consulta.signos_vitales?.talla || consulta.datos_plantilla?.talla,
+                  temperatura: consulta.signos_vitales?.temperatura || consulta.datos_plantilla?.temperatura,
+                  presion_sistolica:
+                    consulta.signos_vitales?.presion_sistolica ||
+                    consulta.datos_plantilla?.presion_sistolica ||
+                    consulta.datos_plantilla?.ta_sistolica,
+                  presion_diastolica:
+                    consulta.signos_vitales?.presion_diastolica ||
+                    consulta.datos_plantilla?.presion_diastolica ||
+                    consulta.datos_plantilla?.ta_diastolica,
+                  frecuencia_cardiaca:
+                    consulta.signos_vitales?.frecuencia_cardiaca ||
+                    consulta.datos_plantilla?.frecuencia_cardiaca,
+                  frecuencia_respiratoria:
+                    consulta.signos_vitales?.frecuencia_respiratoria ||
+                    consulta.datos_plantilla?.frecuencia_respiratoria,
+                  saturacion_oxigeno:
+                    consulta.signos_vitales?.saturacion_oxigeno ||
+                    consulta.datos_plantilla?.saturacion_oxigeno ||
+                    consulta.datos_plantilla?.saturacion_o2,
+                  imc: consulta.signos_vitales?.imc || consulta.datos_plantilla?.imc,
+                };
+
+                if (!sv.imc && sv.peso && sv.talla) {
+                  const tM = Number(sv.talla) > 3 ? Number(sv.talla) / 100 : Number(sv.talla);
+                  const pKg = Number(sv.peso);
+                  if (tM > 0 && pKg > 0) {
+                    sv.imc = (pKg / (tM * tM)).toFixed(1);
+                  }
+                }
+
+                const tieneSignosVitales = Object.values(sv).some(
+                  (v) => v !== undefined && v !== null && String(v).trim() !== ''
+                );
+
+                // Claves de sistema / anamnesis / signos vitales que NO deben duplicarse en "Hallazgos de Especialidad"
+                const CLAVES_IGNORADAS = new Set([
+                  'peso',
+                  'talla',
+                  'temperatura',
+                  'ta_sistolica',
+                  'ta_diastolica',
+                  'presion_sistolica',
+                  'presion_diastolica',
+                  'frecuencia_cardiaca',
+                  'frecuencia_respiratoria',
+                  'saturacion_oxigeno',
+                  'saturacion_o2',
+                  'imc',
+                  'masa_corporal',
+                  'signos_vitales',
+                  'pa',
+                  'pulso',
+                  'motivo_consulta',
+                  'enfermedad_actual',
+                  'preconsulta_completada_at',
+                  'preconsulta_id',
+                  'token',
+                  'referido_para',
+                  'observaciones_adicionales',
+                  'estado',
+                  'created_at',
+                  'updated_at',
+                  'id',
+                  'empresa_id',
+                  'paciente_id',
+                  'medico_id',
+                  'especialidad_id',
+                  'sucursal_id',
+                  'cita_id',
+                ]);
+
+                const isValidVal = (val: any) => {
+                  if (val === null || val === undefined) return false;
+                  if (typeof val === 'object') return false;
+                  const s = String(val).trim();
+                  if (!s) return false;
+                  const lower = s.toLowerCase();
+                  return !['n/a', 'na', 'none', 'null', 'ninguna', 'ninguno', '-', 'sin observaciones', 'no aplica'].includes(lower);
+                };
+
+                const formatKeyLabel = (key: string) => {
+                  const clean = key.replace(/_/g, ' ');
+                  return clean
+                    .split(' ')
+                    .map((word) => {
+                      if (['od', 'oi', 'pa', 'fc', 'fr', 'cie10', 'imc'].includes(word.toLowerCase())) {
+                        return word.toUpperCase();
+                      }
+                      return word.charAt(0).toUpperCase() + word.slice(1);
+                    })
+                    .join(' ');
+                };
+
+                const camposEspecialidad = Object.entries(consulta.datos_plantilla || {}).filter(
+                  ([key, val]) => !CLAVES_IGNORADAS.has(key.toLowerCase()) && isValidVal(val)
+                );
+
+                const referidoTexto = consulta.referido_para || consulta.datos_plantilla?.referido_para;
+                const observacionesTexto =
+                  consulta.observaciones_adicionales || consulta.datos_plantilla?.observaciones_adicionales;
+
+                const tieneReferido = isValidVal(referidoTexto);
+                const tieneObservaciones = isValidVal(observacionesTexto);
+
+                return (
+                  <div className="space-y-4 text-xs text-zinc-800">
+                    {/* 1. Motivo de Consulta & Anamnesis / Enfermedad Actual */}
+                    <div className="space-y-2">
                       <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1 flex items-center gap-1.5">
                         <FileText className="h-3.5 w-3.5 text-primary" />
-                        Motivo de Consulta & Anamnesis
+                        1. Motivo de Consulta & Anamnesis
                       </h3>
-                      <p className="mt-1.5 text-zinc-700 leading-relaxed font-medium">
-                        <strong className="text-zinc-900">Motivo:</strong> {consulta.motivo_consulta || 'No especificado'}
-                      </p>
-                      {consulta.enfermedad_actual && (
-                        <p className="mt-1 text-zinc-700 leading-relaxed">
-                          <strong className="text-zinc-900">Enfermedad Actual:</strong> {consulta.enfermedad_actual}
+                      <div className="bg-zinc-50/70 p-3 rounded-xl border border-zinc-200/80 space-y-1.5">
+                        <p className="text-zinc-800 leading-relaxed font-medium">
+                          <strong className="text-zinc-900">Motivo de Atención:</strong> {consulta.motivo_consulta || 'Control facultativo de rutina.'}
                         </p>
-                      )}
+                        {consulta.enfermedad_actual && (
+                          <p className="text-zinc-700 leading-relaxed text-[11px]">
+                            <strong className="text-zinc-900">Enfermedad Actual / Semiología:</strong> {consulta.enfermedad_actual}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Signos Vitales */}
-                    {consulta.signos_vitales && Object.keys(consulta.signos_vitales).length > 0 && (
-                      <div>
+                    {/* 2. Signos Vitales y Parámetros Basales */}
+                    {tieneSignosVitales && (
+                      <div className="space-y-2">
                         <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
-                          Signos Vitales y Parámetros Basales
+                          2. Signos Vitales y Constantes Biológicas
                         </h3>
-                        <div className="grid grid-cols-4 gap-2 mt-2 p-2.5 bg-zinc-50 rounded-lg border border-zinc-200 text-[11px]">
-                          {consulta.signos_vitales.peso && (
-                            <div>
-                              <span className="text-zinc-500">Peso:</span>{' '}
-                              <strong>{consulta.signos_vitales.peso} kg</strong>
-                            </div>
-                          )}
-                          {consulta.signos_vitales.talla && (
-                            <div>
-                              <span className="text-zinc-500">Talla:</span>{' '}
-                              <strong>{consulta.signos_vitales.talla} cm</strong>
-                            </div>
-                          )}
-                          {consulta.signos_vitales.temperatura && (
-                            <div>
-                              <span className="text-zinc-500">Temp:</span>{' '}
-                              <strong>{consulta.signos_vitales.temperatura} °C</strong>
-                            </div>
-                          )}
-                          {consulta.signos_vitales.presion_sistolica && consulta.signos_vitales.presion_diastolica && (
-                            <div>
-                              <span className="text-zinc-500">P.A.:</span>{' '}
-                              <strong>
-                                {consulta.signos_vitales.presion_sistolica}/{consulta.signos_vitales.presion_diastolica} mmHg
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-zinc-50/70 rounded-xl border border-zinc-200/80 text-[11px]">
+                          {sv.presion_sistolica && sv.presion_diastolica && (
+                            <div className="flex flex-col">
+                              <span className="text-zinc-500 font-medium">Presión Arterial:</span>
+                              <strong className="text-zinc-900 text-xs">
+                                {sv.presion_sistolica}/{sv.presion_diastolica} mmHg
                               </strong>
                             </div>
                           )}
-                          {consulta.signos_vitales.frecuencia_cardiaca && (
-                            <div>
-                              <span className="text-zinc-500">F.C.:</span>{' '}
-                              <strong>{consulta.signos_vitales.frecuencia_cardiaca} lpm</strong>
+                          {sv.frecuencia_cardiaca && (
+                            <div className="flex flex-col">
+                              <span className="text-zinc-500 font-medium">Frecuencia Cardíaca:</span>
+                              <strong className="text-zinc-900 text-xs">{sv.frecuencia_cardiaca} lpm</strong>
                             </div>
                           )}
-                          {consulta.signos_vitales.frecuencia_respiratoria && (
-                            <div>
-                              <span className="text-zinc-500">F.R.:</span>{' '}
-                              <strong>{consulta.signos_vitales.frecuencia_respiratoria} rpm</strong>
+                          {sv.frecuencia_respiratoria && (
+                            <div className="flex flex-col">
+                              <span className="text-zinc-500 font-medium">Frecuencia Respiratoria:</span>
+                              <strong className="text-zinc-900 text-xs">{sv.frecuencia_respiratoria} rpm</strong>
                             </div>
                           )}
-                          {consulta.signos_vitales.saturacion_oxigeno && (
-                            <div>
-                              <span className="text-zinc-500">SpO2:</span>{' '}
-                              <strong>{consulta.signos_vitales.saturacion_oxigeno}%</strong>
+                          {sv.temperatura && (
+                            <div className="flex flex-col">
+                              <span className="text-zinc-500 font-medium">Temperatura Corporal:</span>
+                              <strong className="text-zinc-900 text-xs">{sv.temperatura} °C</strong>
+                            </div>
+                          )}
+                          {sv.saturacion_oxigeno && (
+                            <div className="flex flex-col">
+                              <span className="text-zinc-500 font-medium">Saturación O2 (SpO2):</span>
+                              <strong className="text-zinc-900 text-xs">{sv.saturacion_oxigeno}%</strong>
+                            </div>
+                          )}
+                          {sv.peso && (
+                            <div className="flex flex-col">
+                              <span className="text-zinc-500 font-medium">Peso Corporal:</span>
+                              <strong className="text-zinc-900 text-xs">{sv.peso} kg</strong>
+                            </div>
+                          )}
+                          {sv.talla && (
+                            <div className="flex flex-col">
+                              <span className="text-zinc-500 font-medium">Talla / Estatura:</span>
+                              <strong className="text-zinc-900 text-xs">{sv.talla} cm</strong>
+                            </div>
+                          )}
+                          {sv.imc && (
+                            <div className="flex flex-col">
+                              <span className="text-zinc-500 font-medium">Índice Masa Corporal:</span>
+                              <strong className="text-zinc-900 text-xs">{sv.imc} kg/m²</strong>
                             </div>
                           )}
                         </div>
                       </div>
                     )}
 
-                    {/* Diagnósticos */}
-                    <div>
+                    {/* 3. Examen Físico y Hallazgos Clínicos de la Especialidad */}
+                    {camposEspecialidad.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
+                          3. Examen Físico y Hallazgos Clínicos ({especialidadNombre})
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-zinc-50/70 rounded-xl border border-zinc-200/80 text-[11px]">
+                          {camposEspecialidad.map(([key, val]) => (
+                            <div key={key} className="p-1.5 rounded-lg bg-white border border-zinc-200/60 space-y-0.5">
+                              <span className="text-zinc-500 font-semibold block text-[10px] uppercase tracking-wider">
+                                {formatKeyLabel(key)}
+                              </span>
+                              <p className="text-zinc-900 font-medium text-xs whitespace-pre-wrap leading-relaxed">
+                                {String(val)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 4. Impresión Diagnóstica (CIE-10) */}
+                    <div className="space-y-2">
                       <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1 flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5 text-primary" />
-                        Impresión Diagnóstica (CIE-10)
+                        4. Impresión Diagnóstica (CIE-10)
                       </h3>
-                      <div className="mt-2 space-y-1">
-                        <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                      <div className="space-y-1.5">
+                        <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/20">
                           <p className="font-bold text-primary text-xs">
                             Diagnóstico Principal: {consulta.diagnostico_principal || 'Sin diagnóstico registrado'}
                           </p>
                         </div>
                         {consulta.diagnosticos_secundarios && consulta.diagnosticos_secundarios.length > 0 && (
-                          <div className="pl-2 space-y-0.5 mt-1">
-                            <span className="text-[11px] font-semibold text-zinc-600">Diagnósticos Secundarios:</span>
+                          <div className="p-2.5 rounded-xl bg-zinc-50/70 border border-zinc-200/80 space-y-1">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                              Diagnósticos Secundarios / Comorbilidades:
+                            </span>
                             {consulta.diagnosticos_secundarios.map((diag, idx) => (
-                              <p key={idx} className="text-[11px] text-zinc-700">
+                              <p key={idx} className="text-[11px] text-zinc-700 font-medium pl-1">
                                 • {typeof diag === 'string' ? diag : diag?.descripcion || diag?.codigo}
                               </p>
                             ))}
@@ -420,68 +632,60 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                       </div>
                     </div>
 
-                    {/* Plan de Tratamiento e Indicaciones */}
-                    <div>
+                    {/* 5. Plan de Tratamiento y Conducta Médica */}
+                    <div className="space-y-2">
                       <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
-                        Plan de Tratamiento y Conducta Médica
+                        5. Plan de Tratamiento y Conducta Médica
                       </h3>
-                      <p className="mt-1.5 text-zinc-700 whitespace-pre-wrap leading-relaxed">
-                        {consulta.plan_tratamiento || 'Tratamiento sintomático según prescripción adjunta.'}
-                      </p>
-                      {consulta.indicaciones_generales && (
-                        <p className="mt-1.5 text-zinc-700 whitespace-pre-wrap leading-relaxed">
-                          <strong className="text-zinc-900">Indicaciones:</strong> {consulta.indicaciones_generales}
+                      <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80 space-y-2">
+                        <p className="text-zinc-800 whitespace-pre-wrap leading-relaxed text-xs">
+                          {consulta.plan_tratamiento || 'Tratamiento y conducta según prescripción facultativa adjunta.'}
                         </p>
-                      )}
+                        {consulta.indicaciones_generales && (
+                          <div className="pt-2 border-t border-zinc-200 text-[11px] text-zinc-700 space-y-0.5">
+                            <strong className="text-zinc-900 block text-[10px] uppercase font-bold text-zinc-500">
+                              Indicaciones y Recomendaciones:
+                            </strong>
+                            <p className="whitespace-pre-wrap leading-relaxed">{consulta.indicaciones_generales}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Evaluación y Hallazgos de Especialidad / Plantilla Dinámica */}
-                    {consulta.datos_plantilla && Object.keys(consulta.datos_plantilla).filter(k => k !== 'referido_para' && k !== 'observaciones_adicionales' && consulta.datos_plantilla[k]).length > 0 && (
-                      <div>
+                    {/* 6. Interconsulta / Derivación y Observaciones (Condicional, solo si tiene contenido real) */}
+                    {(tieneReferido || tieneObservaciones) && (
+                      <div className="space-y-2">
                         <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
-                          Evaluación Clínica y Hallazgos por Especialidad
+                          6. Interconsulta & Observaciones
                         </h3>
-                        <div className="mt-2 grid grid-cols-2 gap-2 p-2.5 bg-zinc-50 rounded-lg border border-zinc-200 text-[11px]">
-                          {Object.entries(consulta.datos_plantilla)
-                            .filter(([k, v]) => k !== 'referido_para' && k !== 'observaciones_adicionales' && v !== null && v !== undefined && v !== '' && typeof v !== 'object')
-                            .map(([key, val]) => (
-                              <div key={key} className="space-y-0.5">
-                                <span className="text-zinc-500 font-semibold capitalize">
-                                  {key.replace(/_/g, ' ')}:
-                                </span>{' '}
-                                <strong className="text-zinc-800">{String(val)}</strong>
-                              </div>
-                            ))}
+                        <div className="space-y-2">
+                          {tieneReferido && (
+                            <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1">
+                              <h4 className="font-bold text-[10px] text-amber-800 dark:text-amber-600 uppercase tracking-wider">
+                                Referido para (Interconsulta, Especialidad o Derivación):
+                              </h4>
+                              <p className="text-xs text-zinc-800 font-medium whitespace-pre-wrap leading-relaxed">
+                                {referidoTexto}
+                              </p>
+                            </div>
+                          )}
+
+                          {tieneObservaciones && (
+                            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80 space-y-1">
+                              <h4 className="font-bold text-[10px] text-zinc-500 uppercase tracking-wider">
+                                Observaciones Adicionales:
+                              </h4>
+                              <p className="text-xs text-zinc-700 whitespace-pre-wrap leading-relaxed">
+                                {observacionesTexto}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
-
-                    {/* Referencia / Interconsulta y Derivación */}
-                    {(consulta.referido_para || consulta.datos_plantilla?.referido_para) && (
-                      <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1">
-                        <h4 className="font-bold text-[11px] text-amber-800 dark:text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
-                          <span>Referido para (Interconsulta, Especialidad o Derivación)</span>
-                        </h4>
-                        <p className="text-xs text-zinc-800 font-medium whitespace-pre-wrap leading-relaxed">
-                          {consulta.referido_para || consulta.datos_plantilla?.referido_para}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Observaciones Adicionales */}
-                    {(consulta.observaciones_adicionales || consulta.datos_plantilla?.observaciones_adicionales) && (
-                      <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1">
-                        <h4 className="font-bold text-[11px] text-zinc-700 uppercase tracking-wider">
-                          Observaciones Adicionales
-                        </h4>
-                        <p className="text-xs text-zinc-700 whitespace-pre-wrap leading-relaxed">
-                          {consulta.observaciones_adicionales || consulta.datos_plantilla?.observaciones_adicionales}
-                        </p>
-                      </div>
-                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* ── 2. RECETA MÉDICA (RX) ── */}
               {documentoActivo === 'receta' && (
