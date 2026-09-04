@@ -16,6 +16,8 @@ export interface PacienteMini {
   alergias?: any;
   antecedentes_patologicos?: string;
   medicacion_habitual?: string;
+  contacto_emergencia_nombre?: string;
+  contacto_emergencia_parentesco?: string;
 }
 
 export interface MedicoMini {

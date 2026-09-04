@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -18,6 +19,9 @@ import {
   Calendar,
   User,
   UserCheck,
+  UserPlus,
+  UserX,
+  Users,
   Stethoscope,
   Building2,
   Phone,
@@ -26,6 +30,8 @@ import {
   Sparkles,
   Download,
   AlertCircle,
+  Check,
+  HeartHandshake,
 } from 'lucide-react';
 import type { ConsultaMedica, MedicamentoPrescrito, EstudioSolicitado } from '../../api/consultas';
 import { useAuth } from '../../context/AuthContext';
@@ -54,12 +60,78 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
   const { user, sucursalActiva } = useAuth();
   const [documentoActivo, setDocumentoActivo] = useState<TipoDocumentoClinico>(initialDocumento);
 
+  // Estados para Acompañante en Constancia de Asistencia
+  const [modalAcompananteOpen, setModalAcompananteOpen] = useState(false);
+  const [tieneAcompanante, setTieneAcompanante] = useState(false);
+  const [datosAcompanante, setDatosAcompanante] = useState({
+    nombres: '',
+    apellidos: '',
+    documento: '',
+    parentesco: 'Familiar',
+    otroParentesco: '',
+  });
+
+  // Estado temporal de edición para la ventana modal
+  const [tempTieneAcompanante, setTempTieneAcompanante] = useState(false);
+  const [tempDatosAcompanante, setTempDatosAcompanante] = useState({
+    nombres: '',
+    apellidos: '',
+    documento: '',
+    parentesco: 'Familiar',
+    otroParentesco: '',
+  });
+
   // Sincronizar documento inicial cuando se abre el modal
   React.useEffect(() => {
     if (open) {
       setDocumentoActivo(initialDocumento);
+      if (initialDocumento === 'constancia') {
+        setTempTieneAcompanante(tieneAcompanante);
+        setTempDatosAcompanante(datosAcompanante);
+        setModalAcompananteOpen(true);
+      }
     }
   }, [open, initialDocumento]);
+
+  const handleSelectDocumento = (docId: TipoDocumentoClinico) => {
+    setDocumentoActivo(docId);
+    if (docId === 'constancia') {
+      setTempTieneAcompanante(tieneAcompanante);
+      setTempDatosAcompanante(datosAcompanante);
+      setModalAcompananteOpen(true);
+    }
+  };
+
+  const handleGuardarAcompanante = () => {
+    setTieneAcompanante(tempTieneAcompanante);
+    setDatosAcompanante(tempDatosAcompanante);
+    setModalAcompananteOpen(false);
+  };
+
+  const handleCargarContactoEmergencia = () => {
+    if (!consulta?.paciente?.contacto_emergencia_nombre) return;
+    const nombreCompleto = consulta.paciente.contacto_emergencia_nombre.trim();
+    const partes = nombreCompleto.split(' ');
+    let nombres = '';
+    let apellidos = '';
+    if (partes.length === 1) {
+      nombres = partes[0];
+    } else if (partes.length === 2) {
+      nombres = partes[0];
+      apellidos = partes[1];
+    } else {
+      nombres = partes.slice(0, -1).join(' ');
+      apellidos = partes.slice(-1).join(' ');
+    }
+
+    setTempTieneAcompanante(true);
+    setTempDatosAcompanante((prev) => ({
+      ...prev,
+      nombres: nombres || nombreCompleto,
+      apellidos: apellidos || '',
+      parentesco: consulta.paciente?.contacto_emergencia_parentesco || 'Familiar',
+    }));
+  };
 
   if (!consulta) return null;
 
@@ -145,7 +217,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
           <style>
             @page {
               size: letter portrait;
-              margin: 8mm 12mm 8mm 12mm;
+              margin: 6mm 10mm 6mm 10mm;
             }
             body {
               background-color: white !important;
@@ -163,11 +235,13 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
               padding: 0 !important;
               max-width: 100% !important;
               min-height: auto !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
             }
           </style>
         </head>
         <body class="bg-white text-zinc-900">
-          <div id="area-imprimible-clinica" class="p-6">
+          <div id="area-imprimible-clinica" class="p-4">
             ${printableElement.innerHTML}
           </div>
           <script>
@@ -175,7 +249,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
               setTimeout(function() {
                 window.focus();
                 window.print();
-              }, 300);
+              }, 250);
             };
           </script>
         </body>
@@ -275,7 +349,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
               <button
                 key={doc.id}
                 type="button"
-                onClick={() => setDocumentoActivo(doc.id)}
+                onClick={() => handleSelectDocumento(doc.id)}
                 className={cn(
                   'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border shrink-0 cursor-pointer',
                   isSelected
@@ -301,27 +375,92 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
         </div>
 
         {/* Contenedor Principal con Scroll y Hoja de Impresión */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-zinc-100 dark:bg-zinc-950 flex justify-center print:p-0 print:bg-white print:overflow-visible">
-          {/* ── HOJA IMPRIMIBLE (ESTILO HOJA MEMBRETADA) ── */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-zinc-100 dark:bg-zinc-950 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible">
+          {/* Banner informativo de acompañante para constancia (No imprimible) */}
+          {documentoActivo === 'constancia' && (
+            <div className="w-full max-w-[780px] mb-3 p-3.5 rounded-xl border bg-card shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs print:hidden animate-in fade-in-50 duration-200">
+              <div className="flex items-center gap-3">
+                <div
+                  className={cn(
+                    'p-2 rounded-xl shrink-0 shadow-xs flex items-center justify-center',
+                    tieneAcompanante
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                  )}
+                >
+                  {tieneAcompanante ? <Users className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-foreground">
+                      {tieneAcompanante
+                        ? `Constancia con Acompañante: ${datosAcompanante.nombres} ${datosAcompanante.apellidos}`.trim()
+                        : 'Constancia Individual (Sin Acompañante)'}
+                    </p>
+                    <Badge
+                      variant={tieneAcompanante ? 'default' : 'secondary'}
+                      className={cn(
+                        'text-[10px] px-2 py-0.2',
+                        tieneAcompanante ? 'bg-indigo-600 hover:bg-indigo-600 text-white' : ''
+                      )}
+                    >
+                      {tieneAcompanante ? 'Con Acompañante' : 'Solo Paciente'}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {tieneAcompanante
+                      ? `C.I / Doc: ${datosAcompanante.documento || 'No especificado'} • Parentesco: ${
+                          datosAcompanante.parentesco === 'Otro'
+                            ? datosAcompanante.otroParentesco || 'Acompañante'
+                            : datosAcompanante.parentesco
+                        }`
+                      : 'La constancia solo acredita al paciente. Si acudió con un familiar o tutor, puede incluirlo aquí.'}
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={tieneAcompanante ? 'outline' : 'default'}
+                onClick={() => {
+                  setTempTieneAcompanante(tieneAcompanante);
+                  setTempDatosAcompanante(datosAcompanante);
+                  setModalAcompananteOpen(true);
+                }}
+                className={cn(
+                  'shrink-0 font-bold gap-1.5 shadow-xs cursor-pointer',
+                  tieneAcompanante
+                    ? 'border-indigo-300 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                )}
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                <span>{tieneAcompanante ? 'Modificar Acompañante' : 'Configurar Acompañante'}</span>
+              </Button>
+            </div>
+          )}
+
+          {/* ── HOJA IMPRIMIBLE (ESTILO HOJA MEMBRETADA COMPACTA 1 PÁGINA) ── */}
           <div
             id="area-imprimible-clinica"
-            className="w-full max-w-[800px] bg-white text-zinc-900 dark:bg-white dark:text-zinc-900 p-8 sm:p-12 rounded-xl shadow-xl print:shadow-none print:p-6 print:max-w-none print:w-full border border-zinc-200 print:border-none space-y-6 min-h-[900px] flex flex-col justify-between"
+            className="w-full max-w-[780px] bg-white text-zinc-900 dark:bg-white dark:text-zinc-900 p-6 sm:p-8 rounded-xl shadow-xl print:shadow-none print:p-4 print:max-w-none print:w-full border border-zinc-200 print:border-none space-y-3.5 flex flex-col justify-between text-[11px]"
           >
             {/* ── CABECERA / MEMBRETE CLÍNICO ── */}
             <div>
-              <div className="flex items-start justify-between border-b-2 border-primary/40 pb-5 gap-4">
-                <div className="flex items-center gap-3.5">
-                  <div className="flex h-13 w-13 items-center justify-center rounded-2xl bg-primary text-white font-black text-2xl shadow-sm">
-                    <Stethoscope className="h-7 w-7" />
+              <div className="flex items-start justify-between border-b-2 border-primary/40 pb-3 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white font-black text-xl shadow-sm">
+                    <Stethoscope className="h-5 w-5" />
                   </div>
                   <div>
-                    <h1 className="text-xl font-black text-zinc-900 tracking-tight uppercase">
+                    <h1 className="text-base font-black text-zinc-900 tracking-tight uppercase leading-tight">
                       {empresaNombre}
                     </h1>
-                    <p className="text-xs font-semibold text-primary uppercase tracking-wide">
+                    <p className="text-[10px] font-semibold text-primary uppercase tracking-wide">
                       Centro de Especialidades Médicas & Salud Integral
                     </p>
-                    <p className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-2">
+                    <p className="text-[10px] text-zinc-500 flex items-center gap-1.5">
                       <span>{sucursal?.nombre || 'Sede Principal'}</span>
                       <span>•</span>
                       <span>Atención Especializada</span>
@@ -330,31 +469,31 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                 </div>
 
                 <div className="text-right space-y-0.5">
-                  <div className="inline-block px-3 py-1 bg-primary/10 text-primary font-bold text-xs rounded-lg uppercase tracking-wider border border-primary/20">
+                  <div className="inline-block px-2.5 py-0.5 bg-primary/10 text-primary font-bold text-[10px] rounded-md uppercase tracking-wider border border-primary/20">
                     {documentoActivo === 'informe' && 'INFORME MÉDICO CLÍNICO'}
                     {documentoActivo === 'receta' && 'RECETA MÉDICA / PRESCRIPCIÓN'}
                     {documentoActivo === 'estudios' && 'ORDEN DE ESTUDIOS Y EXÁMENES'}
                     {documentoActivo === 'reposo' && 'CERTIFICADO DE REPOSO MÉDICO'}
                     {documentoActivo === 'constancia' && 'CONSTANCIA DE ASISTENCIA'}
                   </div>
-                  <p className="text-[11px] text-zinc-500 font-mono">
+                  <p className="text-[10px] text-zinc-500 font-mono">
                     Folio: <strong>{consulta.codigo || `CON-${consulta.id}`}</strong>
                   </p>
-                  <p className="text-[11px] text-zinc-500">
+                  <p className="text-[10px] text-zinc-500">
                     Fecha: <strong>{fechaConsultaFormateada}</strong>
                   </p>
                 </div>
               </div>
 
               {/* ── DATOS DEL PACIENTE Y MÉDICO ── */}
-              <div className="grid grid-cols-2 gap-4 py-4 px-4 my-4 bg-zinc-50 rounded-xl border border-zinc-200/80 text-xs">
+              <div className="grid grid-cols-2 gap-3 py-2.5 px-3 my-2.5 bg-zinc-50 rounded-lg border border-zinc-200/80 text-[10.5px]">
                 {/* Columna Paciente */}
-                <div className="space-y-1">
-                  <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+                <div className="space-y-0.5">
+                  <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">
                     Datos del Paciente
                   </p>
-                  <p className="font-bold text-sm text-zinc-900">{nombrePaciente}</p>
-                  <div className="grid grid-cols-2 gap-x-2 text-zinc-600 text-[11px]">
+                  <p className="font-bold text-xs text-zinc-900">{nombrePaciente}</p>
+                  <div className="grid grid-cols-2 gap-x-2 text-zinc-600 text-[10px]">
                     <p>
                       <strong className="text-zinc-700">Documento:</strong> {tipoDoc} {documentoPaciente}
                     </p>
@@ -362,28 +501,28 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                       <strong className="text-zinc-700">Edad:</strong> {paciente?.edad ? `${paciente.edad} años` : 'N/E'}
                     </p>
                     <p>
-                      <strong className="text-zinc-700">Género:</strong> {paciente?.genero || 'No especificado'}
+                      <strong className="text-zinc-700">Género:</strong> {paciente?.genero || 'N/E'}
                     </p>
                     {paciente?.telefono && (
                       <p>
-                        <strong className="text-zinc-700">Teléfono:</strong> {paciente.telefono}
+                        <strong className="text-zinc-700">Tel:</strong> {paciente.telefono}
                       </p>
                     )}
                   </div>
                 </div>
 
                 {/* Columna Médico */}
-                <div className="space-y-1 border-l border-zinc-200 pl-4">
-                  <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+                <div className="space-y-0.5 border-l border-zinc-200 pl-3">
+                  <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">
                     Médico Especialista
                   </p>
-                  <p className="font-bold text-sm text-zinc-900">{nombreMedico}</p>
-                  <div className="space-y-0.5 text-zinc-600 text-[11px]">
+                  <p className="font-bold text-xs text-zinc-900">{nombreMedico}</p>
+                  <div className="space-y-0 text-zinc-600 text-[10px]">
                     <p>
                       <strong className="text-zinc-700">Especialidad:</strong> {especialidadNombre}
                     </p>
                     <p>
-                      <strong className="text-zinc-700">C.M. / Licencia:</strong> {colegiadoMedico}
+                      <strong className="text-zinc-700">C.M. / Lic:</strong> {colegiadoMedico}
                     </p>
                   </div>
                 </div>
@@ -504,19 +643,19 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                 const tieneObservaciones = isValidVal(observacionesTexto);
 
                 return (
-                  <div className="space-y-4 text-xs text-zinc-800">
+                  <div className="space-y-2.5 text-[10.5px] text-zinc-800">
                     {/* 1. Motivo de Consulta & Anamnesis / Enfermedad Actual */}
-                    <div className="space-y-2">
-                      <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1 flex items-center gap-1.5">
-                        <FileText className="h-3.5 w-3.5 text-primary" />
+                    <div className="space-y-1">
+                      <h3 className="font-bold text-zinc-900 uppercase text-[10px] border-b border-zinc-200 pb-0.5 flex items-center gap-1">
+                        <FileText className="h-3 w-3 text-primary" />
                         1. Motivo de Consulta & Anamnesis
                       </h3>
-                      <div className="bg-zinc-50/70 p-3 rounded-xl border border-zinc-200/80 space-y-1.5">
-                        <p className="text-zinc-800 leading-relaxed font-medium">
-                          <strong className="text-zinc-900">Motivo de Atención:</strong> {consulta.motivo_consulta || 'Control facultativo de rutina.'}
+                      <div className="bg-zinc-50/70 p-2 rounded-lg border border-zinc-200/80 space-y-0.5">
+                        <p className="text-zinc-800 font-medium">
+                          <strong className="text-zinc-900">Motivo:</strong> {consulta.motivo_consulta || 'Control facultativo de rutina.'}
                         </p>
                         {consulta.enfermedad_actual && (
-                          <p className="text-zinc-700 leading-relaxed text-[11px]">
+                          <p className="text-zinc-700 text-[10px] leading-tight">
                             <strong className="text-zinc-900">Enfermedad Actual / Semiología:</strong> {consulta.enfermedad_actual}
                           </p>
                         )}
@@ -525,59 +664,59 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
                     {/* 2. Signos Vitales y Parámetros Basales */}
                     {tieneSignosVitales && (
-                      <div className="space-y-2">
-                        <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
+                      <div className="space-y-1">
+                        <h3 className="font-bold text-zinc-900 uppercase text-[10px] border-b border-zinc-200 pb-0.5">
                           2. Signos Vitales y Constantes Biológicas
                         </h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-zinc-50/70 rounded-xl border border-zinc-200/80 text-[11px]">
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-zinc-50/70 rounded-lg border border-zinc-200/80 text-[10px]">
                           {sv.presion_sistolica && sv.presion_diastolica && (
-                            <div className="flex flex-col">
-                              <span className="text-zinc-500 font-medium">Presión Arterial:</span>
-                              <strong className="text-zinc-900 text-xs">
-                                {sv.presion_sistolica}/{sv.presion_diastolica} mmHg
+                            <div>
+                              <span className="text-zinc-500 font-medium">P. Arterial:</span>{' '}
+                              <strong className="text-zinc-900">
+                                {sv.presion_sistolica}/{sv.presion_diastolica}
                               </strong>
                             </div>
                           )}
                           {sv.frecuencia_cardiaca && (
-                            <div className="flex flex-col">
-                              <span className="text-zinc-500 font-medium">Frecuencia Cardíaca:</span>
-                              <strong className="text-zinc-900 text-xs">{sv.frecuencia_cardiaca} lpm</strong>
+                            <div>
+                              <span className="text-zinc-500 font-medium">F. Cardíaca:</span>{' '}
+                              <strong className="text-zinc-900">{sv.frecuencia_cardiaca} lpm</strong>
                             </div>
                           )}
                           {sv.frecuencia_respiratoria && (
-                            <div className="flex flex-col">
-                              <span className="text-zinc-500 font-medium">Frecuencia Respiratoria:</span>
-                              <strong className="text-zinc-900 text-xs">{sv.frecuencia_respiratoria} rpm</strong>
+                            <div>
+                              <span className="text-zinc-500 font-medium">F. Resp:</span>{' '}
+                              <strong className="text-zinc-900">{sv.frecuencia_respiratoria} rpm</strong>
                             </div>
                           )}
                           {sv.temperatura && (
-                            <div className="flex flex-col">
-                              <span className="text-zinc-500 font-medium">Temperatura Corporal:</span>
-                              <strong className="text-zinc-900 text-xs">{sv.temperatura} °C</strong>
+                            <div>
+                              <span className="text-zinc-500 font-medium">Temp:</span>{' '}
+                              <strong className="text-zinc-900">{sv.temperatura} °C</strong>
                             </div>
                           )}
                           {sv.saturacion_oxigeno && (
-                            <div className="flex flex-col">
-                              <span className="text-zinc-500 font-medium">Saturación O2 (SpO2):</span>
-                              <strong className="text-zinc-900 text-xs">{sv.saturacion_oxigeno}%</strong>
+                            <div>
+                              <span className="text-zinc-500 font-medium">SpO2:</span>{' '}
+                              <strong className="text-zinc-900">{sv.saturacion_oxigeno}%</strong>
                             </div>
                           )}
                           {sv.peso && (
-                            <div className="flex flex-col">
-                              <span className="text-zinc-500 font-medium">Peso Corporal:</span>
-                              <strong className="text-zinc-900 text-xs">{sv.peso} kg</strong>
+                            <div>
+                              <span className="text-zinc-500 font-medium">Peso:</span>{' '}
+                              <strong className="text-zinc-900">{sv.peso} kg</strong>
                             </div>
                           )}
                           {sv.talla && (
-                            <div className="flex flex-col">
-                              <span className="text-zinc-500 font-medium">Talla / Estatura:</span>
-                              <strong className="text-zinc-900 text-xs">{sv.talla} cm</strong>
+                            <div>
+                              <span className="text-zinc-500 font-medium">Talla:</span>{' '}
+                              <strong className="text-zinc-900">{sv.talla} cm</strong>
                             </div>
                           )}
                           {sv.imc && (
-                            <div className="flex flex-col">
-                              <span className="text-zinc-500 font-medium">Índice Masa Corporal:</span>
-                              <strong className="text-zinc-900 text-xs">{sv.imc} kg/m²</strong>
+                            <div>
+                              <span className="text-zinc-500 font-medium">IMC:</span>{' '}
+                              <strong className="text-zinc-900">{sv.imc} kg/m²</strong>
                             </div>
                           )}
                         </div>
@@ -586,17 +725,17 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
                     {/* 3. Examen Físico y Hallazgos Clínicos de la Especialidad */}
                     {camposEspecialidad.length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
+                      <div className="space-y-1">
+                        <h3 className="font-bold text-zinc-900 uppercase text-[10px] border-b border-zinc-200 pb-0.5">
                           3. Examen Físico y Hallazgos Clínicos ({especialidadNombre})
                         </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-zinc-50/70 rounded-xl border border-zinc-200/80 text-[11px]">
+                        <div className="grid grid-cols-2 gap-1.5 p-2 bg-zinc-50/70 rounded-lg border border-zinc-200/80 text-[10px]">
                           {camposEspecialidad.map(([key, val]) => (
-                            <div key={key} className="p-1.5 rounded-lg bg-white border border-zinc-200/60 space-y-0.5">
-                              <span className="text-zinc-500 font-semibold block text-[10px] uppercase tracking-wider">
+                            <div key={key} className="p-1 rounded bg-white border border-zinc-200/60 leading-tight">
+                              <span className="text-zinc-500 font-semibold block text-[9px] uppercase">
                                 {formatKeyLabel(key)}
                               </span>
-                              <p className="text-zinc-900 font-medium text-xs whitespace-pre-wrap leading-relaxed">
+                              <p className="text-zinc-900 font-medium text-[10.5px] truncate">
                                 {String(val)}
                               </p>
                             </div>
@@ -606,24 +745,24 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                     )}
 
                     {/* 4. Impresión Diagnóstica (CIE-10) */}
-                    <div className="space-y-2">
-                      <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1 flex items-center gap-1.5">
-                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    <div className="space-y-1">
+                      <h3 className="font-bold text-zinc-900 uppercase text-[10px] border-b border-zinc-200 pb-0.5 flex items-center gap-1">
+                        <Sparkles className="h-3 w-3 text-primary" />
                         4. Impresión Diagnóstica (CIE-10)
                       </h3>
-                      <div className="space-y-1.5">
-                        <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/20">
-                          <p className="font-bold text-primary text-xs">
+                      <div className="space-y-1">
+                        <div className="p-2 rounded-lg bg-primary/5 border border-primary/20">
+                          <p className="font-bold text-primary text-[11px]">
                             Diagnóstico Principal: {consulta.diagnostico_principal || 'Sin diagnóstico registrado'}
                           </p>
                         </div>
                         {consulta.diagnosticos_secundarios && consulta.diagnosticos_secundarios.length > 0 && (
-                          <div className="p-2.5 rounded-xl bg-zinc-50/70 border border-zinc-200/80 space-y-1">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                              Diagnósticos Secundarios / Comorbilidades:
+                          <div className="p-1.5 rounded-lg bg-zinc-50/70 border border-zinc-200/80 text-[10px]">
+                            <span className="font-bold text-zinc-500 uppercase tracking-wider text-[9px] block">
+                              Secundarios / Comorbilidades:
                             </span>
                             {consulta.diagnosticos_secundarios.map((diag, idx) => (
-                              <p key={idx} className="text-[11px] text-zinc-700 font-medium pl-1">
+                              <p key={idx} className="text-zinc-700 font-medium pl-1">
                                 • {typeof diag === 'string' ? diag : diag?.descripcion || diag?.codigo}
                               </p>
                             ))}
@@ -633,49 +772,46 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                     </div>
 
                     {/* 5. Plan de Tratamiento y Conducta Médica */}
-                    <div className="space-y-2">
-                      <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
+                    <div className="space-y-1">
+                      <h3 className="font-bold text-zinc-900 uppercase text-[10px] border-b border-zinc-200 pb-0.5">
                         5. Plan de Tratamiento y Conducta Médica
                       </h3>
-                      <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80 space-y-2">
-                        <p className="text-zinc-800 whitespace-pre-wrap leading-relaxed text-xs">
+                      <div className="p-2 rounded-lg bg-zinc-50/70 border border-zinc-200/80 space-y-1 text-[10.5px]">
+                        <p className="text-zinc-800 leading-tight">
                           {consulta.plan_tratamiento || 'Tratamiento y conducta según prescripción facultativa adjunta.'}
                         </p>
                         {consulta.indicaciones_generales && (
-                          <div className="pt-2 border-t border-zinc-200 text-[11px] text-zinc-700 space-y-0.5">
-                            <strong className="text-zinc-900 block text-[10px] uppercase font-bold text-zinc-500">
-                              Indicaciones y Recomendaciones:
-                            </strong>
-                            <p className="whitespace-pre-wrap leading-relaxed">{consulta.indicaciones_generales}</p>
-                          </div>
+                          <p className="text-zinc-700 text-[10px] border-t border-zinc-200 pt-1 leading-tight">
+                            <strong className="text-zinc-900">Indicaciones:</strong> {consulta.indicaciones_generales}
+                          </p>
                         )}
                       </div>
                     </div>
 
-                    {/* 6. Interconsulta / Derivación y Observaciones (Condicional, solo si tiene contenido real) */}
+                    {/* 6. Interconsulta / Derivación y Observaciones (Condicional) */}
                     {(tieneReferido || tieneObservaciones) && (
-                      <div className="space-y-2">
-                        <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
+                      <div className="space-y-1">
+                        <h3 className="font-bold text-zinc-900 uppercase text-[10px] border-b border-zinc-200 pb-0.5">
                           6. Interconsulta & Observaciones
                         </h3>
-                        <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-1.5">
                           {tieneReferido && (
-                            <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1">
-                              <h4 className="font-bold text-[10px] text-amber-800 dark:text-amber-600 uppercase tracking-wider">
-                                Referido para (Interconsulta, Especialidad o Derivación):
-                              </h4>
-                              <p className="text-xs text-zinc-800 font-medium whitespace-pre-wrap leading-relaxed">
+                            <div className="p-2 rounded-lg bg-amber-500/5 border border-amber-500/20 text-[10px]">
+                              <strong className="font-bold text-amber-800 uppercase tracking-wider text-[9px] block">
+                                Referido para:
+                              </strong>
+                              <p className="text-zinc-800 leading-tight font-medium">
                                 {referidoTexto}
                               </p>
                             </div>
                           )}
 
                           {tieneObservaciones && (
-                            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80 space-y-1">
-                              <h4 className="font-bold text-[10px] text-zinc-500 uppercase tracking-wider">
-                                Observaciones Adicionales:
-                              </h4>
-                              <p className="text-xs text-zinc-700 whitespace-pre-wrap leading-relaxed">
+                            <div className="p-2 rounded-lg bg-zinc-50/70 border border-zinc-200/80 text-[10px]">
+                              <strong className="font-bold text-zinc-500 uppercase tracking-wider text-[9px] block">
+                                Observaciones:
+                              </strong>
+                              <p className="text-zinc-700 leading-tight">
                                 {observacionesTexto}
                               </p>
                             </div>
@@ -689,39 +825,39 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
               {/* ── 2. RECETA MÉDICA (RX) ── */}
               {documentoActivo === 'receta' && (
-                <div className="space-y-5 text-xs text-zinc-800">
-                  <div className="flex items-center justify-between border-b-2 border-primary/30 pb-2">
-                    <span className="font-serif font-black text-3xl text-primary tracking-tighter">
+                <div className="space-y-4 text-[10.5px] text-zinc-800">
+                  <div className="flex items-center justify-between border-b-2 border-primary/30 pb-1.5">
+                    <span className="font-serif font-black text-2xl text-primary tracking-tighter">
                       ℞
                     </span>
-                    <span className="text-[11px] font-semibold text-zinc-500 uppercase">
+                    <span className="text-[10px] font-semibold text-zinc-500 uppercase">
                       Prescripción Farmacológica
                     </span>
                   </div>
 
                   {/* Tabla / Lista de Medicamentos */}
                   {consulta.receta_medica && consulta.receta_medica.length > 0 ? (
-                    <div className="space-y-4">
+                    <div className="space-y-2.5">
                       {consulta.receta_medica.map((med: MedicamentoPrescrito, idx: number) => (
                         <div
                           key={med.id || idx}
-                          className="p-3.5 rounded-xl border border-zinc-200 bg-zinc-50/50 space-y-1.5"
+                          className="p-2.5 rounded-lg border border-zinc-200 bg-zinc-50/50 space-y-1"
                         >
                           <div className="flex items-baseline justify-between">
-                            <span className="font-bold text-sm text-zinc-900">
+                            <span className="font-bold text-xs text-zinc-900">
                               {idx + 1}. {med.medicamento}
                             </span>
                             {med.presentacion && (
-                              <span className="text-xs font-semibold text-primary">
+                              <span className="text-[10px] font-semibold text-primary">
                                 {med.presentacion}
                               </span>
                             )}
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-zinc-700 bg-white p-2 rounded-lg border border-zinc-200/60">
+                          <div className="grid grid-cols-4 gap-1.5 text-[10px] text-zinc-700 bg-white p-1.5 rounded border border-zinc-200/60">
                             <div>
                               <span className="text-zinc-500">Dosis:</span>{' '}
-                              <strong>{med.dosis || '1 unidad'}</strong>
+                              <strong>{med.dosis || '1 un.'}</strong>
                             </div>
                             <div>
                               <span className="text-zinc-500">Vía:</span>{' '}
@@ -729,7 +865,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                             </div>
                             <div>
                               <span className="text-zinc-500">Frecuencia:</span>{' '}
-                              <strong>{med.frecuencia || 'Según indicación'}</strong>
+                              <strong>{med.frecuencia || 'Indicada'}</strong>
                             </div>
                             {med.duracion && (
                               <div>
@@ -740,7 +876,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                           </div>
 
                           {med.instrucciones && (
-                            <p className="text-[11px] text-zinc-600 italic mt-1">
+                            <p className="text-[10px] text-zinc-600 italic">
                               <strong>Instrucciones:</strong> {med.instrucciones}
                             </p>
                           )}
@@ -748,19 +884,19 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                       ))}
                     </div>
                   ) : (
-                    <div className="p-8 text-center border-2 border-dashed border-zinc-200 rounded-xl text-zinc-500">
-                      <AlertCircle className="h-6 w-6 mx-auto mb-2 text-zinc-400" />
-                      <p className="font-semibold text-xs">No se registraron medicamentos en esta consulta médica.</p>
+                    <div className="p-6 text-center border-2 border-dashed border-zinc-200 rounded-lg text-zinc-500">
+                      <AlertCircle className="h-5 w-5 mx-auto mb-1.5 text-zinc-400" />
+                      <p className="font-semibold text-xs">No se registraron medicamentos en esta consulta.</p>
                     </div>
                   )}
 
                   {/* Indicaciones Generales */}
                   {consulta.indicaciones_generales && (
-                    <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200">
-                      <h4 className="font-bold text-[11px] text-zinc-900 uppercase mb-1">
-                        Indicaciones y Cuidados Generales
+                    <div className="p-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-[10px]">
+                      <h4 className="font-bold text-zinc-900 uppercase mb-0.5 text-[9px]">
+                        Indicaciones Generales
                       </h4>
-                      <p className="text-[11px] text-zinc-700 whitespace-pre-wrap leading-relaxed">
+                      <p className="text-zinc-700 leading-tight">
                         {consulta.indicaciones_generales}
                       </p>
                     </div>
@@ -770,60 +906,60 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
               {/* ── 3. ORDEN DE ESTUDIOS ── */}
               {documentoActivo === 'estudios' && (
-                <div className="space-y-5 text-xs text-zinc-800">
-                  <div className="border-b-2 border-primary/30 pb-2">
-                    <h3 className="font-bold text-sm text-zinc-900 uppercase flex items-center gap-2">
-                      <FlaskConical className="h-4 w-4 text-primary" />
+                <div className="space-y-4 text-[10.5px] text-zinc-800">
+                  <div className="border-b-2 border-primary/30 pb-1.5">
+                    <h3 className="font-bold text-xs text-zinc-900 uppercase flex items-center gap-1.5">
+                      <FlaskConical className="h-3.5 w-3.5 text-primary" />
                       Solicitud de Exámenes y Estudios Complementarios
                     </h3>
                   </div>
 
                   {consulta.estudios_solicitados && consulta.estudios_solicitados.length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {consulta.estudios_solicitados.map((est: EstudioSolicitado, idx: number) => (
                         <div
                           key={est.id || idx}
-                          className="p-3.5 rounded-xl border border-zinc-200 bg-zinc-50/50 flex flex-col gap-1.5"
+                          className="p-2.5 rounded-lg border border-zinc-200 bg-zinc-50/50 flex flex-col gap-1"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-sm text-zinc-900">
+                            <span className="font-bold text-xs text-zinc-900">
                               {idx + 1}. {est.nombre}
                             </span>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1">
                               {est.urgente && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">
                                   URGENTE
                                 </span>
                               )}
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                                 {est.categoria || 'Laboratorio'}
                               </span>
                             </div>
                           </div>
 
                           {est.justificacion_clinica && (
-                            <p className="text-[11px] text-zinc-600">
-                              <strong>Justificación Diagnóstica:</strong> {est.justificacion_clinica}
+                            <p className="text-[10px] text-zinc-600">
+                              <strong>Justificación:</strong> {est.justificacion_clinica}
                             </p>
                           )}
 
                           {est.indicaciones_preparacion && (
-                            <p className="text-[11px] text-zinc-600 italic">
-                              <strong>Preparación previa:</strong> {est.indicaciones_preparacion}
+                            <p className="text-[10px] text-zinc-600 italic">
+                              <strong>Preparación:</strong> {est.indicaciones_preparacion}
                             </p>
                           )}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="p-8 text-center border-2 border-dashed border-zinc-200 rounded-xl text-zinc-500">
-                      <FlaskConical className="h-6 w-6 mx-auto mb-2 text-zinc-400" />
-                      <p className="font-semibold text-xs">No se solicitaron estudios o exámenes en esta consulta.</p>
+                    <div className="p-6 text-center border-2 border-dashed border-zinc-200 rounded-lg text-zinc-500">
+                      <FlaskConical className="h-5 w-5 mx-auto mb-1.5 text-zinc-400" />
+                      <p className="font-semibold text-xs">No se solicitaron estudios en esta consulta.</p>
                     </div>
                   )}
 
                   {consulta.diagnostico_principal && (
-                    <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20 text-xs">
+                    <div className="p-2 rounded-lg bg-primary/5 border border-primary/20 text-[10.5px]">
                       <strong>Diagnóstico Presuntivo:</strong> {consulta.diagnostico_principal}
                     </div>
                   )}
@@ -832,24 +968,24 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
               {/* ── 4. REPOSO MÉDICO ── */}
               {documentoActivo === 'reposo' && (
-                <div className="space-y-6 text-xs text-zinc-800 py-4">
-                  <div className="text-center space-y-1 pb-4 border-b border-zinc-200">
-                    <h2 className="text-base font-black uppercase text-zinc-900 tracking-wider">
+                <div className="space-y-4 text-[11px] text-zinc-800 py-2">
+                  <div className="text-center space-y-0.5 pb-2 border-b border-zinc-200">
+                    <h2 className="text-sm font-black uppercase text-zinc-900 tracking-wider">
                       CERTIFICADO DE REPOSO MÉDICO
                     </h2>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-[10px] text-zinc-500">
                       Constancia de Incapacidad Temporal para Labores y/o Actividades Académicas
                     </p>
                   </div>
 
-                  <div className="text-justify leading-relaxed text-sm text-zinc-800 space-y-4 px-2">
+                  <div className="text-justify leading-relaxed text-xs text-zinc-800 space-y-3 px-1">
                     <p>
                       El que suscribe, <strong className="text-zinc-950 font-bold">{nombreMedico}</strong>, médico especialista en{' '}
                       <strong className="text-zinc-950 font-bold">{especialidadNombre}</strong>, debidamente registrado ante las autoridades sanitarias bajo la credencial / colegiatura{' '}
                       <strong className="text-zinc-950 font-bold">{colegiadoMedico}</strong>:
                     </p>
 
-                    <p className="p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+                    <p className="p-3 bg-zinc-50 rounded-lg border border-zinc-200">
                       <strong>HACE CONSTAR QUE:</strong>
                       <br />
                       Habiendo evaluado clínicamente en la fecha al paciente{' '}
@@ -871,14 +1007,13 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                     </p>
 
                     {consulta.reposo_medico?.observaciones && (
-                      <p className="text-xs text-zinc-600 bg-zinc-50 p-2.5 rounded-lg border border-zinc-200">
-                        <strong>Observaciones adicionales:</strong> {consulta.reposo_medico.observaciones}
+                      <p className="text-[10px] text-zinc-600 bg-zinc-50 p-2 rounded-lg border border-zinc-200">
+                        <strong>Observaciones:</strong> {consulta.reposo_medico.observaciones}
                       </p>
                     )}
 
-                    <p className="text-xs text-zinc-500 pt-2">
-                      Constancia que se expide a solicitud de la parte interesada en la ciudad correspondiente, a los{' '}
-                      {fechaHoyFormateada}.
+                    <p className="text-[10px] text-zinc-500 pt-1">
+                      Constancia que se expide a solicitud de la parte interesada, en fecha {fechaHoyFormateada}.
                     </p>
                   </div>
                 </div>
@@ -886,40 +1021,67 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
               {/* ── 5. CONSTANCIA DE ASISTENCIA ── */}
               {documentoActivo === 'constancia' && (
-                <div className="space-y-6 text-xs text-zinc-800 py-4">
-                  <div className="text-center space-y-1 pb-4 border-b border-zinc-200">
-                    <h2 className="text-base font-black uppercase text-zinc-900 tracking-wider">
+                <div className="space-y-4 text-[11px] text-zinc-800 py-2">
+                  <div className="text-center space-y-0.5 pb-2 border-b border-zinc-200">
+                    <h2 className="text-sm font-black uppercase text-zinc-900 tracking-wider">
                       CONSTANCIA DE ASISTENCIA A CONSULTA MÉDICA
                     </h2>
-                    <p className="text-xs text-zinc-500">
-                      Justificante de Atención Facultativa en Consulta Externa
+                    <p className="text-[10px] text-zinc-500">
+                      Justificante de Atención Facultativa {tieneAcompanante ? 'y Acompañamiento' : 'en Consulta Externa'}
                     </p>
                   </div>
 
-                  <div className="text-justify leading-relaxed text-sm text-zinc-800 space-y-4 px-2">
+                  <div className="text-justify leading-relaxed text-xs text-zinc-800 space-y-3 px-1">
                     <p>
                       Por medio de la presente, el servicio de <strong className="text-zinc-950 font-bold">{especialidadNombre}</strong> de{' '}
                       <strong className="text-zinc-950 font-bold">{empresaNombre}</strong> ({sucursal?.nombre || 'Sede Principal'}):
                     </p>
 
-                    <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-2">
-                      <p className="font-bold text-xs uppercase tracking-wider text-zinc-500">
-                        CERTIFICA QUE:
-                      </p>
-                      <p className="text-zinc-900">
-                        El(la) ciudadano(a) <strong className="text-zinc-950 font-bold">{nombrePaciente}</strong>, portador(a) del documento de identidad{' '}
-                        <strong className="text-zinc-950 font-bold">{tipoDoc} {documentoPaciente}</strong>, acudió y permaneció en nuestras instalaciones el día{' '}
-                        <strong className="text-zinc-950 font-bold">{fechaConsultaFormateada}</strong> a fin de recibir atención médica especializada, habiendo sido atendido(a) por el profesional médico{' '}
-                        <strong className="text-zinc-950 font-bold">{nombreMedico}</strong> (Colegiado: {colegiadoMedico}).
-                      </p>
+                    <div className="p-3 bg-zinc-50 rounded-lg border border-zinc-200 space-y-2.5">
+                      <div>
+                        <p className="font-bold text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+                          CERTIFICA QUE:
+                        </p>
+                        <p className="text-zinc-900 leading-normal">
+                          El(la) ciudadano(a) <strong className="text-zinc-950 font-bold">{nombrePaciente}</strong>, titular del documento de identidad{' '}
+                          <strong className="text-zinc-950 font-bold">{tipoDoc} {documentoPaciente}</strong>, acudió y permaneció en nuestras instalaciones el día{' '}
+                          <strong className="text-zinc-950 font-bold">{fechaConsultaFormateada}</strong> a fin de recibir atención médica especializada, habiendo sido evaluado(a) y atendido(a) por el profesional médico{' '}
+                          <strong className="text-zinc-950 font-bold">{nombreMedico}</strong> (Colegiado / Matrícula: {colegiadoMedico}).
+                        </p>
+                      </div>
+
+                      {tieneAcompanante && (datosAcompanante.nombres || datosAcompanante.apellidos) && (
+                        <div className="pt-2 border-t border-zinc-200">
+                          <p className="font-bold text-[10px] uppercase tracking-wider text-indigo-700 mb-1">
+                            ACREDITACIÓN DEL ACOMPAÑANTE:
+                          </p>
+                          <p className="text-zinc-900 leading-normal">
+                            Asimismo, se hace constar formalmente que el(la) paciente acudió en compañía del(de la) ciudadano(a){' '}
+                            <strong className="text-zinc-950 font-bold">
+                              {`${datosAcompanante.nombres} ${datosAcompanante.apellidos}`.trim()}
+                            </strong>
+                            {datosAcompanante.documento?.trim() ? (
+                              <>
+                                , titular del documento de identidad <strong className="text-zinc-950 font-bold">{datosAcompanante.documento.trim()}</strong>
+                              </>
+                            ) : null}
+                            {datosAcompanante.parentesco ? (
+                              <>
+                                , en calidad de <strong className="text-zinc-950 font-bold">{datosAcompanante.parentesco === 'Otro' ? (datosAcompanante.otroParentesco || 'Acompañante') : datosAcompanante.parentesco}</strong>
+                              </>
+                            ) : null}
+                            , habiendo permanecido presente durante el proceso de atención, valoración y consulta médica facultativa.
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     <p>
-                      Se deja constancia de que el paciente asistió a consulta médica para evaluación, diagnóstico y prescripción de tratamiento médico respectivo.
+                      Se deja constancia de que el paciente asistió a consulta médica para su correspondiente evaluación clínica, diagnóstico y prescripción facultativa.
                     </p>
 
-                    <p className="text-xs text-zinc-500 pt-4">
-                      Se expide la presente constancia a petición de la parte interesada para los fines legales, laborales o académicos que estime convenientes, en fecha {fechaHoyFormateada}.
+                    <p className="text-[10px] text-zinc-500 pt-1">
+                      Se expide la presente constancia a petición de la parte interesada para los fines legales, laborales, académicos o de justificación correspondientes, en fecha {fechaHoyFormateada}.
                     </p>
                   </div>
                 </div>
@@ -927,30 +1089,249 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
             </div>
 
             {/* ── PIE DE PÁGINA: FIRMA Y SELLO MÉDICO ── */}
-            <div className="pt-10 border-t border-zinc-200">
-              <div className="grid grid-cols-2 gap-8 items-end">
+            <div className="pt-3 border-t border-zinc-200">
+              <div className="grid grid-cols-2 gap-6 items-end">
                 {/* Leyenda y Sello institucional */}
-                <div className="text-[10px] text-zinc-500 space-y-0.5">
+                <div className="text-[9px] text-zinc-500 space-y-0.5">
                   <p className="font-bold text-zinc-700">{empresaNombre}</p>
                   <p>{sucursal?.nombre || 'Atención Médica Integral'}</p>
-                  <p>Documento de validez clínica y legal emitido a través de sistema digital.</p>
-                  <p className="font-mono text-[9px] text-zinc-400">Verificación: {consulta.codigo || `CON-${consulta.id}`}</p>
+                  <p className="font-mono text-[8.5px] text-zinc-400">Verificación: {consulta.codigo || `CON-${consulta.id}`}</p>
                 </div>
 
                 {/* Firma y Sello del Médico */}
-                <div className="text-center space-y-1">
-                  <div className="w-56 mx-auto border-b border-zinc-400 pb-12 mb-1" />
-                  <p className="font-bold text-xs text-zinc-900">{nombreMedico}</p>
-                  <p className="text-[11px] text-zinc-600">{especialidadNombre}</p>
-                  <p className="text-[10px] text-zinc-500 font-mono">C.M. / Lic: {colegiadoMedico}</p>
+                <div className="text-center space-y-0.5">
+                  <div className="w-48 mx-auto border-b border-zinc-400 pb-7 mb-0.5" />
+                  <p className="font-bold text-[11px] text-zinc-900">{nombreMedico}</p>
+                  <p className="text-[10px] text-zinc-600">{especialidadNombre}</p>
+                  <p className="text-[9px] text-zinc-500 font-mono">C.M. / Lic: {colegiadoMedico}</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </DialogContent>
+
+      {/* ── MODAL DE CONFIGURACIÓN DE ACOMPAÑANTE PARA CONSTANCIA ── */}
+      <Dialog open={modalAcompananteOpen} onOpenChange={setModalAcompananteOpen}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden bg-background border-border shadow-2xl">
+          <DialogHeader className="p-5 pb-4 border-b border-border/70 bg-muted/20">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                <Users className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">
+                  Constancia de Asistencia Médica
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  ¿El paciente asistió a la consulta con un acompañante?
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            {/* Opciones Principales: Tarjetas Interactivas Sí / No */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setTempTieneAcompanante(false)}
+                className={cn(
+                  'p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer',
+                  !tempTieneAcompanante
+                    ? 'bg-primary/5 border-primary ring-2 ring-primary/20 shadow-xs'
+                    : 'bg-card border-border/80 hover:border-border hover:bg-muted/30 text-muted-foreground'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className={cn('p-1.5 rounded-lg', !tempTieneAcompanante ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
+                    <User className="h-4 w-4" />
+                  </div>
+                  {!tempTieneAcompanante && <Check className="h-4 w-4 text-primary" />}
+                </div>
+                <div>
+                  <h4 className={cn('text-xs font-bold', !tempTieneAcompanante ? 'text-foreground' : 'text-foreground/80')}>
+                    No (Solo Paciente)
+                  </h4>
+                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                    Se emite constancia individual únicamente para el paciente.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTempTieneAcompanante(true)}
+                className={cn(
+                  'p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer',
+                  tempTieneAcompanante
+                    ? 'bg-indigo-500/10 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+                    : 'bg-card border-border/80 hover:border-border hover:bg-muted/30 text-muted-foreground'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className={cn('p-1.5 rounded-lg', tempTieneAcompanante ? 'bg-indigo-600 text-white' : 'bg-muted text-muted-foreground')}>
+                    <Users className="h-4 w-4" />
+                  </div>
+                  {tempTieneAcompanante && <Check className="h-4 w-4 text-indigo-600" />}
+                </div>
+                <div>
+                  <h4 className={cn('text-xs font-bold', tempTieneAcompanante ? 'text-foreground' : 'text-foreground/80')}>
+                    Sí (Con Acompañante)
+                  </h4>
+                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                    Se acredita e incluye al acompañante en el justificante.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {/* Formulario de Datos del Acompañante (Si la respuesta es Sí) */}
+            {tempTieneAcompanante && (
+              <div className="space-y-3.5 pt-2 border-t border-border/60 animate-in fade-in-50 duration-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <UserPlus className="h-3.5 w-3.5 text-indigo-600" />
+                    Datos del Acompañante
+                  </span>
+
+                  {consulta?.paciente?.contacto_emergencia_nombre && (
+                    <button
+                      type="button"
+                      onClick={handleCargarContactoEmergencia}
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <HeartHandshake className="h-3 w-3" />
+                      <span>Cargar contacto de emergencia</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground">
+                      Nombre(s) del Acompañante <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. María Elena"
+                      value={tempDatosAcompanante.nombres}
+                      onChange={(e) =>
+                        setTempDatosAcompanante({ ...tempDatosAcompanante, nombres: e.target.value })
+                      }
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground">
+                      Apellido(s) del Acompañante <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Rodríguez López"
+                      value={tempDatosAcompanante.apellidos}
+                      onChange={(e) =>
+                        setTempDatosAcompanante({ ...tempDatosAcompanante, apellidos: e.target.value })
+                      }
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground">
+                      Documento de Identidad (Cédula / DNI)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. V-14.234.567 / 12345678"
+                      value={tempDatosAcompanante.documento}
+                      onChange={(e) =>
+                        setTempDatosAcompanante({ ...tempDatosAcompanante, documento: e.target.value })
+                      }
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground">
+                      Parentesco con el Paciente <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={tempDatosAcompanante.parentesco}
+                      onChange={(e) =>
+                        setTempDatosAcompanante({ ...tempDatosAcompanante, parentesco: e.target.value })
+                      }
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    >
+                      <option value="Madre">Madre</option>
+                      <option value="Padre">Padre</option>
+                      <option value="Cónyuge / Esposo(a)">Cónyuge / Esposo(a)</option>
+                      <option value="Hijo / Hija">Hijo / Hija</option>
+                      <option value="Hermano / Hermana">Hermano / Hermana</option>
+                      <option value="Tutor / Representante Legal">Tutor / Representante Legal</option>
+                      <option value="Abuelo / Abuela">Abuelo / Abuela</option>
+                      <option value="Tío / Tía">Tío / Tía</option>
+                      <option value="Familiar">Familiar</option>
+                      <option value="Acompañante">Acompañante</option>
+                      <option value="Otro">Otro (Especificar)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {tempDatosAcompanante.parentesco === 'Otro' && (
+                  <div className="space-y-1 animate-in fade-in-50 duration-150">
+                    <label className="text-[11px] font-semibold text-foreground">
+                      Especifique el Parentesco o Relación
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Prima / Vecino / Cuidador"
+                      value={tempDatosAcompanante.otroParentesco}
+                      onChange={(e) =>
+                        setTempDatosAcompanante({ ...tempDatosAcompanante, otroParentesco: e.target.value })
+                      }
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="p-4 border-t border-border/70 bg-muted/20 flex sm:justify-between items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalAcompananteOpen(false)}
+              className="cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleGuardarAcompanante}
+              disabled={
+                tempTieneAcompanante &&
+                (!tempDatosAcompanante.nombres.trim() || !tempDatosAcompanante.apellidos.trim())
+              }
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <Check className="h-4 w-4" />
+              <span>Guardar y Ver Constancia</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };
 
 export default DocumentosImpresionModal;
+
