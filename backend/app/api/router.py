@@ -15,6 +15,7 @@ from app.api.v1.especialidades import router as especialidades_router
 from app.api.v1.medicos import router as medicos_router
 from app.api.v1.pacientes import router as pacientes_router
 from app.api.v1.citas import router as citas_router
+from app.api.v1.preconsultas import router as preconsultas_router
 
 api_router = APIRouter()
 
@@ -34,3 +35,5 @@ api_router.include_router(especialidades_router)
 api_router.include_router(medicos_router)
 api_router.include_router(pacientes_router)
 api_router.include_router(citas_router)
+api_router.include_router(preconsultas_router)
+

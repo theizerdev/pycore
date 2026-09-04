@@ -31,6 +31,7 @@ import { EspecialidadesPage } from './pages/clinica/EspecialidadesPage';
 import { DoctoresPage } from './pages/clinica/DoctoresPage';
 import { PacientesPage } from './pages/clinica/PacientesPage';
 import { AgendaCalendarioPage } from './pages/clinica/AgendaCalendarioPage';
+import { PreconsultaPublicPage } from './pages/clinica/PreconsultaPublicPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
@@ -46,6 +47,7 @@ export const App: React.FC = () => {
             <Route path="/register" element={<Login initialView="register" />} />
             <Route path="/verify-whatsapp" element={<Login initialView="verify-whatsapp" />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/preconsulta/:token" element={<PreconsultaPublicPage />} />
 
             {/* Rutas Protegidas dentro de AdminLayout */}
             <Route
