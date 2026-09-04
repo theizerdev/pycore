@@ -7,11 +7,17 @@ from app.models.base import TimestampMixin
 class ConsultaMedica(Base, TimestampMixin):
     __tablename__ = "consultas_medicas"
 
+    # Código único correlativo de la consulta clínica (ej. CON-20260904-0001)
+    codigo = Column(String(50), unique=True, nullable=True, index=True)
+
     empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id", ondelete="SET NULL"), nullable=True, index=True)
+    cita_id = Column(Integer, ForeignKey("citas_medicas.id", ondelete="SET NULL"), nullable=True, index=True)
     paciente_id = Column(Integer, ForeignKey("pacientes.id", ondelete="CASCADE"), nullable=False, index=True)
     medico_id = Column(Integer, ForeignKey("medicos.id", ondelete="RESTRICT"), nullable=False, index=True)
     especialidad_id = Column(Integer, ForeignKey("especialidades.id", ondelete="RESTRICT"), nullable=False, index=True)
-    sucursal_id = Column(Integer, ForeignKey("sucursales.id", ondelete="SET NULL"), nullable=True, index=True)
+    preconsulta_id = Column(Integer, ForeignKey("preconsultas.id", ondelete="SET NULL"), nullable=True, index=True)
+    creado_por = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
 
     fecha_consulta = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     motivo_consulta = Column(String(255), nullable=False)
@@ -24,7 +30,7 @@ class ConsultaMedica(Base, TimestampMixin):
     datos_plantilla = Column(JSON, default=dict, nullable=False)
 
     # Diagnóstico CIE-10 y Plan
-    diagnostico_principal = Column(String(255), nullable=False)
+    diagnostico_principal = Column(String(255), nullable=True)
     diagnosticos_secundarios = Column(JSON, default=list, nullable=False)
     plan_tratamiento = Column(Text, nullable=True)
 
@@ -32,12 +38,15 @@ class ConsultaMedica(Base, TimestampMixin):
     receta_medica = Column(JSON, default=list, nullable=False)
     indicaciones_generales = Column(Text, nullable=True)
 
-    # Estado de la atención: 'en_curso', 'finalizada', 'anulada'
-    estado = Column(String(30), default="finalizada", nullable=False)
+    # Estado de la atención: 'en_espera', 'en_curso', 'finalizada', 'anulada'
+    estado = Column(String(30), default="en_espera", nullable=False, index=True)
 
     # Relaciones
     empresa = relationship("Empresa", lazy="selectin")
+    sucursal = relationship("Sucursal", lazy="selectin")
+    cita = relationship("CitaMedica", lazy="selectin")
     paciente = relationship("Paciente", back_populates="consultas", lazy="selectin")
     medico = relationship("Medico", lazy="selectin")
     especialidad = relationship("Especialidad", lazy="selectin")
-    sucursal = relationship("Sucursal", lazy="selectin")
+    preconsulta = relationship("Preconsulta", back_populates="consulta", lazy="selectin")
+    usuario_creador = relationship("Usuario", foreign_keys=[creado_por], lazy="selectin")

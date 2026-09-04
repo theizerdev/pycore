@@ -48,7 +48,7 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    print("❌ ERROR NO CONTROLADO EN FASTAPI:")
+    print("[ERROR NO CONTROLADO EN FASTAPI]:")
     traceback.print_exc()
     origin = request.headers.get("origin")
     headers = {}

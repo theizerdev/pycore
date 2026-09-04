@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_permission
+import uuid
 from app.models.usuario import Usuario
 from app.models.empresa import Empresa
 from app.models.sucursal import Sucursal
@@ -15,6 +16,8 @@ from app.models.especialidad import Especialidad
 from app.models.medico import Medico
 from app.models.paciente import Paciente
 from app.models.cita import CitaMedica
+from app.models.preconsulta import Preconsulta
+from app.models.consulta import ConsultaMedica
 from app.models.auditoria import AuditoriaLog
 from app.schemas.cita import (
     CitaCreate,
@@ -80,6 +83,16 @@ def build_cita_response(c: CitaMedica) -> CitaResponse:
         created_at=c.created_at,
         updated_at=c.updated_at,
     )
+
+
+def get_empresa_codigo_pais(empresa: Optional[Empresa]) -> str:
+    """Obtiene el código telefónico internacional del país de la empresa (default: '58')."""
+    if empresa:
+        if empresa.pais_telefono and empresa.pais_telefono.codigo_telefonico:
+            return empresa.pais_telefono.codigo_telefonico
+        if empresa.pais and empresa.pais.codigo_telefonico:
+            return empresa.pais.codigo_telefonico
+    return "58"
 
 
 @router.get("", response_model=List[CitaResponse])
@@ -407,6 +420,105 @@ async def cambiar_estado_cita(
         cita.motivo_cancelacion = payload.motivo_cancelacion
 
     cita.updated_at = datetime.now()
+
+    # Si el nuevo estado es "sala_espera", se inserta en la tabla de consulta y se genera la preconsulta
+    if payload.estado == "sala_espera":
+        # Verificar si ya existe una consulta médica generada para esta cita
+        res_con_exist = await db.execute(
+            select(ConsultaMedica).where(ConsultaMedica.cita_id == cita.id)
+        )
+        con_existente = res_con_exist.scalar_one_or_none()
+
+        if not con_existente:
+            # 1. Crear o recuperar el registro de preconsulta
+            res_pre_exist = await db.execute(
+                select(Preconsulta).where(Preconsulta.cita_id == cita.id)
+            )
+            preconsulta = res_pre_exist.scalar_one_or_none()
+            if not preconsulta:
+                preconsulta = Preconsulta(
+                    token=uuid.uuid4().hex,
+                    empresa_id=cita.empresa_id,
+                    sucursal_id=cita.sucursal_id,
+                    cita_id=cita.id,
+                    paciente_id=cita.paciente_id,
+                    medico_id=cita.medico_id,
+                    especialidad_id=cita.especialidad_id,
+                    respuestas={},
+                    estado="pendiente",
+                    whatsapp_enviado=False,
+                )
+                db.add(preconsulta)
+                await db.flush()
+
+            # 2. Generar correlativo de código de consulta (ej. CON-YYYYMMDD-0001)
+            fecha_str = datetime.now().strftime("%Y%m%d")
+            codigo_consulta = f"CON-{fecha_str}-{cita.id:04d}"
+
+            # 3. Insertar registro en la tabla de consultas
+            nueva_consulta = ConsultaMedica(
+                codigo=codigo_consulta,
+                cita_id=cita.id,
+                paciente_id=cita.paciente_id,
+                medico_id=cita.medico_id,
+                especialidad_id=cita.especialidad_id,
+                fecha_consulta=datetime.now(),
+                preconsulta_id=preconsulta.id,
+                motivo_consulta=cita.motivo or "Consulta médica programada",
+                estado="en_espera",
+                empresa_id=cita.empresa_id,
+                sucursal_id=cita.sucursal_id,
+                creado_por=current_user.id,
+            )
+            db.add(nueva_consulta)
+            await db.flush()
+
+            # 4. Despachar mensaje por WhatsApp al paciente con el enlace de preconsulta
+            try:
+                res_pac = await db.execute(
+                    select(Paciente).where(Paciente.id == cita.paciente_id)
+                )
+                paciente = res_pac.scalar_one_or_none()
+
+                if paciente and paciente.telefono:
+                    clean_phone = format_clean_whatsapp_number(
+                        paciente.telefono, paciente.pais_codigo_telefonico or "58"
+                    )
+                    if clean_phone:
+                        res_emp = await db.execute(select(Empresa.nombre).where(Empresa.id == cita.empresa_id))
+                        nombre_clinica = res_emp.scalar() or "Centro Médico"
+
+                        res_med = await db.execute(select(Medico).where(Medico.id == cita.medico_id))
+                        medico = res_med.scalar_one_or_none()
+                        nombre_doc = f"{medico.nombres} {medico.apellidos}" if medico else "Especialista"
+
+                        res_esp = await db.execute(select(Especialidad.nombre).where(Especialidad.id == cita.especialidad_id))
+                        esp_nombre = res_esp.scalar() or "Consulta Médica"
+
+                        # URL para que el paciente abra la preconsulta desde su móvil
+                        preconsulta_url = f"http://localhost:5173/preconsulta/{preconsulta.token}"
+
+                        mensaje_ws = (
+                            f"👋 ¡Hola *{paciente.nombres}*!\n\n"
+                            f"Le damos la bienvenida a la sala de espera de *{nombre_clinica}*.\n\n"
+                            f"🩺 *Especialidad:* {esp_nombre}\n"
+                            f"👨‍⚕️ *Especialista:* Dr(a). {nombre_doc}\n\n"
+                            f"📋 Para agilizar su atención médica, por favor complete este breve formulario de *Preconsulta* desde su teléfono mientras espera su turno:\n\n"
+                            f"👉 {preconsulta_url}\n\n"
+                            f"¡Pronto será llamado a su consulta médica! 🩺✨"
+                        )
+
+                        send_res = await WhatsAppService.send_message(
+                            to=clean_phone,
+                            message=mensaje_ws,
+                            sync=False,
+                            simulate_typing=False,
+                        )
+                        if send_res.get("success"):
+                            preconsulta.whatsapp_enviado = True
+                            preconsulta.whatsapp_enviado_at = datetime.now()
+            except Exception as err_ws:
+                logger.warning(f"No se pudo despachar WhatsApp de preconsulta en sala de espera: {err_ws}")
 
     # Auditoría del cambio de estado
     db.add(
