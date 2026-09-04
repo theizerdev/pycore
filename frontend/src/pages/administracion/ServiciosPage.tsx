@@ -9,6 +9,21 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
+import { Switch } from '../../components/ui/switch';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '../../components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +36,6 @@ import {
   Layers,
   Plus,
   Search,
-  Filter,
   Stethoscope,
   Clock,
   DollarSign,
@@ -32,14 +46,13 @@ import {
   AlertCircle,
   Sparkles,
   LayoutGrid,
-  List,
-  UserCheck,
-  Building2,
-  FlaskConical,
+  List as ListIcon,
   Activity,
-  HeartPulse,
   Info,
   RefreshCw,
+  Sliders,
+  ShieldCheck,
+  Building2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
@@ -57,6 +70,10 @@ const CATEGORIAS_SERVICIOS = [
 export const ServiciosPage: React.FC = () => {
   const { hasPermission, sucursalActiva } = useAuth();
   const { formatMoney } = useRegional();
+
+  const canCreate = hasPermission('servicios.crear');
+  const canEdit = hasPermission('servicios.editar');
+  const canDelete = hasPermission('servicios.eliminar');
 
   // Estados principales
   const [servicios, setServicios] = useState<Servicio[]>([]);
@@ -94,19 +111,32 @@ export const ServiciosPage: React.FC = () => {
     activo: true,
   });
 
-  // Carga inicial
+  // Carga de datos resiliente
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [serviciosRes, especialidadesRes] = await Promise.all([
+      const results = await Promise.allSettled([
         serviciosApi.list({ sucursal_id: sucursalActiva?.id }),
         especialidadesApi.list({ activo: true, sucursal_id: sucursalActiva?.id }),
       ]);
-      setServicios(serviciosRes);
-      setEspecialidades(especialidadesRes);
+
+      if (results[0].status === 'fulfilled') {
+        setServicios(results[0].value || []);
+      } else {
+        console.error('Error cargando servicios:', results[0].reason);
+      }
+
+      if (results[1].status === 'fulfilled') {
+        setEspecialidades(results[1].value || []);
+      } else {
+        console.error('Error cargando especialidades:', results[1].reason);
+      }
+
+      if (results[0].status === 'rejected' && results[1].status === 'rejected') {
+        toast.error('No se pudieron cargar los servicios médicos');
+      }
     } catch (error) {
-      console.error('Error cargando servicios y especialidades:', error);
-      toast.error('No se pudieron cargar los servicios médicos');
+      console.error('Error general cargando datos:', error);
     } finally {
       setLoading(false);
     }
@@ -119,18 +149,15 @@ export const ServiciosPage: React.FC = () => {
   // Filtrado reactivo
   const filteredServicios = useMemo(() => {
     return servicios.filter((s) => {
-      // Filtro especialidad
       if (selectedEspecialidadId !== 'all' && s.especialidad_id !== selectedEspecialidadId) {
         return false;
       }
-      // Filtro categoría
       if (selectedCategoria !== 'all' && s.categoria !== selectedCategoria) {
         return false;
       }
-      // Filtro estado
       if (statusFilter === 'active' && !s.activo) return false;
       if (statusFilter === 'inactive' && s.activo) return false;
-      // Búsqueda
+
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchNombre = s.nombre.toLowerCase().includes(query);
@@ -152,7 +179,7 @@ export const ServiciosPage: React.FC = () => {
     return counts;
   }, [servicios]);
 
-  // Métricas rápidas
+  // Métricas y KPIs
   const stats = useMemo(() => {
     const total = servicios.length;
     const activos = servicios.filter((s) => s.activo).length;
@@ -229,16 +256,18 @@ export const ServiciosPage: React.FC = () => {
       if (editingServicio) {
         const updated = await serviciosApi.update(editingServicio.id, formData);
         setServicios((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-        toast.success('Servicio médico actualizado correctamente');
+        toast.success(`Servicio '${updated.nombre}' actualizado correctamente`);
       } else {
         const created = await serviciosApi.create(formData);
         setServicios((prev) => [created, ...prev]);
-        toast.success('Servicio médico creado exitosamente');
+        toast.success(`Servicio '${created.nombre}' creado exitosamente`);
       }
       setModalOpen(false);
     } catch (error: any) {
       console.error('Error guardando servicio:', error);
-      toast.error(error.response?.data?.detail || 'Error al guardar el servicio');
+      toast.error('Error al guardar servicio', {
+        description: error.response?.data?.detail || 'Ocurrió un error inesperado',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -246,14 +275,17 @@ export const ServiciosPage: React.FC = () => {
 
   // Toggle rápido de estado Activo/Inactivo
   const handleToggleActivo = async (servicio: Servicio) => {
+    if (!canEdit) return;
     try {
       const updated = await serviciosApi.update(servicio.id, { activo: !servicio.activo });
       setServicios((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       toast.success(
-        `Servicio ${updated.activo ? 'activado' : 'inactivado'} correctamente`
+        `Servicio '${servicio.nombre}' ${updated.activo ? 'activado' : 'inactivado'} correctamente`
       );
-    } catch (error) {
-      toast.error('Error al cambiar el estado del servicio');
+    } catch (error: any) {
+      toast.error('No se pudo cambiar el estado del servicio', {
+        description: error.response?.data?.detail || 'Error al actualizar el estado',
+      });
     }
   };
 
@@ -264,11 +296,13 @@ export const ServiciosPage: React.FC = () => {
       setSubmitting(true);
       await serviciosApi.delete(servicioToDelete.id);
       setServicios((prev) => prev.filter((s) => s.id !== servicioToDelete.id));
-      toast.success('Servicio médico eliminado exitosamente');
+      toast.success(`Servicio '${servicioToDelete.nombre}' eliminado exitosamente`);
       setDeleteModalOpen(false);
       setServicioToDelete(null);
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Error al eliminar el servicio');
+      toast.error('Error al eliminar servicio', {
+        description: error.response?.data?.detail || 'No se pudo eliminar el registro',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -280,216 +314,238 @@ export const ServiciosPage: React.FC = () => {
       setSeeding(true);
       const res = await serviciosApi.seedDefaults(sucursalActiva?.id);
       setServicios(res);
-      toast.success('Catálogo de servicios sugeridos generado con éxito');
+      toast.success('Catálogo de servicios sugeridos sincronizado con éxito');
     } catch (error: any) {
       console.error('Error generando servicios sugeridos:', error);
-      toast.error(error.response?.data?.detail || 'Error al generar servicios sugeridos');
+      toast.error('Error al sincronizar servicios sugeridos', {
+        description: error.response?.data?.detail || 'No se pudieron generar los servicios',
+      });
     } finally {
       setSeeding(false);
     }
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* ── CABECERA PRINCIPAL ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 pb-12">
+      {/* ── CABECERA Y ACCIONES SUPERIORES ────────────────────────────── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
-              <Layers className="h-6 w-6" />
+            <div className="flex size-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 shadow-xs">
+              <Layers className="size-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-foreground">
-                Servicios Médicos
+              <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                <span>Servicios</span>
+                <Badge variant="outline" className="text-xs font-mono font-medium border-teal-500/30 text-teal-600 dark:text-teal-400 bg-teal-500/5">
+                  MEDISOFT Clínico
+                </Badge>
               </h1>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Catálogo de prestaciones, consultas, estudios y procedimientos según cada especialidad médica
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                Catálogo de prestaciones, consultas, procedimientos y estudios clínicos por especialidad
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {hasPermission('servicios.crear') && (
-            <>
-              <Button
-                variant="outline"
-                onClick={handleSeedDefaults}
-                disabled={seeding || loading}
-                className="gap-2 text-xs font-semibold cursor-pointer border-border hover:bg-muted"
-              >
-                <Sparkles className={cn('h-4 w-4 text-amber-500', seeding && 'animate-spin')} />
-                <span>{seeding ? 'Generando...' : 'Generar Sugeridos'}</span>
-              </Button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {canCreate && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSeedDefaults}
+              disabled={seeding || loading}
+              className="border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer text-xs"
+            >
+              <Sparkles className={cn('size-4 mr-1.5 text-teal-500', seeding && 'animate-spin')} />
+              <span>{seeding ? 'Sincronizando...' : 'Sincronizar Catálogo Sugerido'}</span>
+            </Button>
+          )}
 
-              <Button
-                onClick={handleOpenCreate}
-                className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shadow-md cursor-pointer"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Nuevo Servicio</span>
-              </Button>
-            </>
+          {canCreate && (
+            <Button
+              onClick={handleOpenCreate}
+              size="sm"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs cursor-pointer text-xs"
+            >
+              <Plus className="size-4 mr-1.5" />
+              <span>Nuevo Servicio</span>
+            </Button>
           )}
         </div>
       </div>
 
-      {/* ── TARJETAS DE ESTADÍSTICAS RÁPIDAS ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Total Servicios</span>
-            <Layers className="h-4 w-4 text-primary" />
-          </div>
-          <p className="text-2xl font-black text-foreground">{stats.total}</p>
-          <p className="text-[10px] text-muted-foreground">Prestaciones registradas</p>
-        </div>
+      {/* ── TARJETAS KPI DE RESUMEN ───────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Total Servicios</p>
+              <h3 className="text-2xl font-black text-foreground mt-1">{stats.total}</h3>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Layers className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Servicios Activos</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </div>
-          <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{stats.activos}</p>
-          <p className="text-[10px] text-muted-foreground">Disponibles para citas y facturación</p>
-        </div>
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Activos en Servicio</p>
+              <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{stats.activos}</h3>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <Activity className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Especialidades</span>
-            <Stethoscope className="h-4 w-4 text-sky-500" />
-          </div>
-          <p className="text-2xl font-black text-foreground">
-            {stats.especialidadesConServicios} / {especialidades.length}
-          </p>
-          <p className="text-[10px] text-muted-foreground">Especialidades con catálogo asignado</p>
-        </div>
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Especialidades</p>
+              <h3 className="text-2xl font-black text-teal-600 dark:text-teal-400 mt-1">
+                {stats.especialidadesConServicios} / {especialidades.length}
+              </h3>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+              <Stethoscope className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Tarifa Promedio</span>
-            <DollarSign className="h-4 w-4 text-violet-500" />
-          </div>
-          <p className="text-2xl font-black text-foreground font-mono">
-            {formatMoney(stats.precioPromedio)}
-          </p>
-          <p className="text-[10px] text-muted-foreground">Costo base promedio por servicio</p>
-        </div>
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Tarifa Promedio</p>
+              <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1 font-mono">
+                {formatMoney(stats.precioPromedio)}
+              </h3>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <DollarSign className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* ── BARRA DE PESTAÑAS POR ESPECIALIDAD MÉDICA ── */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-            <Stethoscope className="h-3.5 w-3.5 text-primary" />
-            Filtrar por Especialidad Médica:
-          </span>
-        </div>
+      {/* ── BARRA DE PESTAÑAS POR ESPECIALIDAD MÉDICA ─────────────────── */}
+      {especialidades.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Stethoscope className="size-3.5 text-primary" />
+              Filtrar por Especialidad Médica:
+            </span>
+          </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-          <button
-            type="button"
-            onClick={() => setSelectedEspecialidadId('all')}
-            className={cn(
-              'px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition-all border flex items-center gap-2 cursor-pointer',
-              selectedEspecialidadId === 'all'
-                ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 border-border/80'
-            )}
-          >
-            <span>Todas las Especialidades</span>
-            <span
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+            <button
+              type="button"
+              onClick={() => setSelectedEspecialidadId('all')}
               className={cn(
-                'text-[10px] font-bold px-1.5 py-0.2 rounded-full',
+                'px-3.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all border flex items-center gap-2 cursor-pointer',
                 selectedEspecialidadId === 'all'
-                  ? 'bg-primary-foreground/20 text-primary-foreground'
-                  : 'bg-muted text-muted-foreground'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                  : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 border-border/80'
               )}
             >
-              {servicios.length}
-            </span>
-          </button>
-
-          {especialidades.map((esp) => {
-            const count = especialidadCounts[esp.id] || 0;
-            const isSelected = selectedEspecialidadId === esp.id;
-            return (
-              <button
-                key={esp.id}
-                type="button"
-                onClick={() => setSelectedEspecialidadId(esp.id)}
+              <span>Todas las Especialidades</span>
+              <span
                 className={cn(
-                  'px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition-all border flex items-center gap-2 cursor-pointer',
-                  isSelected
-                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                    : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 border-border/80'
+                  'text-[10px] font-bold px-1.5 py-0.2 rounded-full',
+                  selectedEspecialidadId === 'all'
+                    ? 'bg-primary-foreground/20 text-primary-foreground'
+                    : 'bg-muted text-muted-foreground'
                 )}
               >
-                <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: esp.color || '#0ea5e9' }}
-                />
-                <span>{esp.nombre}</span>
-                <span
+                {servicios.length}
+              </span>
+            </button>
+
+            {especialidades.map((esp) => {
+              const count = especialidadCounts[esp.id] || 0;
+              const isSelected = selectedEspecialidadId === esp.id;
+              return (
+                <button
+                  key={esp.id}
+                  type="button"
+                  onClick={() => setSelectedEspecialidadId(esp.id)}
                   className={cn(
-                    'text-[10px] font-bold px-1.5 py-0.2 rounded-full',
+                    'px-3.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all border flex items-center gap-2 cursor-pointer',
                     isSelected
-                      ? 'bg-primary-foreground/20 text-primary-foreground'
-                      : 'bg-muted text-muted-foreground'
+                      ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                      : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 border-border/80'
                   )}
                 >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: esp.color || '#0ea5e9' }}
+                  />
+                  <span>{esp.nombre}</span>
+                  <span
+                    className={cn(
+                      'text-[10px] font-bold px-1.5 py-0.2 rounded-full',
+                      isSelected
+                        ? 'bg-primary-foreground/20 text-primary-foreground'
+                        : 'bg-muted text-muted-foreground'
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ── BARRA DE BÚSQUEDA Y FILTROS SECUNDARIOS ── */}
-      <div className="p-3 sm:p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex-1 flex flex-col sm:flex-row items-center gap-2.5">
-          <div className="relative w-full sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      {/* ── BARRA DE BÚSQUEDA Y FILTROS SECUNDARIOS ──────────────────── */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-2xs md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
+          {/* Input de Búsqueda */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <Input
               type="text"
-              placeholder="Buscar servicio por nombre, código o descripción..."
+              placeholder="Buscar por nombre, código o descripción..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 text-xs h-9 bg-background"
+              className="pl-9 h-9 text-xs"
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            {/* Filtro de Categoría */}
-            <select
-              value={selectedCategoria}
-              onChange={(e) => setSelectedCategoria(e.target.value)}
-              className="h-9 px-3 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
-            >
-              <option value="all">Todas las Categorías</option>
+          {/* Filtro por Categoría */}
+          <Select value={selectedCategoria} onValueChange={(val) => setSelectedCategoria(val)}>
+            <SelectTrigger className="w-[180px] h-9 text-xs">
+              <SelectValue placeholder="Categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">Todas las Categorías</SelectItem>
               {CATEGORIAS_SERVICIOS.map((cat) => (
-                <option key={cat.id} value={cat.id}>
+                <SelectItem key={cat.id} value={cat.id} className="text-xs">
                   {cat.label}
-                </option>
+                </SelectItem>
               ))}
-            </select>
+            </SelectContent>
+          </Select>
 
-            {/* Filtro de Estado */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="h-9 px-3 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
-            >
-              <option value="all">Todos los Estados</option>
-              <option value="active">Solo Activos</option>
-              <option value="inactive">Solo Inactivos</option>
-            </select>
-          </div>
+          {/* Filtro por Estado */}
+          <Select value={statusFilter} onValueChange={(val: any) => setStatusFilter(val)}>
+            <SelectTrigger className="w-[140px] h-9 text-xs">
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">Todos los Estados</SelectItem>
+              <SelectItem value="active" className="text-xs">Solo Activos</SelectItem>
+              <SelectItem value="inactive" className="text-xs">Solo Inactivos</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Toggle de Vista Grid / Table */}
-        <div className="flex items-center gap-1 self-end md:self-auto border border-border/80 p-1 rounded-xl bg-muted/30">
+        <div className="flex items-center gap-1 border border-border/80 p-1 rounded-xl bg-muted/30 shrink-0 self-end md:self-auto">
           <Button
             type="button"
             size="sm"
@@ -498,7 +554,7 @@ export const ServiciosPage: React.FC = () => {
             className="h-7 w-7 p-0 cursor-pointer"
             title="Vista en Tarjetas"
           >
-            <LayoutGrid className="h-4 w-4" />
+            <LayoutGrid className="size-4" />
           </Button>
           <Button
             type="button"
@@ -508,53 +564,55 @@ export const ServiciosPage: React.FC = () => {
             className="h-7 w-7 p-0 cursor-pointer"
             title="Vista en Tabla"
           >
-            <List className="h-4 w-4" />
+            <ListIcon className="size-4" />
           </Button>
         </div>
       </div>
 
-      {/* ── CONTENIDO PRINCIPAL: GRID / TABLE / EMPTY ── */}
+      {/* ── CONTENIDO PRINCIPAL: GRID / TABLE / EMPTY ────────────────── */}
       {loading ? (
         <div className="py-20 text-center space-y-3">
-          <RefreshCw className="h-8 w-8 text-primary animate-spin mx-auto" />
+          <RefreshCw className="size-8 text-teal-600 animate-spin mx-auto" />
           <p className="text-xs text-muted-foreground font-semibold">Cargando catálogo de servicios...</p>
         </div>
       ) : filteredServicios.length === 0 ? (
-        <div className="py-16 text-center border-2 border-dashed border-border/80 rounded-2xl bg-card/40 space-y-3 p-6">
-          <div className="p-3.5 rounded-2xl bg-primary/10 text-primary inline-block">
-            <Layers className="h-8 w-8" />
-          </div>
-          <div className="max-w-md mx-auto space-y-1">
-            <h3 className="text-base font-bold text-foreground">No se encontraron servicios médicos</h3>
-            <p className="text-xs text-muted-foreground">
-              {searchQuery || selectedEspecialidadId !== 'all' || selectedCategoria !== 'all'
-                ? 'No hay servicios que coincidan con los filtros seleccionados. Intente ajustar los criterios de búsqueda.'
-                : 'Aún no se han registrado servicios en esta empresa. Puede generar el catálogo sugerido automáticamente o crear uno nuevo.'}
-            </p>
-          </div>
-          {hasPermission('servicios.crear') && (
-            <div className="pt-2 flex items-center justify-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSeedDefaults}
-                disabled={seeding}
-                className="gap-2 text-xs font-semibold cursor-pointer"
-              >
-                <Sparkles className="h-4 w-4 text-amber-500" />
-                <span>Generar Servicios Sugeridos</span>
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleOpenCreate}
-                className="gap-2 bg-primary text-primary-foreground text-xs font-bold shadow-xs cursor-pointer"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Nuevo Servicio</span>
-              </Button>
+        <Card className="border-2 border-dashed border-border/80 bg-card/40">
+          <CardContent className="py-16 text-center space-y-3 p-6">
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 shadow-xs mx-auto">
+              <Layers className="size-7" />
             </div>
-          )}
-        </div>
+            <div className="max-w-md mx-auto space-y-1">
+              <h3 className="text-base font-bold text-foreground">No se encontraron servicios médicos</h3>
+              <p className="text-xs text-muted-foreground">
+                {searchQuery || selectedEspecialidadId !== 'all' || selectedCategoria !== 'all'
+                  ? 'No hay servicios que coincidan con los filtros seleccionados. Intente ajustar los criterios de búsqueda.'
+                  : 'Aún no se han registrado servicios en esta empresa. Puede generar el catálogo sugerido automáticamente o crear uno nuevo.'}
+              </p>
+            </div>
+            {canCreate && (
+              <div className="pt-2 flex items-center justify-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSeedDefaults}
+                  disabled={seeding}
+                  className="gap-2 text-xs font-semibold cursor-pointer border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                >
+                  <Sparkles className="size-4 text-teal-500" />
+                  <span>Sincronizar Catálogo Sugerido</span>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleOpenCreate}
+                  className="gap-2 bg-primary text-primary-foreground text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  <Plus className="size-4" />
+                  <span>Nuevo Servicio</span>
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       ) : viewMode === 'grid' ? (
         /* ── VISTA CUADRÍCULA DE TARJETAS ── */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -563,148 +621,148 @@ export const ServiciosPage: React.FC = () => {
             const catObj = CATEGORIAS_SERVICIOS.find((c) => c.id === s.categoria);
 
             return (
-              <div
+              <Card
                 key={s.id}
                 className={cn(
-                  'rounded-2xl border bg-card p-5 shadow-xs transition-all hover:shadow-md flex flex-col justify-between gap-4 relative overflow-hidden group',
+                  'border-border/60 bg-card/60 backdrop-blur-xs hover:border-primary/40 transition-all shadow-xs flex flex-col justify-between relative overflow-hidden group',
                   !s.activo && 'opacity-65 bg-muted/20'
                 )}
               >
-                {/* Indicador de Color lateral */}
+                {/* Indicador de Color superior/lateral */}
                 <div
-                  className="absolute top-0 left-0 bottom-0 w-1.5"
+                  className="h-1.5 w-full shrink-0"
                   style={{ backgroundColor: s.color || esp?.color || '#0ea5e9' }}
                 />
 
-                <div className="space-y-2.5 pl-1.5">
-                  {/* Fila superior: Badges */}
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-md border inline-flex items-center gap-1"
-                      style={{
-                        backgroundColor: `${esp?.color || '#0ea5e9'}15`,
-                        color: esp?.color || '#0ea5e9',
-                        borderColor: `${esp?.color || '#0ea5e9'}30`,
-                      }}
-                    >
-                      <Stethoscope className="h-3 w-3" />
-                      {esp?.nombre || 'Especialidad'}
-                    </span>
+                <CardContent className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-2.5">
+                    {/* Fila superior: Badges */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-md border inline-flex items-center gap-1"
+                        style={{
+                          backgroundColor: `${esp?.color || '#0ea5e9'}15`,
+                          color: esp?.color || '#0ea5e9',
+                          borderColor: `${esp?.color || '#0ea5e9'}30`,
+                        }}
+                      >
+                        <Stethoscope className="size-3" />
+                        {esp?.nombre || 'Especialidad'}
+                      </span>
 
-                    <span
-                      className={cn(
-                        'text-[10px] font-semibold px-2 py-0.5 rounded-md border',
-                        catObj?.color || 'bg-muted text-muted-foreground'
-                      )}
-                    >
-                      {s.categoria}
-                    </span>
-                  </div>
+                      <span
+                        className={cn(
+                          'text-[10px] font-semibold px-2 py-0.5 rounded-md border',
+                          catObj?.color || 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        {s.categoria}
+                      </span>
+                    </div>
 
-                  {/* Nombre y Código */}
-                  <div>
-                    <div className="flex items-center gap-2">
+                    {/* Nombre y Código */}
+                    <div>
                       <h4 className="font-bold text-sm text-foreground leading-snug group-hover:text-primary transition-colors">
                         {s.nombre}
                       </h4>
+                      {s.codigo && (
+                        <span className="text-[10px] font-mono font-bold text-muted-foreground bg-muted/60 px-1.5 py-0.2 rounded mt-1 inline-block">
+                          {s.codigo}
+                        </span>
+                      )}
                     </div>
-                    {s.codigo && (
-                      <span className="text-[10px] font-mono font-bold text-muted-foreground bg-muted px-1.5 py-0.2 rounded mt-1 inline-block">
-                        {s.codigo}
-                      </span>
+
+                    {/* Descripción */}
+                    {s.descripcion && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                        {s.descripcion}
+                      </p>
+                    )}
+
+                    {/* Preparación requerida si existe */}
+                    {s.preparacion_requerida && (
+                      <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
+                        <Info className="size-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                        <span className="line-clamp-2">
+                          <strong>Preparación:</strong> {s.preparacion_requerida}
+                        </span>
+                      </div>
                     )}
                   </div>
 
-                  {/* Descripción */}
-                  {s.descripcion && (
-                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                      {s.descripcion}
-                    </p>
-                  )}
-
-                  {/* Preparación requerida si existe */}
-                  {s.preparacion_requerida && (
-                    <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
-                      <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-                      <span className="line-clamp-2">
-                        <strong>Preparación:</strong> {s.preparacion_requerida}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Pie de tarjeta: Precio, Duración y Acciones */}
-                <div className="pt-3 border-t border-border/80 flex items-center justify-between gap-3 pl-1.5">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Tarifa Base</span>
-                    <p className="text-base font-black text-foreground font-mono">
-                      {formatMoney(Number(s.precio_base) || 0)}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="text-right space-y-0.5">
-                      <span className="text-[10px] uppercase font-bold text-muted-foreground">Duración</span>
-                      <p className="text-xs font-bold text-foreground flex items-center justify-end gap-1">
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                        {s.duracion_estimada_minutos} min
+                  {/* Pie de tarjeta: Precio, Duración y Acciones */}
+                  <div className="pt-3 border-t border-border/80 flex items-center justify-between gap-3 mt-2">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground">Tarifa Base</span>
+                      <p className="text-base font-black text-foreground font-mono">
+                        {formatMoney(Number(s.precio_base) || 0)}
                       </p>
                     </div>
 
-                    {/* Acciones */}
-                    <div className="flex items-center gap-1 border-l border-border/80 pl-2">
-                      {hasPermission('servicios.editar') && (
-                        <>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right space-y-0.5">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground">Duración</span>
+                        <p className="text-xs font-bold text-foreground flex items-center justify-end gap-1">
+                          <Clock className="size-3.5 text-muted-foreground" />
+                          {s.duracion_estimada_minutos} min
+                        </p>
+                      </div>
+
+                      {/* Acciones */}
+                      <div className="flex items-center gap-1 border-l border-border/80 pl-2">
+                        {canEdit && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleToggleActivo(s)}
+                              className="size-8 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                              title={s.activo ? 'Desactivar servicio' : 'Activar servicio'}
+                            >
+                              {s.activo ? (
+                                <CheckCircle2 className="size-4 text-emerald-500" />
+                              ) : (
+                                <XCircle className="size-4 text-zinc-400" />
+                              )}
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleOpenEdit(s)}
+                              className="size-8 p-0 cursor-pointer text-muted-foreground hover:text-primary"
+                              title="Editar servicio"
+                            >
+                              <Edit2 className="size-4" />
+                            </Button>
+                          </>
+                        )}
+
+                        {canDelete && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleToggleActivo(s)}
-                            className="h-8 w-8 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                            title={s.activo ? 'Desactivar servicio' : 'Activar servicio'}
+                            onClick={() => {
+                              setServicioToDelete(s);
+                              setDeleteModalOpen(true);
+                            }}
+                            className="size-8 p-0 cursor-pointer text-muted-foreground hover:text-red-500"
+                            title="Eliminar servicio"
                           >
-                            {s.activo ? (
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            ) : (
-                              <XCircle className="h-4 w-4 text-zinc-400" />
-                            )}
+                            <Trash2 className="size-4" />
                           </Button>
-
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleOpenEdit(s)}
-                            className="h-8 w-8 p-0 cursor-pointer text-muted-foreground hover:text-primary"
-                            title="Editar servicio"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-
-                      {hasPermission('servicios.eliminar') && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setServicioToDelete(s);
-                            setDeleteModalOpen(true);
-                          }}
-                          className="h-8 w-8 p-0 cursor-pointer text-muted-foreground hover:text-red-500"
-                          title="Eliminar servicio"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
       ) : (
         /* ── VISTA TABLA DE DATOS ── */
-        <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-xs">
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
@@ -748,7 +806,7 @@ export const ServiciosPage: React.FC = () => {
                             borderColor: `${esp?.color || '#0ea5e9'}30`,
                           }}
                         >
-                          <Stethoscope className="h-3 w-3" />
+                          <Stethoscope className="size-3" />
                           {esp?.nombre || 'General'}
                         </span>
                       </td>
@@ -783,33 +841,33 @@ export const ServiciosPage: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {hasPermission('servicios.editar') && (
+                          {canEdit && (
                             <>
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleToggleActivo(s)}
-                                className="h-7 w-7 p-0 cursor-pointer"
+                                className="size-7 p-0 cursor-pointer"
                                 title={s.activo ? 'Desactivar' : 'Activar'}
                               >
                                 {s.activo ? (
-                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                  <CheckCircle2 className="size-3.5 text-emerald-500" />
                                 ) : (
-                                  <XCircle className="h-3.5 w-3.5 text-zinc-400" />
+                                  <XCircle className="size-3.5 text-zinc-400" />
                                 )}
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleOpenEdit(s)}
-                                className="h-7 w-7 p-0 cursor-pointer text-muted-foreground hover:text-primary"
+                                className="size-7 p-0 cursor-pointer text-muted-foreground hover:text-primary"
                                 title="Editar"
                               >
-                                <Edit2 className="h-3.5 w-3.5" />
+                                <Edit2 className="size-3.5" />
                               </Button>
                             </>
                           )}
-                          {hasPermission('servicios.eliminar') && (
+                          {canDelete && (
                             <Button
                               size="sm"
                               variant="ghost"
@@ -817,10 +875,10 @@ export const ServiciosPage: React.FC = () => {
                                 setServicioToDelete(s);
                                 setDeleteModalOpen(true);
                               }}
-                              className="h-7 w-7 p-0 cursor-pointer text-muted-foreground hover:text-red-500"
+                              className="size-7 p-0 cursor-pointer text-muted-foreground hover:text-red-500"
                               title="Eliminar"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 className="size-3.5" />
                             </Button>
                           )}
                         </div>
@@ -831,16 +889,16 @@ export const ServiciosPage: React.FC = () => {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* ── MODAL DE CREACIÓN / EDICIÓN ── */}
+      {/* ── MODAL DE CREACIÓN / EDICIÓN ──────────────────────────────── */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-xl p-0 overflow-hidden bg-background border-border shadow-2xl">
           <DialogHeader className="p-5 pb-4 border-b border-border/70 bg-muted/20">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-primary/10 text-primary">
-                <Layers className="h-5 w-5" />
+              <div className="flex size-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                <Layers className="size-5" />
               </div>
               <div>
                 <DialogTitle className="text-base font-bold text-foreground">
@@ -859,11 +917,10 @@ export const ServiciosPage: React.FC = () => {
               <Label className="text-xs font-semibold text-foreground">
                 Especialidad Médica <span className="text-red-500">*</span>
               </Label>
-              <select
-                required
-                value={formData.especialidad_id}
-                onChange={(e) => {
-                  const espId = Number(e.target.value);
+              <Select
+                value={String(formData.especialidad_id || '')}
+                onValueChange={(val) => {
+                  const espId = Number(val);
                   const espObj = especialidades.find((x) => x.id === espId);
                   setFormData({
                     ...formData,
@@ -871,17 +928,18 @@ export const ServiciosPage: React.FC = () => {
                     color: espObj?.color || formData.color,
                   });
                 }}
-                className="w-full h-9 px-3 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
               >
-                <option value={0} disabled>
-                  -- Seleccione la Especialidad Médica --
-                </option>
-                {especialidades.map((esp) => (
-                  <option key={esp.id} value={esp.id}>
-                    {esp.nombre} {esp.codigo ? `(${esp.codigo})` : ''}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full h-9 text-xs">
+                  <SelectValue placeholder="-- Seleccione la Especialidad Médica --" />
+                </SelectTrigger>
+                <SelectContent>
+                  {especialidades.map((esp) => (
+                    <SelectItem key={esp.id} value={String(esp.id)} className="text-xs">
+                      {esp.nombre} {esp.codigo ? `(${esp.codigo})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Nombre del Servicio y Código */}
@@ -916,40 +974,39 @@ export const ServiciosPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-foreground">Categoría del Servicio</Label>
-                <select
+                <Select
                   value={formData.categoria}
-                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                  className="w-full h-9 px-3 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-medium"
+                  onValueChange={(val) => setFormData({ ...formData, categoria: val })}
                 >
-                  {CATEGORIAS_SERVICIOS.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full h-9 text-xs">
+                    <SelectValue placeholder="Categoría" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIAS_SERVICIOS.map((c) => (
+                      <SelectItem key={c.id} value={c.id} className="text-xs">
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-foreground">
-                  Tarifa / Precio Base ($) <span className="text-red-500">*</span>
+                  Tarifa / Precio Base <span className="text-red-500">*</span>
                 </Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-xs">
-                    $
-                  </span>
-                  <Input
-                    required
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    placeholder="0.00"
-                    value={formData.precio_base}
-                    onChange={(e) =>
-                      setFormData({ ...formData, precio_base: parseFloat(e.target.value) || 0 })
-                    }
-                    className="pl-7 text-xs h-9 font-mono font-bold"
-                  />
-                </div>
+                <Input
+                  required
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  placeholder="0.00"
+                  value={formData.precio_base}
+                  onChange={(e) =>
+                    setFormData({ ...formData, precio_base: parseFloat(e.target.value) || 0 })
+                  }
+                  className="text-xs h-9 font-mono font-bold"
+                />
               </div>
             </div>
 
@@ -997,7 +1054,7 @@ export const ServiciosPage: React.FC = () => {
             {/* Preparación Requerida para el Paciente */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Info className="h-3.5 w-3.5 text-amber-500" />
+                <Info className="size-3.5 text-amber-500" />
                 Indicaciones Previas / Preparación del Paciente
               </Label>
               <Textarea
@@ -1011,31 +1068,27 @@ export const ServiciosPage: React.FC = () => {
 
             {/* Toggles: Requiere Médico y Estado Activo */}
             <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/80">
-              <label className="flex items-center gap-2.5 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/30">
-                <input
-                  type="checkbox"
+              <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-card">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-semibold text-foreground cursor-pointer">Requiere Médico</Label>
+                  <p className="text-[10px] text-muted-foreground">Asigna especialista en cita</p>
+                </div>
+                <Switch
                   checked={formData.requiere_medico}
-                  onChange={(e) => setFormData({ ...formData, requiere_medico: e.target.checked })}
-                  className="rounded text-primary focus:ring-primary h-4 w-4"
+                  onCheckedChange={(checked) => setFormData({ ...formData, requiere_medico: checked })}
                 />
-                <div className="text-[11px]">
-                  <p className="font-bold text-foreground">Requiere Médico</p>
-                  <p className="text-muted-foreground text-[10px]">Asigna especialista en cita</p>
-                </div>
-              </label>
+              </div>
 
-              <label className="flex items-center gap-2.5 p-2.5 rounded-xl border border-border bg-card cursor-pointer hover:bg-muted/30">
-                <input
-                  type="checkbox"
-                  checked={formData.activo}
-                  onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-                  className="rounded text-primary focus:ring-primary h-4 w-4"
-                />
-                <div className="text-[11px]">
-                  <p className="font-bold text-foreground">Servicio Activo</p>
-                  <p className="text-muted-foreground text-[10px]">Visible para citas y caja</p>
+              <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-card">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-semibold text-foreground cursor-pointer">Servicio Activo</Label>
+                  <p className="text-[10px] text-muted-foreground">Visible para citas y caja</p>
                 </div>
-              </label>
+                <Switch
+                  checked={formData.activo}
+                  onCheckedChange={(checked) => setFormData({ ...formData, activo: checked })}
+                />
+              </div>
             </div>
 
             <DialogFooter className="p-4 -mx-5 -mb-5 mt-4 border-t border-border/70 bg-muted/20 flex sm:justify-between items-center gap-2">
@@ -1053,7 +1106,7 @@ export const ServiciosPage: React.FC = () => {
                 type="submit"
                 size="sm"
                 disabled={submitting}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-sm cursor-pointer"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-xs cursor-pointer"
               >
                 {submitting ? 'Guardando...' : editingServicio ? 'Actualizar Servicio' : 'Crear Servicio'}
               </Button>
@@ -1062,12 +1115,12 @@ export const ServiciosPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── MODAL DE CONFIRMACIÓN DE ELIMINACIÓN ── */}
+      {/* ── MODAL DE CONFIRMACIÓN DE ELIMINACIÓN ──────────────────────── */}
       <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
         <DialogContent className="max-w-md p-6 bg-background border-border shadow-2xl">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-red-500/10 text-red-600 shrink-0">
-              <AlertCircle className="h-6 w-6" />
+            <div className="flex size-10 items-center justify-center rounded-xl bg-red-500/10 text-red-600 shrink-0">
+              <AlertCircle className="size-5" />
             </div>
             <div className="space-y-1">
               <DialogTitle className="text-base font-bold text-foreground">

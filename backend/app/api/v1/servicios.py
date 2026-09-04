@@ -11,6 +11,7 @@ from app.models.especialidad import Especialidad
 from app.models.servicio import Servicio
 from app.models.sucursal import Sucursal
 from app.schemas.servicio import ServicioCreate, ServicioUpdate, ServicioResponse
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/servicios", tags=["Servicios Médicos"])
 
@@ -89,7 +90,7 @@ async def list_servicios(
     current_user: Usuario = Depends(get_current_active_user)
 ):
     await ensure_tables_exist()
-    stmt = select(Servicio)
+    stmt = select(Servicio).options(selectinload(Servicio.especialidad), selectinload(Servicio.sucursal))
 
     # 1. Filtro Multi-Tenant
     if not current_user.es_superadmin:
@@ -136,7 +137,7 @@ async def get_servicio(
     current_user: Usuario = Depends(get_current_active_user)
 ):
     await ensure_tables_exist()
-    stmt = select(Servicio).where(Servicio.id == servicio_id)
+    stmt = select(Servicio).options(selectinload(Servicio.especialidad), selectinload(Servicio.sucursal)).where(Servicio.id == servicio_id)
     if not current_user.es_superadmin:
         stmt = stmt.where(Servicio.empresa_id == current_user.empresa_id)
     
@@ -190,15 +191,27 @@ async def create_servicio(
 
     db.add(nuevo_servicio)
     await db.commit()
-    await db.refresh(nuevo_servicio)
+
+    stmt_reload = select(Servicio).options(selectinload(Servicio.especialidad), selectinload(Servicio.sucursal)).where(Servicio.id == nuevo_servicio.id)
+    res_reload = await db.execute(stmt_reload)
+    servicio_obj = res_reload.scalar_one()
 
     await registrar_auditoria(
-        db, request, current_user, "CREAR", "servicios",
-        entidad_id=nuevo_servicio.id,
-        valores_nuevos=payload.dict()
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=current_user.empresa_id,
+        accion="CREAR_SERVICIO",
+        modulo="servicios",
+        request=request,
+        detalles={
+            "servicio_id": servicio_obj.id,
+            "nombre": servicio_obj.nombre,
+            "codigo": servicio_obj.codigo,
+            "precio_base": float(servicio_obj.precio_base) if servicio_obj.precio_base else 0.0
+        }
     )
 
-    return nuevo_servicio
+    return servicio_obj
 
 @router.put("/{servicio_id}", response_model=ServicioResponse)
 async def update_servicio(
@@ -235,15 +248,31 @@ async def update_servicio(
         setattr(servicio, field, value)
 
     await db.commit()
-    await db.refresh(servicio)
+
+    stmt_reload = select(Servicio).options(selectinload(Servicio.especialidad), selectinload(Servicio.sucursal)).where(Servicio.id == servicio.id)
+    res_reload = await db.execute(stmt_reload)
+    servicio_obj = res_reload.scalar_one()
+
+    # Convertir Decimals en update_data para serialización JSON segura en auditoría
+    detalles_dict = {}
+    for k, v in update_data.items():
+        detalles_dict[k] = float(v) if hasattr(v, '__float__') and not isinstance(v, (int, float, bool)) else v
 
     await registrar_auditoria(
-        db, request, current_user, "EDITAR", "servicios",
-        entidad_id=servicio.id,
-        valores_nuevos=update_data
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=current_user.empresa_id,
+        accion="EDITAR_SERVICIO",
+        modulo="servicios",
+        request=request,
+        detalles={
+            "servicio_id": servicio_obj.id,
+            "nombre": servicio_obj.nombre,
+            "cambios": detalles_dict
+        }
     )
 
-    return servicio
+    return servicio_obj
 
 @router.delete("/{servicio_id}")
 async def delete_servicio(
@@ -262,13 +291,24 @@ async def delete_servicio(
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio médico no encontrado")
 
+    nombre_srv = servicio.nombre
+    codigo_srv = servicio.codigo
+
     await db.delete(servicio)
     await db.commit()
 
     await registrar_auditoria(
-        db, request, current_user, "ELIMINAR", "servicios",
-        entidad_id=servicio_id,
-        valores_anteriores={"nombre": servicio.nombre, "codigo": servicio.codigo}
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=current_user.empresa_id,
+        accion="ELIMINAR_SERVICIO",
+        modulo="servicios",
+        request=request,
+        detalles={
+            "servicio_id": servicio_id,
+            "nombre": nombre_srv,
+            "codigo": codigo_srv
+        }
     )
 
     return {"message": "Servicio médico eliminado exitosamente", "id": servicio_id}
@@ -352,6 +392,6 @@ async def seed_default_servicios(
             await db.refresh(s)
 
     # Retornar lista completa actualizada
-    stmt_all = select(Servicio).where(Servicio.empresa_id == empresa_id).order_by(Servicio.especialidad_id.asc(), Servicio.nombre.asc())
+    stmt_all = select(Servicio).options(selectinload(Servicio.especialidad), selectinload(Servicio.sucursal)).where(Servicio.empresa_id == empresa_id).order_by(Servicio.especialidad_id.asc(), Servicio.nombre.asc())
     res_all = await db.execute(stmt_all)
     return res_all.scalars().all()

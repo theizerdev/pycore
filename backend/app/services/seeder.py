@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from app.models.pais import Pais
 from app.models.empresa import Empresa
 from app.models.sucursal import Sucursal
@@ -491,9 +491,14 @@ async def seed_initial_data(db: AsyncSession):
         roles_map[r_data["slug"]] = rol
 
     # 3. Crear Empresa Inicial
-    stmt_emp = select(Empresa).where(Empresa.nombre.in_(["PyCore Corporation C.A.", "Centro Médico MedFlow C.A."]))
+    stmt_emp = select(Empresa).where(
+        or_(
+            Empresa.identificacion_fiscal == "J-40982314-0",
+            Empresa.nombre.in_(["PyCore Corporation C.A.", "Centro Médico MedFlow C.A."])
+        )
+    )
     res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
+    empresa = res_emp.scalars().first()
     default_pais = paises_map.get("VE")
     default_pais_id = default_pais.id if default_pais else None
 
