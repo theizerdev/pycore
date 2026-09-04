@@ -741,3 +741,53 @@ export interface CitaNotificarWhatsAppResponse {
   detalle: string;
 }
 
+// ── SERVICIOS MÉDICOS POR ESPECIALIDAD ──────────────────────────────────
+export interface Servicio {
+  id: number;
+  empresa_id: number;
+  especialidad_id: number;
+  sucursal_id?: number | null;
+  codigo?: string | null;
+  nombre: string;
+  descripcion?: string | null;
+  categoria: string; // Consulta, Procedimiento, Estudio Diagnóstico, Cirugía / Ambulatorio, Terapia / Rehabilitación, Laboratorio, Otro
+  precio_base: number;
+  duracion_estimada_minutos: number;
+  preparacion_requerida?: string | null;
+  requiere_medico: boolean;
+  color?: string | null;
+  activo: boolean;
+  especialidad?: Especialidad | null;
+  sucursal?: Sucursal | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServicioCreateInput {
+  especialidad_id: number;
+  sucursal_id?: number | null;
+  codigo?: string | null;
+  nombre: string;
+  descripcion?: string | null;
+  categoria: string;
+  precio_base: number;
+  duracion_estimada_minutos: number;
+  preparacion_requerida?: string | null;
+  requiere_medico?: boolean;
+  color?: string | null;
+  activo?: boolean;
+}
+
+export interface ServicioUpdateInput extends Partial<ServicioCreateInput> {}
+
+export interface ServicioFilterParams {
+  especialidad_id?: number | null;
+  sucursal_id?: number | null;
+  include_global?: boolean;
+  categoria?: string;
+  activo?: boolean;
+  search?: string;
+  empresa_id?: number;
+}
+
+

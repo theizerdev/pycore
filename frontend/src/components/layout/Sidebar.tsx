@@ -118,6 +118,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   </NavLink>
                 )}
 
+                {(hasPermission('servicios.ver') || user?.es_superadmin) && (
+                  <NavLink to="/administracion/servicios" onClick={onClose} className={navItemClass}>
+                    <Layers className="w-4 h-4" />
+                    <span>Servicios</span>
+                  </NavLink>
+                )}
+
                 {(hasPermission('medicos.ver') || user?.es_superadmin) && (
                   <NavLink to="/clinica/doctores" onClick={onClose} className={navItemClass}>
                     <UserCheck className="w-4 h-4" />

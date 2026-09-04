@@ -18,6 +18,7 @@ from app.models.paciente import Paciente
 from app.models.preconsulta import Preconsulta
 from app.models.consulta import ConsultaMedica
 from app.models.cita import CitaMedica
+from app.models.servicio import Servicio
 
 __all__ = [
     "Base",
@@ -45,5 +46,6 @@ __all__ = [
     "Preconsulta",
     "ConsultaMedica",
     "CitaMedica",
+    "Servicio",
 ]
 

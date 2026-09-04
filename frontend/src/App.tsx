@@ -34,6 +34,7 @@ import { AgendaCalendarioPage } from './pages/clinica/AgendaCalendarioPage';
 import { PreconsultaPublicPage } from './pages/clinica/PreconsultaPublicPage';
 import { ConsultasPage } from './pages/clinica/ConsultasPage';
 import { ConsultaAtencionPage } from './pages/clinica/ConsultaAtencionPage';
+import { ServiciosPage } from './pages/administracion/ServiciosPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
@@ -140,6 +141,18 @@ export const App: React.FC = () => {
                     <PacientesPage />
                   </ProtectedRoute>
                 }
+              />
+              <Route
+                path="administracion/servicios"
+                element={
+                  <ProtectedRoute requiredPermission="servicios.ver">
+                    <ServiciosPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/servicios"
+                element={<Navigate to="/administracion/servicios" replace />}
               />
 
               {/* Módulos de Seguridad y Multi-Tenant */}

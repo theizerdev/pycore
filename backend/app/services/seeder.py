@@ -97,6 +97,13 @@ PERMISOS_SISTEMA = [
     {"sector": "clinica", "modulo": "especialidades", "accion": "ver", "slug": "especialidades.ver", "descripcion": "Ver catálogo de especialidades médicas"},
     {"sector": "clinica", "modulo": "especialidades", "accion": "crear", "slug": "especialidades.crear", "descripcion": "Crear nuevas especialidades médicas"},
     {"sector": "clinica", "modulo": "especialidades", "accion": "editar", "slug": "especialidades.editar", "descripcion": "Editar especialidades médicas"},
+    {"sector": "clinica", "modulo": "especialidades", "accion": "eliminar", "slug": "especialidades.eliminar", "descripcion": "Eliminar o inactivar especialidades médicas"},
+
+    # Servicios Médicos por Especialidad
+    {"sector": "clinica", "modulo": "servicios", "accion": "ver", "slug": "servicios.ver", "descripcion": "Ver catálogo de servicios médicos y tarifas"},
+    {"sector": "clinica", "modulo": "servicios", "accion": "crear", "slug": "servicios.crear", "descripcion": "Crear nuevos servicios médicos y procedimientos"},
+    {"sector": "clinica", "modulo": "servicios", "accion": "editar", "slug": "servicios.editar", "descripcion": "Editar tarifas, duración y datos de servicios"},
+    {"sector": "clinica", "modulo": "servicios", "accion": "eliminar", "slug": "servicios.eliminar", "descripcion": "Eliminar o inactivar servicios médicos"},
     
     # Médicos y Especialistas
     {"sector": "clinica", "modulo": "medicos", "accion": "ver", "slug": "medicos.ver", "descripcion": "Ver directorio de médicos y especialistas"},

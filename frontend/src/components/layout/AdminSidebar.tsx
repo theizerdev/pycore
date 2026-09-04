@@ -127,6 +127,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           permission: 'especialidades.ver',
         },
         {
+          title: 'Servicios',
+          href: '/administracion/servicios',
+          icon: Layers,
+          permission: 'servicios.ver',
+        },
+        {
           title: 'Médicos y Especialistas',
           href: '/clinica/doctores',
           icon: UserCheck,
