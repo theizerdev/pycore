@@ -44,6 +44,10 @@ class ConsultaMedica(Base, TimestampMixin):
     # Orden de reposo médico
     reposo_medico = Column(JSON, default=dict, nullable=False)
 
+    # Observaciones adicionales y Referido a
+    observaciones_adicionales = Column(Text, nullable=True)
+    referido_para = Column(String(255), nullable=True)
+
     # Estado de la atención: 'en_espera', 'en_curso', 'finalizada', 'anulada'
     estado = Column(String(30), default="en_espera", nullable=False, index=True)
 

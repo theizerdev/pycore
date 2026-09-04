@@ -294,7 +294,7 @@
   }
 
   /* Ocultar elementos no imprimibles */
-  header, nav, aside, .print\\:hidden, [role="dialog"] > div:first-child, button, .fixed {
+  header, nav, aside, [role="dialog"] > div:first-child, button, .fixed {
     display: none !important;
   }
 

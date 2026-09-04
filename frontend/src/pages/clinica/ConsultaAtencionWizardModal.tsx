@@ -2570,6 +2570,8 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
               </Button>
             )}
           </div>
+        </div>
+
         {/* ── MODAL DE IMPRESIÓN DE DOCUMENTOS CLÍNICOS ── */}
         <DocumentosImpresionModal
           open={impresionModalOpen}

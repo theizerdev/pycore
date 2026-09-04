@@ -78,7 +78,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
   const nombreMedico = medico
     ? `Dr(a). ${medico.nombres} ${medico.apellidos}`
-    : `Dr(a). ${user?.nombres || ''} ${user?.apellidos || ''}`.trim() || 'Médico Tratante';
+    : `Dr(a). ${user?.nombre || ''} ${user?.apellido || ''}`.trim() || 'Médico Tratante';
 
   const colegiadoMedico = medico?.numero_colegiado || 'C.M. REGISTRADO';
   const especialidadNombre = especialidad?.nombre || 'Medicina General';
@@ -435,19 +435,48 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                       )}
                     </div>
 
-                    {/* Referencia / Observaciones Adicionales */}
-                    {(consulta.referido_para || consulta.observaciones_adicionales) && (
-                      <div className="p-2.5 rounded-lg bg-zinc-50 border border-zinc-200 space-y-1 text-[11px]">
-                        {consulta.referido_para && (
-                          <p>
-                            <strong className="text-zinc-900">Referido a:</strong> {consulta.referido_para}
-                          </p>
-                        )}
-                        {consulta.observaciones_adicionales && (
-                          <p>
-                            <strong className="text-zinc-900">Observaciones:</strong> {consulta.observaciones_adicionales}
-                          </p>
-                        )}
+                    {/* Evaluación y Hallazgos de Especialidad / Plantilla Dinámica */}
+                    {consulta.datos_plantilla && Object.keys(consulta.datos_plantilla).filter(k => k !== 'referido_para' && k !== 'observaciones_adicionales' && consulta.datos_plantilla[k]).length > 0 && (
+                      <div>
+                        <h3 className="font-bold text-zinc-900 uppercase text-[11px] border-b border-zinc-200 pb-1">
+                          Evaluación Clínica y Hallazgos por Especialidad
+                        </h3>
+                        <div className="mt-2 grid grid-cols-2 gap-2 p-2.5 bg-zinc-50 rounded-lg border border-zinc-200 text-[11px]">
+                          {Object.entries(consulta.datos_plantilla)
+                            .filter(([k, v]) => k !== 'referido_para' && k !== 'observaciones_adicionales' && v !== null && v !== undefined && v !== '' && typeof v !== 'object')
+                            .map(([key, val]) => (
+                              <div key={key} className="space-y-0.5">
+                                <span className="text-zinc-500 font-semibold capitalize">
+                                  {key.replace(/_/g, ' ')}:
+                                </span>{' '}
+                                <strong className="text-zinc-800">{String(val)}</strong>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Referencia / Interconsulta y Derivación */}
+                    {(consulta.referido_para || consulta.datos_plantilla?.referido_para) && (
+                      <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1">
+                        <h4 className="font-bold text-[11px] text-amber-800 dark:text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+                          <span>Referido para (Interconsulta, Especialidad o Derivación)</span>
+                        </h4>
+                        <p className="text-xs text-zinc-800 font-medium whitespace-pre-wrap leading-relaxed">
+                          {consulta.referido_para || consulta.datos_plantilla?.referido_para}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Observaciones Adicionales */}
+                    {(consulta.observaciones_adicionales || consulta.datos_plantilla?.observaciones_adicionales) && (
+                      <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1">
+                        <h4 className="font-bold text-[11px] text-zinc-700 uppercase tracking-wider">
+                          Observaciones Adicionales
+                        </h4>
+                        <p className="text-xs text-zinc-700 whitespace-pre-wrap leading-relaxed">
+                          {consulta.observaciones_adicionales || consulta.datos_plantilla?.observaciones_adicionales}
+                        </p>
                       </div>
                     )}
                   </div>

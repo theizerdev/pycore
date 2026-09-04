@@ -2802,6 +2802,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
           </Card>
         </div>
       )}
+      </div>
 
       {/* ── BARRA INFERIOR FLOTANTE DE NAVEGACIÓN Y GUARDADO ── */}
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border/80 py-3.5 px-6 shadow-lg">

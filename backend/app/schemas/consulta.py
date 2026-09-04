@@ -87,6 +87,8 @@ class ConsultaBase(BaseModel):
     diagnosticos_secundarios: Optional[List[Any]] = []
     plan_tratamiento: Optional[str] = None
     indicaciones_generales: Optional[str] = None
+    observaciones_adicionales: Optional[str] = None
+    referido_para: Optional[str] = None
     estado: str = "en_espera"
 
 class ConsultaCreate(ConsultaBase):
@@ -109,6 +111,8 @@ class ConsultaUpdate(BaseModel):
     diagnosticos_secundarios: Optional[List[Any]] = None
     plan_tratamiento: Optional[str] = None
     indicaciones_generales: Optional[str] = None
+    observaciones_adicionales: Optional[str] = None
+    referido_para: Optional[str] = None
     estado: Optional[str] = None
 
 class ConsultaCambiarEstado(BaseModel):
@@ -138,6 +142,8 @@ class ConsultaResponse(BaseModel):
     diagnosticos_secundarios: Optional[List[Any]] = []
     plan_tratamiento: Optional[str] = None
     indicaciones_generales: Optional[str] = None
+    observaciones_adicionales: Optional[str] = None
+    referido_para: Optional[str] = None
     estado: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
