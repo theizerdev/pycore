@@ -28,6 +28,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu';
+import DocumentosImpresionModal, { type TipoDocumentoClinico } from '../../components/clinica/DocumentosImpresionModal';
 
 // Icons
 import {
@@ -58,6 +66,9 @@ import {
   FileText,
   User,
   ChevronLeft,
+  ChevronDown,
+  BedDouble,
+  FileCheck2,
   Check,
   ExternalLink,
 } from 'lucide-react';
@@ -218,6 +229,13 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [saving, setSaving] = useState<boolean>(false);
   const [finalizing, setFinalizing] = useState<boolean>(false);
+  const [impresionModalOpen, setImpresionModalOpen] = useState<boolean>(false);
+  const [documentoInicialImpresion, setDocumentoInicialImpresion] = useState<TipoDocumentoClinico>('informe');
+
+  const handleAbrirImpresion = (tipo: TipoDocumentoClinico = 'informe') => {
+    setDocumentoInicialImpresion(tipo);
+    setImpresionModalOpen(true);
+  };
 
   // ── ESTADOS DE LA CONSULTA MÉDICA ──
   const [motivoConsulta, setMotivoConsulta] = useState<string>('');
@@ -627,15 +645,98 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
 
           <div className="flex items-center gap-2">
             {readOnly && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleImprimir}
-                className="gap-1.5 h-9"
-              >
-                <Printer className="h-4 w-4" />
-                <span>Imprimir Ficha e Informe</span>
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-9 font-semibold border-primary/40 text-primary hover:bg-primary/10 cursor-pointer"
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span>Imprimir Documentos</span>
+                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60">
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('informe')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <FileText className="h-4 w-4 text-sky-500" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-xs">Informe Médico</span>
+                      <span className="text-[10px] text-muted-foreground">Ficha clínica y diagnósticos</span>
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('receta')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <Pill className="h-4 w-4 text-emerald-500" />
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs">Receta Médica (Rx)</span>
+                        <span className="text-[10px] text-muted-foreground">Prescripción de fármacos</span>
+                      </div>
+                      {medicamentos.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                          {medicamentos.length}
+                        </Badge>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('estudios')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <FlaskConical className="h-4 w-4 text-violet-500" />
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs">Orden de Estudios</span>
+                        <span className="text-[10px] text-muted-foreground">Exámenes y laboratorio</span>
+                      </div>
+                      {estudios.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                          {estudios.length}
+                        </Badge>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('reposo')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <BedDouble className="h-4 w-4 text-amber-500" />
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs">Reposo Médico</span>
+                        <span className="text-[10px] text-muted-foreground">Incapacidad temporal</span>
+                      </div>
+                      {reposo.requiere_reposo && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                          {reposo.dias_reposo}d
+                        </Badge>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('constancia')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <FileCheck2 className="h-4 w-4 text-indigo-500" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-xs">Constancia de Asistencia</span>
+                      <span className="text-[10px] text-muted-foreground">Justificante de consulta</span>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {!readOnly && (
               <Button
@@ -2532,15 +2633,83 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                   <FileText className="h-4 w-4 text-primary" />
                   Resumen Consolidado de la Consulta
                 </h4>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleImprimir}
-                  className="h-8 gap-1.5 text-xs"
-                >
-                  <Printer className="h-3.5 w-3.5" />
-                  <span>Vista de Impresión</span>
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs font-semibold border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>Imprimir Documentos</span>
+                      <ChevronDown className="h-3 w-3 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('informe')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <FileText className="h-4 w-4 text-sky-500" />
+                      <span>Informe Médico</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('receta')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <Pill className="h-4 w-4 text-emerald-500" />
+                      <div className="flex items-center justify-between w-full">
+                        <span>Receta Médica (Rx)</span>
+                        {medicamentos.length > 0 && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                            {medicamentos.length}
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('estudios')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <FlaskConical className="h-4 w-4 text-violet-500" />
+                      <div className="flex items-center justify-between w-full">
+                        <span>Orden de Estudios</span>
+                        {estudios.length > 0 && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                            {estudios.length}
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('reposo')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <BedDouble className="h-4 w-4 text-amber-500" />
+                      <div className="flex items-center justify-between w-full">
+                        <span>Reposo Médico</span>
+                        {reposo.requiere_reposo && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                            {reposo.dias_reposo}d
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('constancia')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <FileCheck2 className="h-4 w-4 text-indigo-500" />
+                      <span>Constancia de Asistencia</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
               <div className="p-5 rounded-2xl border border-border/80 bg-muted/20 space-y-4 text-xs">
@@ -2633,79 +2802,86 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
           </Card>
         </div>
       )}
-    </div>
 
-      {/* ── BARRA INFERIOR FLOTANTE DE NAVEGACIÓN Y GUARDADO ── */ }
-  <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border/80 py-3.5 px-6 shadow-lg">
-    <div className="max-w-7xl mx-auto flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        {currentStep > 1 && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentStep((prev) => prev - 1)}
-            className="gap-1.5 h-10"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Paso Anterior</span>
-          </Button>
-        )}
-        <span className="text-xs text-muted-foreground font-medium hidden sm:inline ml-2">
-          Paso {currentStep} de 6 — {stepsList[currentStep - 1]?.label}
-        </span>
+      {/* ── BARRA INFERIOR FLOTANTE DE NAVEGACIÓN Y GUARDADO ── */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border/80 py-3.5 px-6 shadow-lg">
+        <div className="max-w-7xl mx-auto flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            {currentStep > 1 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentStep((prev) => prev - 1)}
+                className="gap-1.5 h-10"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Paso Anterior</span>
+              </Button>
+            )}
+            <span className="text-xs text-muted-foreground font-medium hidden sm:inline ml-2">
+              Paso {currentStep} de 6 — {stepsList[currentStep - 1]?.label}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {!readOnly && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleGuardarBorrador}
+                disabled={saving || finalizing}
+                className="gap-1.5 h-10"
+              >
+                <Save className="h-4 w-4" />
+                <span>{saving ? 'Guardando...' : 'Guardar Borrador'}</span>
+              </Button>
+            )}
+
+            {currentStep < 6 ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setCurrentStep((prev) => prev + 1)}
+                className="gap-1.5 h-10 px-5 font-semibold"
+              >
+                <span>Siguiente Paso</span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            ) : !readOnly ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleGuardarYFinalizar}
+                disabled={saving || finalizing}
+                className="gap-2 h-10 px-6 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
+              >
+                <CheckCircle2 className="h-5 w-5" />
+                <span>{finalizing ? 'Finalizando...' : 'Guardar y Finalizar Consulta'}</span>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => navigate('/clinica/consultas/atendidas')}
+                className="h-10 px-6 font-semibold"
+              >
+                Volver a Consultas
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        {!readOnly && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleGuardarBorrador}
-            disabled={saving || finalizing}
-            className="gap-1.5 h-10"
-          >
-            <Save className="h-4 w-4" />
-            <span>{saving ? 'Guardando...' : 'Guardar Borrador'}</span>
-          </Button>
-        )}
-
-        {currentStep < 6 ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setCurrentStep((prev) => prev + 1)}
-            className="gap-1.5 h-10 px-5 font-semibold"
-          >
-            <span>Siguiente Paso</span>
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        ) : !readOnly ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleGuardarYFinalizar}
-            disabled={saving || finalizing}
-            className="gap-2 h-10 px-6 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
-          >
-            <CheckCircle2 className="h-5 w-5" />
-            <span>{finalizing ? 'Finalizando...' : 'Guardar y Finalizar Consulta'}</span>
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => navigate('/clinica/consultas/atendidas')}
-            className="h-10 px-6 font-semibold"
-          >
-            Volver a Consultas
-          </Button>
-        )}
-      </div>
+      {/* ── MODAL DE IMPRESIÓN DE DOCUMENTOS CLÍNICOS ── */}
+      <DocumentosImpresionModal
+        open={impresionModalOpen}
+        onOpenChange={setImpresionModalOpen}
+        consulta={consulta}
+        initialDocumento={documentoInicialImpresion}
+      />
     </div>
-  </div>
-    </div >
   );
 };
 

@@ -33,6 +33,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu';
+import DocumentosImpresionModal, { type TipoDocumentoClinico } from '../../components/clinica/DocumentosImpresionModal';
 
 // Icons
 import {
@@ -62,6 +70,9 @@ import {
   Building2,
   FileText,
   User,
+  ChevronDown,
+  BedDouble,
+  FileCheck2,
 } from 'lucide-react';
 
 interface ConsultaAtencionWizardModalProps {
@@ -217,6 +228,13 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [saving, setSaving] = useState<boolean>(false);
   const [finalizing, setFinalizing] = useState<boolean>(false);
+  const [impresionModalOpen, setImpresionModalOpen] = useState<boolean>(false);
+  const [documentoInicialImpresion, setDocumentoInicialImpresion] = useState<TipoDocumentoClinico>('informe');
+
+  const handleAbrirImpresion = (tipo: TipoDocumentoClinico = 'informe') => {
+    setDocumentoInicialImpresion(tipo);
+    setImpresionModalOpen(true);
+  };
 
   // ── ESTADOS DE LA CONSULTA MÉDICA ──
   const [motivoConsulta, setMotivoConsulta] = useState<string>('');
@@ -630,15 +648,98 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
 
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
             {readOnly && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleImprimir}
-                className="gap-1.5 h-9"
-              >
-                <Printer className="h-4 w-4" />
-                <span className="hidden sm:inline">Imprimir Ficha</span>
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-9 font-semibold border-primary/40 text-primary hover:bg-primary/10 cursor-pointer"
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span>Imprimir</span>
+                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('informe')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <FileText className="h-4 w-4 text-sky-500" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-xs">Informe Médico</span>
+                      <span className="text-[10px] text-muted-foreground">Ficha clínica y diagnósticos</span>
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('receta')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <Pill className="h-4 w-4 text-emerald-500" />
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs">Receta Médica (Rx)</span>
+                        <span className="text-[10px] text-muted-foreground">Prescripción de fármacos</span>
+                      </div>
+                      {medicamentos.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                          {medicamentos.length}
+                        </Badge>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('estudios')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <FlaskConical className="h-4 w-4 text-violet-500" />
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs">Orden de Estudios</span>
+                        <span className="text-[10px] text-muted-foreground">Exámenes y laboratorio</span>
+                      </div>
+                      {estudios.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                          {estudios.length}
+                        </Badge>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('reposo')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <BedDouble className="h-4 w-4 text-amber-500" />
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs">Reposo Médico</span>
+                        <span className="text-[10px] text-muted-foreground">Incapacidad temporal</span>
+                      </div>
+                      {reposo.requiere_reposo && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                          {reposo.dias_reposo}d
+                        </Badge>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onClick={() => handleAbrirImpresion('constancia')}
+                    className="cursor-pointer gap-2 py-2"
+                  >
+                    <FileCheck2 className="h-4 w-4 text-indigo-500" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-xs">Constancia de Asistencia</span>
+                      <span className="text-[10px] text-muted-foreground">Justificante de consulta</span>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {!readOnly && (
               <Button
@@ -2232,15 +2333,83 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
                     <FileText className="h-4 w-4 text-primary" />
                     Resumen Consolidado de la Consulta
                   </h4>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleImprimir}
-                    className="h-8 gap-1.5 text-xs"
-                  >
-                    <Printer className="h-3.5 w-3.5" />
-                    <span>Vista de Impresión</span>
-                  </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs font-semibold border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>Imprimir Documentos</span>
+                      <ChevronDown className="h-3 w-3 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('informe')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <FileText className="h-4 w-4 text-sky-500" />
+                      <span>Informe Médico</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('receta')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <Pill className="h-4 w-4 text-emerald-500" />
+                      <div className="flex items-center justify-between w-full">
+                        <span>Receta Médica (Rx)</span>
+                        {medicamentos.length > 0 && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                            {medicamentos.length}
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('estudios')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <FlaskConical className="h-4 w-4 text-violet-500" />
+                      <div className="flex items-center justify-between w-full">
+                        <span>Orden de Estudios</span>
+                        {estudios.length > 0 && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                            {estudios.length}
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('reposo')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <BedDouble className="h-4 w-4 text-amber-500" />
+                      <div className="flex items-center justify-between w-full">
+                        <span>Reposo Médico</span>
+                        {reposo.requiere_reposo && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                            {reposo.dias_reposo}d
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuItem
+                      onClick={() => handleAbrirImpresion('constancia')}
+                      className="cursor-pointer gap-2 py-2"
+                    >
+                      <FileCheck2 className="h-4 w-4 text-indigo-500" />
+                      <span>Constancia de Asistencia</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 </div>
 
                 <div className="p-4 sm:p-5 rounded-2xl border border-border/80 bg-muted/20 space-y-4 text-xs">
@@ -2401,7 +2570,13 @@ export const ConsultaAtencionWizardModal: React.FC<ConsultaAtencionWizardModalPr
               </Button>
             )}
           </div>
-        </div>
+        {/* ── MODAL DE IMPRESIÓN DE DOCUMENTOS CLÍNICOS ── */}
+        <DocumentosImpresionModal
+          open={impresionModalOpen}
+          onOpenChange={setImpresionModalOpen}
+          consulta={consulta}
+          initialDocumento={documentoInicialImpresion}
+        />
       </DialogContent>
     </Dialog>
   );

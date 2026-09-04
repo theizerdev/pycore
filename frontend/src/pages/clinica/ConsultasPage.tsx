@@ -73,7 +73,13 @@ import {
   Activity,
   ClipboardList,
   MessageSquare,
+  Printer,
+  Pill,
+  FlaskConical,
+  BedDouble,
+  FileCheck2,
 } from 'lucide-react';
+import { DocumentosImpresionModal, type TipoDocumentoClinico } from '../../components/clinica/DocumentosImpresionModal';
 
 type TabKey = 'sala-espera' | 'en-consulta' | 'atendidas';
 
@@ -150,6 +156,17 @@ export const ConsultasPage: React.FC = () => {
     description: '',
     action: async () => {},
   });
+
+  // Modal de impresión de documentos clínicos
+  const [impresionModalOpen, setImpresionModalOpen] = useState<boolean>(false);
+  const [consultaParaImprimir, setConsultaParaImprimir] = useState<ConsultaMedica | null>(null);
+  const [documentoInicialImpresion, setDocumentoInicialImpresion] = useState<TipoDocumentoClinico>('informe');
+
+  const handleAbrirImpresion = (cons: ConsultaMedica, tipo: TipoDocumentoClinico = 'informe') => {
+    setConsultaParaImprimir(cons);
+    setDocumentoInicialImpresion(tipo);
+    setImpresionModalOpen(true);
+  };
 
   // Mapear tab actual al estado de la base de datos
   const estadoFiltro = useMemo<string>(() => {
@@ -950,6 +967,100 @@ export const ConsultasPage: React.FC = () => {
                             <span>Ver Ficha de Consulta</span>
                           </Button>
 
+                          {/* Menú Desplegable de Impresión de Documentos Clínicos */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="h-9 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs cursor-pointer"
+                              >
+                                <Printer className="h-4 w-4" />
+                                <span>Imprimir</span>
+                                <ChevronRight className="h-3.5 w-3.5 opacity-70 rotate-90" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-60">
+                              <DropdownMenuItem
+                                onClick={() => handleAbrirImpresion(consulta, 'informe')}
+                                className="cursor-pointer gap-2 py-2"
+                              >
+                                <FileText className="h-4 w-4 text-sky-500" />
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-xs">Informe Médico</span>
+                                  <span className="text-[10px] text-muted-foreground">Ficha clínica y diagnósticos</span>
+                                </div>
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={() => handleAbrirImpresion(consulta, 'receta')}
+                                className="cursor-pointer gap-2 py-2"
+                              >
+                                <Pill className="h-4 w-4 text-emerald-500" />
+                                <div className="flex items-center justify-between w-full">
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-xs">Receta Médica (Rx)</span>
+                                    <span className="text-[10px] text-muted-foreground">Prescripción de fármacos</span>
+                                  </div>
+                                  {consulta.receta_medica && consulta.receta_medica.length > 0 && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                                      {consulta.receta_medica.length}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={() => handleAbrirImpresion(consulta, 'estudios')}
+                                className="cursor-pointer gap-2 py-2"
+                              >
+                                <FlaskConical className="h-4 w-4 text-violet-500" />
+                                <div className="flex items-center justify-between w-full">
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-xs">Orden de Estudios</span>
+                                    <span className="text-[10px] text-muted-foreground">Exámenes y laboratorio</span>
+                                  </div>
+                                  {consulta.estudios_solicitados && consulta.estudios_solicitados.length > 0 && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                                      {consulta.estudios_solicitados.length}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={() => handleAbrirImpresion(consulta, 'reposo')}
+                                className="cursor-pointer gap-2 py-2"
+                              >
+                                <BedDouble className="h-4 w-4 text-amber-500" />
+                                <div className="flex items-center justify-between w-full">
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-xs">Reposo Médico</span>
+                                    <span className="text-[10px] text-muted-foreground">Incapacidad temporal</span>
+                                  </div>
+                                  {consulta.reposo_medico?.requiere_reposo && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                                      {consulta.reposo_medico.dias_reposo}d
+                                    </Badge>
+                                  )}
+                                </div>
+                              </DropdownMenuItem>
+
+                              <DropdownMenuSeparator />
+
+                              <DropdownMenuItem
+                                onClick={() => handleAbrirImpresion(consulta, 'constancia')}
+                                className="cursor-pointer gap-2 py-2"
+                              >
+                                <FileCheck2 className="h-4 w-4 text-indigo-500" />
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-xs">Constancia de Asistencia</span>
+                                  <span className="text-[10px] text-muted-foreground">Justificante de consulta</span>
+                                </div>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+
                           <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 py-1 px-2.5">
                             <Check className="h-3.5 w-3.5 text-emerald-600" />
                             <span>Atendida</span>
@@ -1223,6 +1334,14 @@ export const ConsultasPage: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── MODAL DE IMPRESIÓN DE DOCUMENTOS CLÍNICOS (INFORME, RECETA, ESTUDIOS, REPOSO, ASISTENCIA) ── */}
+      <DocumentosImpresionModal
+        open={impresionModalOpen}
+        onOpenChange={setImpresionModalOpen}
+        consulta={consultaParaImprimir}
+        initialDocumento={documentoInicialImpresion}
+      />
     </div>
   );
 };

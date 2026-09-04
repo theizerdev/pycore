@@ -283,3 +283,36 @@
   width: 0 !important;
   height: 0 !important;
 }
+
+/* ── PRINT MEDIA RULES FOR CLINICAL DOCUMENTS ── */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Ocultar elementos no imprimibles */
+  header, nav, aside, .print\\:hidden, [role="dialog"] > div:first-child, button, .fixed {
+    display: none !important;
+  }
+
+  /* Forzar visibilidad del área clínica */
+  #area-imprimible-clinica {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 1.5cm !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #18181b !important;
+  }
+
+  @page {
+    size: letter portrait;
+    margin: 1cm;
+  }
+}
