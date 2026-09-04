@@ -96,6 +96,34 @@ def get_empresa_codigo_pais(empresa: Optional[Empresa]) -> str:
     return "58"
 
 
+async def get_medico_id_for_user(db: AsyncSession, user: Usuario) -> Optional[int]:
+    """
+    Si el usuario logueado es un médico especialista, obtiene su ID de médico para restringir
+    la visualización de citas exclusivamente a su propia agenda.
+    """
+    if user.es_superadmin:
+        return None
+
+    # Si el usuario tiene asignado el rol de 'medico'
+    is_doctor_role = bool(user.rol and user.rol.slug == "medico")
+    
+    # Buscar la ficha médica asociada por usuario_id o por email dentro de su empresa
+    stmt = select(Medico.id).where(
+        Medico.empresa_id == user.empresa_id,
+        or_(
+            Medico.usuario_id == user.id,
+            func.lower(Medico.email) == user.email.lower()
+        )
+    )
+    res = await db.execute(stmt)
+    med_id = res.scalar_one_or_none()
+
+    if is_doctor_role or med_id is not None:
+        return med_id if med_id is not None else -1
+
+    return None
+
+
 @router.get("", response_model=List[CitaResponse])
 async def list_citas(
     fecha_inicio: Optional[date] = Query(None, description="Fecha de inicio (YYYY-MM-DD)"),
@@ -110,6 +138,7 @@ async def list_citas(
 ):
     """
     Listar citas médicas con filtros asistenciales por rango de fechas, médico, sucursal o estado.
+    Si el usuario logueado es un doctor, solo ve sus propias citas.
     """
     query = (
         select(CitaMedica)
@@ -125,12 +154,17 @@ async def list_citas(
     if not current_user.es_superadmin:
         query = query.where(CitaMedica.empresa_id == current_user.empresa_id)
 
+    # Restricción obligatoria si el usuario logueado es médico
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        query = query.where(CitaMedica.medico_id == doctor_auto_id)
+    elif medico_id:
+        query = query.where(CitaMedica.medico_id == medico_id)
+
     if fecha_inicio:
         query = query.where(CitaMedica.fecha >= fecha_inicio)
     if fecha_fin:
         query = query.where(CitaMedica.fecha <= fecha_fin)
-    if medico_id:
-        query = query.where(CitaMedica.medico_id == medico_id)
     if especialidad_id:
         query = query.where(CitaMedica.especialidad_id == especialidad_id)
     if sucursal_id:

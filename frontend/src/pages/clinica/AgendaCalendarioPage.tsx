@@ -49,7 +49,7 @@ import {
 } from 'lucide-react';
 
 export const AgendaCalendarioPage: React.FC = () => {
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const calendarRef = useRef<any>(null);
 
   const [citas, setCitas] = useState<CitaMedica[]>([]);
@@ -63,6 +63,25 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [selectedMedico, setSelectedMedico] = useState<string>('all');
   const [selectedEspecialidad, setSelectedEspecialidad] = useState<string>('all');
   const [selectedEstado, setSelectedEstado] = useState<string>('all');
+
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+
+  // Identificar el perfil médico del usuario autenticado
+  const currentDoctor = useMemo(() => {
+    if (!isDoctorUser || !user) return null;
+    return medicos.find(
+      (m) =>
+        m.usuario_id === user.id ||
+        (m.email && m.email.toLowerCase() === user.email.toLowerCase())
+    );
+  }, [isDoctorUser, user, medicos]);
+
+  useEffect(() => {
+    if (currentDoctor) {
+      setSelectedMedico(String(currentDoctor.id));
+      setNewCitaInitialMedicoId(currentDoctor.id);
+    }
+  }, [currentDoctor]);
 
   // Modales
   const [formModalOpen, setFormModalOpen] = useState(false);
@@ -362,27 +381,37 @@ export const AgendaCalendarioPage: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Filtro Rápido de Médico */}
-          <Select value={selectedMedico} onValueChange={setSelectedMedico}>
-            <SelectTrigger className="text-xs h-9 w-[170px]">
-              <SelectValue placeholder="Médico" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Médicos: Todos</SelectItem>
-              {medicos.map((m) => (
-                <SelectItem key={m.id} value={String(m.id)}>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="size-2 rounded-full shrink-0"
-                      style={{ backgroundColor: m.color || '#0d9488' }}
-                    />
-                    <span className="truncate">
-                      {m.nombres} {m.apellidos}
-                    </span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {isDoctorUser && currentDoctor ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-800 dark:text-teal-200 text-xs font-semibold h-9">
+              <span
+                className="size-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: currentDoctor.color || '#0d9488' }}
+              />
+              <span className="truncate">Dr(a). {currentDoctor.nombres} {currentDoctor.apellidos}</span>
+            </div>
+          ) : (
+            <Select value={selectedMedico} onValueChange={setSelectedMedico}>
+              <SelectTrigger className="text-xs h-9 w-[170px]">
+                <SelectValue placeholder="Médico" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Médicos: Todos</SelectItem>
+                {medicos.map((m) => (
+                  <SelectItem key={m.id} value={String(m.id)}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="size-2 rounded-full shrink-0"
+                        style={{ backgroundColor: m.color || '#0d9488' }}
+                      />
+                      <span className="truncate">
+                        {m.nombres} {m.apellidos}
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           {/* Filtro Rápido de Estado */}
           <Select value={selectedEstado} onValueChange={setSelectedEstado}>

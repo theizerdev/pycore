@@ -32,6 +32,32 @@ router = APIRouter(prefix="/consultas", tags=["Consultas Médicas"])
 VALID_ESTADOS_CONSULTA = ["en_espera", "en_curso", "finalizada", "anulada"]
 
 
+async def get_medico_id_for_user(db: AsyncSession, user: Usuario) -> Optional[int]:
+    """
+    Si el usuario logueado es un médico especialista, obtiene su ID de médico para restringir
+    la visualización de consultas exclusivamente a sus propios pacientes.
+    """
+    if user.es_superadmin:
+        return None
+
+    is_doctor_role = bool(user.rol and user.rol.slug == "medico")
+    
+    stmt = select(Medico.id).where(
+        Medico.empresa_id == user.empresa_id,
+        or_(
+            Medico.usuario_id == user.id,
+            func.lower(Medico.email) == user.email.lower()
+        )
+    )
+    res = await db.execute(stmt)
+    med_id = res.scalar_one_or_none()
+
+    if is_doctor_role or med_id is not None:
+        return med_id if med_id is not None else -1
+
+    return None
+
+
 @router.get("/resumen-contadores", response_model=ConsultaResumenContadores)
 async def get_resumen_contadores(
     fecha: Optional[date] = Query(None, description="Fecha a filtrar (por defecto hoy)"),
@@ -46,6 +72,7 @@ async def get_resumen_contadores(
     - en_consulta (estado = 'en_curso')
     - atendidas (estado = 'finalizada')
     - total_hoy
+    Si el usuario logueado es un doctor, sus contadores reflejan solo sus propios pacientes.
     """
     target_date = fecha or date.today()
 
@@ -56,11 +83,15 @@ async def get_resumen_contadores(
     if not current_user.es_superadmin:
         query = query.where(ConsultaMedica.empresa_id == current_user.empresa_id)
 
+    # Restricción obligatoria si el usuario logueado es médico
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        query = query.where(ConsultaMedica.medico_id == doctor_auto_id)
+    elif medico_id:
+        query = query.where(ConsultaMedica.medico_id == medico_id)
+
     if sucursal_id:
         query = query.where(ConsultaMedica.sucursal_id == sucursal_id)
-
-    if medico_id:
-        query = query.where(ConsultaMedica.medico_id == medico_id)
 
     result = await db.execute(query)
     consultas = result.scalars().all()
@@ -94,6 +125,7 @@ async def list_consultas(
 ):
     """
     Lista consultas médicas según filtros de estado, fecha, especialidad, médico o texto de búsqueda.
+    Si el usuario logueado es un doctor, solo ve sus propias consultas.
     """
     stmt = (
         select(ConsultaMedica)
@@ -111,6 +143,13 @@ async def list_consultas(
     # Multi-tenant
     if not current_user.es_superadmin:
         stmt = stmt.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    # Restricción obligatoria si el usuario logueado es médico
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        stmt = stmt.where(ConsultaMedica.medico_id == doctor_auto_id)
+    elif medico_id:
+        stmt = stmt.where(ConsultaMedica.medico_id == medico_id)
 
     # Filtro por estado
     if estado:
@@ -184,6 +223,10 @@ async def get_consulta(
     if not current_user.es_superadmin:
         stmt = stmt.where(ConsultaMedica.empresa_id == current_user.empresa_id)
 
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        stmt = stmt.where(ConsultaMedica.medico_id == doctor_auto_id)
+
     res = await db.execute(stmt)
     consulta = res.scalar_one_or_none()
     if not consulta:
@@ -204,6 +247,10 @@ async def create_consulta(
     empresa_id = current_user.empresa_id
     if not empresa_id and not current_user.es_superadmin:
         raise HTTPException(status_code=400, detail="Usuario sin empresa asignada")
+
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None and doctor_auto_id != -1:
+        payload.medico_id = doctor_auto_id
 
     fecha_str = datetime.now().strftime("%Y%m%d")
     
@@ -270,6 +317,10 @@ async def cambiar_estado_consulta(
     if not current_user.es_superadmin:
         stmt = stmt.where(ConsultaMedica.empresa_id == current_user.empresa_id)
 
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        stmt = stmt.where(ConsultaMedica.medico_id == doctor_auto_id)
+
     res = await db.execute(stmt)
     consulta = res.scalar_one_or_none()
     if not consulta:
@@ -330,6 +381,10 @@ async def update_consulta(
     stmt = select(ConsultaMedica).where(ConsultaMedica.id == id)
     if not current_user.es_superadmin:
         stmt = stmt.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        stmt = stmt.where(ConsultaMedica.medico_id == doctor_auto_id)
 
     res = await db.execute(stmt)
     consulta = res.scalar_one_or_none()

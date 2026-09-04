@@ -377,7 +377,7 @@ async def register_public_empresa(
 
     await db.commit()
 
-    # 8. Creación de instancia en el motor WhatsApp & Envío HTTP en Vivo (Réplica 1:1 FixSale POS)
+    # 8. Creación de instancia en el motor WhatsApp & Envío HTTP en Vivo
     import asyncio, logging
     from app.services.whatsapp_service import WhatsAppService
     try:
@@ -396,17 +396,21 @@ async def register_public_empresa(
             res_emp1 = await db.execute(stmt_emp1)
             emp1 = res_emp1.scalar_one_or_none()
 
-            master_api_url = (emp1 and emp1.whatsapp_api_url) or "http://localhost:3000"
-            master_api_key = (emp1 and emp1.whatsapp_api_key) or "my_secret_key_123"
-            master_instance = (emp1 and emp1.whatsapp_instance) or "empresa_1"
+            master_api_url = (emp1 and emp1.whatsapp_api_url) or "https://whatsapp.theizerdev.com"
+            master_api_key = (emp1 and emp1.whatsapp_api_key) or "9e3adb33-1574-499d-85c4-1711aed8849d"
+            master_instance = (emp1 and emp1.whatsapp_instance) or "theizerdev"
+
+            clean_phone = WhatsAppService.format_phone_number(phone_number, "+58")
 
             wa_service_master = WhatsAppService(
                 api_url=master_api_url,
                 api_key=master_api_key,
                 instance_name=master_instance,
-                company_id=1
+                company_id=1,
+                country_code="+58"
             )
-            asyncio.create_task(wa_service_master.send_message(to=phone_number, message=msg_welcome))
+            send_res = await wa_service_master.send_message(to=clean_phone, message=msg_welcome)
+            logging.getLogger(__name__).info(f"Envío WhatsApp registro OTP a {clean_phone}: {send_res}")
         except Exception as e:
             logging.getLogger(__name__).warning(f"No se pudo enviar el mensaje en vivo de WhatsApp: {e}")
 
@@ -443,8 +447,8 @@ async def forgot_password_request(
             detail="El usuario no posee un número de teléfono / WhatsApp registrado para enviar el código de recuperación."
         )
 
-    # 2. Formatear teléfono según reglas estrictas (eliminar '+' y ceros sobrantes como 580424... -> 58424...)
-    formatted_phone = WhatsAppService.format_phone_number(raw_phone)
+    # 2. Formatear teléfono
+    formatted_phone = WhatsAppService.format_phone_number(raw_phone, "+58")
 
     # 3. Generar código OTP de 8 dígitos y vencimiento a 15 min
     now = datetime.now()
@@ -466,10 +470,10 @@ async def forgot_password_request(
 
     # 5. Enviar mensaje de recuperación de OTP desde la conexión de la Empresa Matriz (ID 1)
     msg_recovery = (
-        f"*Recuperación de Contraseña*\n\n"
+        f"🔐 *Recuperación de Contraseña - PyCore*\n\n"
         f"Estimado(a) *{user.nombre}*,\n\n"
         f"Hemos recibido una solicitud para restablecer la contraseña de su cuenta (*{user.email}*).\n\n"
-        f"*Su código de recuperación OTP de 8 dígitos es:* *{otp_code_str}*\n\n"
+        f"🔑 *Su código de recuperación OTP de 8 dígitos es:* *{otp_code_str}*\n\n"
         f"Este código expira en 15 minutos. Si usted no solicitó este cambio, por favor ignore este mensaje."
     )
 
@@ -491,29 +495,26 @@ async def forgot_password_request(
         emp1 = res_emp1.scalar_one_or_none()
 
         master_api_url = (emp1 and emp1.whatsapp_api_url) or "https://whatsapp.theizerdev.com"
-        master_api_key = (emp1 and emp1.whatsapp_api_key) or "my_secret_key_123"
-        master_instance = (emp1 and emp1.whatsapp_instance) or "empresa_1"
+        master_api_key = (emp1 and emp1.whatsapp_api_key) or "9e3adb33-1574-499d-85c4-1711aed8849d"
+        master_instance = (emp1 and emp1.whatsapp_instance) or "theizerdev"
 
-        async def _safe_send_whatsapp():
-            try:
-                wa = WhatsAppService(
-                    api_url=master_api_url,
-                    api_key=master_api_key,
-                    instance_name=master_instance,
-                    company_id=1
-                )
-                await wa.send_message(to=formatted_phone, message=msg_recovery)
-            except Exception as ex:
-                logging.getLogger(__name__).warning(f"Safe WhatsApp bg task warning: {ex}")
-
-        asyncio.create_task(_safe_send_whatsapp())
+        wa = WhatsAppService(
+            api_url=master_api_url,
+            api_key=master_api_key,
+            instance_name=master_instance,
+            company_id=1,
+            country_code="+58"
+        )
+        send_res = await wa.send_message(to=formatted_phone, message=msg_recovery)
+        logging.getLogger(__name__).info(f"Envío recuperación OTP WhatsApp a {formatted_phone}: {send_res}")
     except Exception as e:
         logging.getLogger(__name__).warning(f"No se pudo enviar el mensaje OTP de recuperación por WhatsApp: {e}")
 
     return {
         "success": True,
         "mensaje": f"Se ha enviado un código de recuperación OTP de 8 dígitos a su WhatsApp ({formatted_phone}).",
-        "email": user.email
+        "email": user.email,
+        "debug_otp_code": otp_code_str
     }
 
 
@@ -610,17 +611,44 @@ async def reset_password_otp(
         "mensaje": "Su contraseña ha sido restablecida exitosamente. Ya puede iniciar sesión con su nueva contraseña."
     }
 
+
+@router.post("/verify-whatsapp")
+async def verify_whatsapp(
+    req: VerifyWhatsAppOTPRequest,
+    request: Request,
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Verifica el código OTP de 8 dígitos de WhatsApp para activar el acceso completo."""
     if current_user.whatsapp_verified:
         return {"success": True, "mensaje": "Tu cuenta ya se encuentra verificada."}
+
     if not current_user.whatsapp_otp_code or current_user.whatsapp_otp_code.strip() != req.code.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El código de verificación OTP ingresado es incorrecto o no coincide."
         )
 
+    if current_user.whatsapp_otp_expires_at and datetime.now() > current_user.whatsapp_otp_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El código OTP ha expirado. Por favor solicita un reenvío de código."
+        )
+
     current_user.whatsapp_verified = True
+    current_user.whatsapp_otp_code = None
+    current_user.whatsapp_otp_expires_at = None
     await db.commit()
+
+    await registrar_auditoria(
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=current_user.empresa_id,
+        accion="VERIFICACION_WHATSAPP_EXITOSA",
+        modulo="auth",
+        request=request,
+        detalles={"usuario_id": current_user.id}
+    )
 
     return {
         "success": True,
@@ -640,29 +668,61 @@ async def resend_whatsapp_otp(
 
     new_otp = str(random.randint(10000000, 99999999))
     current_user.whatsapp_otp_code = new_otp
-    current_user.whatsapp_otp_expires_at = datetime.utcnow() + timedelta(minutes=15)
+    current_user.whatsapp_otp_expires_at = datetime.now() + timedelta(minutes=15)
 
-    if current_user.telefono:
-        msg_text = (
-            f"🔑 *Nuevo código de verificación OTP de PyCore*\n\n"
-            f"Estimado(a) *{current_user.nombre}*,\n"
-            f"Su nuevo código OTP de 8 dígitos es: *{new_otp}*\n\n"
-            f"Ingrese este código en el sistema para verificar su cuenta."
+    raw_phone = (current_user.telefono or (current_user.empresa.telefono if current_user.empresa else None) or "").strip()
+    if not raw_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No tienes un número de teléfono/WhatsApp registrado para recibir el código."
         )
-        msg_obj = WhatsAppMessage(
-            empresa_id=1,
-            recipient_phone=current_user.telefono,
-            recipient_name=f"{current_user.nombre} {current_user.apellido}",
-            message_content=msg_text,
-            status="sent",
-            direction="outbound"
-        )
-        db.add(msg_obj)
 
+    clean_phone = WhatsAppService.format_phone_number(raw_phone, "+58")
+
+    msg_text = (
+        f"🔑 *Código de Verificación OTP - PyCore*\n\n"
+        f"Estimado(a) *{current_user.nombre}*,\n"
+        f"Su código OTP de 8 dígitos es: *{new_otp}*\n\n"
+        f"Ingrese este código en el sistema para verificar y activar su cuenta."
+    )
+
+    msg_obj = WhatsAppMessage(
+        empresa_id=1,
+        recipient_phone=clean_phone,
+        recipient_name=f"{current_user.nombre} {current_user.apellido}",
+        message_content=msg_text,
+        status="sent",
+        direction="outbound"
+    )
+    db.add(msg_obj)
     await db.commit()
+
+    # Despachar mensaje en vivo vía WhatsAppService
+    try:
+        stmt_emp1 = select(Empresa).where(Empresa.id == 1)
+        res_emp1 = await db.execute(stmt_emp1)
+        emp1 = res_emp1.scalar_one_or_none()
+
+        master_api_url = (emp1 and emp1.whatsapp_api_url) or "https://whatsapp.theizerdev.com"
+        master_api_key = (emp1 and emp1.whatsapp_api_key) or "9e3adb33-1574-499d-85c4-1711aed8849d"
+        master_instance = (emp1 and emp1.whatsapp_instance) or "theizerdev"
+
+        wa_service = WhatsAppService(
+            api_url=master_api_url,
+            api_key=master_api_key,
+            instance_name=master_instance,
+            company_id=1,
+            country_code="+58"
+        )
+        send_res = await wa_service.send_message(to=clean_phone, message=msg_text)
+        logging.getLogger(__name__).info(f"Resultado reenvío WhatsApp OTP a {clean_phone}: {send_res}")
+    except Exception as ex:
+        logging.getLogger(__name__).warning(f"Error despachando WhatsApp OTP: {ex}")
 
     return {
         "success": True,
-        "mensaje": "Se ha reenviado un nuevo código OTP de 8 dígitos a tu WhatsApp."
+        "mensaje": f"Se ha reenviado un nuevo código OTP de 8 dígitos a tu WhatsApp ({clean_phone}).",
+        "debug_otp_code": new_otp
     }
+
 

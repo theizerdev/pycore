@@ -114,6 +114,24 @@ export const ConsultasPage: React.FC = () => {
   const [selectedEspecialidad, setSelectedEspecialidad] = useState<string>('all');
   const [selectedSucursal, setSelectedSucursal] = useState<string>('all');
 
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+
+  // Identificar el perfil médico del usuario autenticado
+  const currentDoctor = useMemo(() => {
+    if (!isDoctorUser || !user) return null;
+    return medicos.find(
+      (m) =>
+        m.usuario_id === user.id ||
+        (m.email && m.email.toLowerCase() === user.email.toLowerCase())
+    );
+  }, [isDoctorUser, user, medicos]);
+
+  useEffect(() => {
+    if (currentDoctor) {
+      setSelectedMedico(String(currentDoctor.id));
+    }
+  }, [currentDoctor]);
+
   // Drawer de Preconsulta
   const [selectedPreconsulta, setSelectedPreconsulta] = useState<ConsultaMedica | null>(null);
   const [preconsultaDrawerOpen, setPreconsultaDrawerOpen] = useState<boolean>(false);
@@ -556,19 +574,26 @@ export const ConsultasPage: React.FC = () => {
 
             {/* Médico Especialista */}
             <div>
-              <Select value={selectedMedico} onValueChange={setSelectedMedico}>
-                <SelectTrigger className="h-10 rounded-xl bg-background">
-                  <SelectValue placeholder="Médico: Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los médicos</SelectItem>
-                  {medicos.map((med) => (
-                    <SelectItem key={med.id} value={String(med.id)}>
-                      Dr(a). {med.nombres} {med.apellidos}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isDoctorUser && currentDoctor ? (
+                <div className="flex items-center gap-2 h-10 px-3.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-semibold">
+                  <Stethoscope className="h-4 w-4 shrink-0" />
+                  <span className="truncate">Dr(a). {currentDoctor.nombres} {currentDoctor.apellidos}</span>
+                </div>
+              ) : (
+                <Select value={selectedMedico} onValueChange={setSelectedMedico}>
+                  <SelectTrigger className="h-10 rounded-xl bg-background">
+                    <SelectValue placeholder="Médico: Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los médicos</SelectItem>
+                    {medicos.map((med) => (
+                      <SelectItem key={med.id} value={String(med.id)}>
+                        Dr(a). {med.nombres} {med.apellidos}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         </CardContent>
