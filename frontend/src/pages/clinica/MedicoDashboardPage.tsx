@@ -7,6 +7,8 @@ import { consultasApi, type ConsultaMedica } from '../../api/consultas';
 import { medicosApi } from '../../api/medicos';
 import { especialidadesApi } from '../../api/especialidades';
 import type { CitaMedica, Medico, Especialidad } from '../../types';
+import { ApexChart } from '../../components/charts/ApexChart';
+import type { ApexOptions } from 'apexcharts';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
@@ -38,11 +40,18 @@ import {
   ExternalLink,
   ChevronRight,
   TrendingUp,
-  User,
+  RefreshCw,
+  DollarSign,
   HeartPulse,
+  PieChart,
+  BarChart3,
+  CalendarRange,
+  Filter,
 } from 'lucide-react';
 import { cn, getInitials } from '../../lib/utils';
 import { toast } from 'sonner';
+
+type DateRangePreset = 'hoy' | 'semana' | 'mes' | '30dias' | 'personalizado';
 
 export const MedicoDashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -52,12 +61,23 @@ export const MedicoDashboardPage: React.FC = () => {
   // Estados de datos
   const [medicos, setMedicos] = useState<Medico[]>([]);
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
-  const [citas, setCitas] = useState<CitaMedica[]>([]);
-  const [consultas, setConsultas] = useState<ConsultaMedica[]>([]);
+  const [citasRango, setCitasRango] = useState<CitaMedica[]>([]);
+  const [consultasRango, setConsultasRango] = useState<ConsultaMedica[]>([]);
+  const [consultasHoy, setConsultasHoy] = useState<ConsultaMedica[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Filtros de listado rápido
-  const [activeTab, setActiveTab] = useState<'todas' | 'espera' | 'consulta' | 'atendidas'>('todas');
+  // Estados de Rango de Fechas
+  const todayIso = useMemo(() => new Date().toLocaleDateString('en-CA'), []);
+  const [dateRangeMode, setDateRangeMode] = useState<DateRangePreset>('mes');
+  const [fechaDesde, setFechaDesde] = useState<string>(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('en-CA');
+  });
+  const [fechaHasta, setFechaHasta] = useState<string>(todayIso);
+
+  // Filtros de tabla de pacientes
+  const [activeTab, setActiveTab] = useState<'hoy_espera' | 'hoy_consulta' | 'hoy_todas' | 'rango_todas'>('hoy_espera');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Identificar el doctor autenticado
@@ -75,11 +95,40 @@ export const MedicoDashboardPage: React.FC = () => {
     return especialidades.find((e) => e.id === currentDoctor.especialidad_id) || null;
   }, [currentDoctor, especialidades]);
 
-  // Carga de datos
-  const fetchData = async () => {
+  // Manejo de preset de fechas
+  const handleSelectPreset = (preset: DateRangePreset) => {
+    setDateRangeMode(preset);
+    const now = new Date();
+    const hoyStr = now.toLocaleDateString('en-CA');
+
+    if (preset === 'hoy') {
+      setFechaDesde(hoyStr);
+      setFechaHasta(hoyStr);
+    } else if (preset === 'semana') {
+      const d = new Date();
+      d.setDate(now.getDate() - 6);
+      setFechaDesde(d.toLocaleDateString('en-CA'));
+      setFechaHasta(hoyStr);
+    } else if (preset === 'mes') {
+      const d = new Date(now.getFullYear(), now.getMonth(), 1);
+      setFechaDesde(d.toLocaleDateString('en-CA'));
+      setFechaHasta(hoyStr);
+    } else if (preset === '30dias') {
+      const d = new Date();
+      d.setDate(now.getDate() - 29);
+      setFechaDesde(d.toLocaleDateString('en-CA'));
+      setFechaHasta(hoyStr);
+    }
+  };
+
+  // Carga de datos principal
+  const fetchData = async (isManualRefresh = false) => {
     try {
-      setLoading(true);
-      const todayStr = new Date().toLocaleDateString('en-CA');
+      if (isManualRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
       const [medRes, espRes] = await Promise.allSettled([
         medicosApi.list({ activo: true }),
@@ -93,7 +142,6 @@ export const MedicoDashboardPage: React.FC = () => {
         setEspecialidades(espRes.value);
       }
 
-      // Encontrar doctor
       const doc = user
         ? medicosList.find(
             (m) =>
@@ -103,110 +151,399 @@ export const MedicoDashboardPage: React.FC = () => {
         : null;
 
       if (doc) {
-        const [citasRes, consultasRes] = await Promise.allSettled([
+        const [citasRangoRes, consultasRangoRes, consultasHoyRes] = await Promise.allSettled([
           citasApi.list({
             medico_id: doc.id,
             sucursal_id: sucursalActiva?.id,
-            fecha_inicio: todayStr,
-            fecha_fin: todayStr,
+            fecha_inicio: fechaDesde,
+            fecha_fin: fechaHasta,
           }),
           consultasApi.getConsultas({
             medico_id: doc.id,
             sucursal_id: sucursalActiva?.id,
+            fecha_desde: fechaDesde,
+            fecha_hasta: fechaHasta,
+          }),
+          consultasApi.getConsultas({
+            medico_id: doc.id,
+            sucursal_id: sucursalActiva?.id,
+            fecha: todayIso,
           }),
         ]);
 
-        if (citasRes.status === 'fulfilled') {
-          setCitas(citasRes.value || []);
+        if (citasRangoRes.status === 'fulfilled') {
+          setCitasRango(citasRangoRes.value || []);
         }
-        if (consultasRes.status === 'fulfilled') {
-          setConsultas(consultasRes.value || []);
+        if (consultasRangoRes.status === 'fulfilled') {
+          setConsultasRango(consultasRangoRes.value || []);
         }
+        if (consultasHoyRes.status === 'fulfilled') {
+          setConsultasHoy(consultasHoyRes.value || []);
+        }
+      }
+
+      if (isManualRefresh) {
+        toast.success('Métricas del panel médico actualizadas');
       }
     } catch (err) {
       console.error('Error cargando datos del dashboard médico:', err);
-      toast.error('No se pudieron cargar todas las métricas del consultorio');
+      toast.error('Error al actualizar datos del panel médico');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
     fetchData();
-  }, [user?.id, sucursalActiva?.id]);
+  }, [user?.id, sucursalActiva?.id, fechaDesde, fechaHasta]);
 
-  // Fecha de hoy en formato amigable
-  const todayStr = useMemo(() => new Date().toLocaleDateString('en-CA'), []);
-  const formattedToday = useMemo(() => {
-    const d = new Date();
-    return d.toLocaleDateString('es-ES', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  }, []);
-
-  // Consultas de hoy del médico
-  const consultasHoy = useMemo(() => {
-    return consultas.filter((c) => {
-      const f = c.fecha_consulta?.split('T')[0] || c.created_at?.split('T')[0];
-      return f === todayStr;
-    });
-  }, [consultas, todayStr]);
-
-  // Pacientes en espera hoy
+  // Cálculos de métricas inmediatas de HOY
   const enEsperaHoy = useMemo(() => {
     return consultasHoy.filter((c) => c.estado === 'en_espera');
   }, [consultasHoy]);
 
-  // Pacientes en consulta actualmente
   const enConsultaHoy = useMemo(() => {
     return consultasHoy.filter((c) => c.estado === 'en_curso');
   }, [consultasHoy]);
 
-  // Pacientes atendidos hoy
   const atendidasHoy = useMemo(() => {
     return consultasHoy.filter((c) => c.estado === 'finalizada');
   }, [consultasHoy]);
 
-  // Total pacientes únicos atendidos por este médico
-  const totalPacientesUnicos = useMemo(() => {
-    const ids = new Set(consultas.map((c) => c.paciente_id));
-    return ids.size;
-  }, [consultas]);
+  // Métricas del PERÍODO
+  const kpisPeriodo = useMemo(() => {
+    const totalConsultas = consultasRango.length;
+    const finalizadas = consultasRango.filter((c) => c.estado === 'finalizada').length;
+    const citasTotal = citasRango.length;
+    const citasCompletadas = citasRango.filter((c) => c.estado === 'atendida').length;
 
-  // Filtrado de la lista rápida de pacientes de hoy
-  const filteredConsultasHoy = useMemo(() => {
-    return consultasHoy.filter((c) => {
-      if (activeTab === 'espera' && c.estado !== 'en_espera') return false;
-      if (activeTab === 'consulta' && c.estado !== 'en_curso') return false;
-      if (activeTab === 'atendidas' && c.estado !== 'finalizada') return false;
+    // Tasa de asistencia/efectividad
+    const tasaAsistencia = citasTotal > 0 ? Math.round((citasCompletadas / citasTotal) * 100) : 100;
 
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const pacNom = `${c.paciente?.nombres || ''} ${c.paciente?.apellidos || ''}`.toLowerCase();
-        const doc = (c.paciente?.documento_identidad || c.paciente?.numero_documento || '').toLowerCase();
-        const mot = (c.motivo_consulta || '').toLowerCase();
-        if (!pacNom.includes(q) && !doc.includes(q) && !mot.includes(q)) return false;
+    // Pacientes únicos
+    const pacientesUnicosIds = new Set([
+      ...consultasRango.map((c) => c.paciente_id),
+      ...citasRango.map((c) => c.paciente_id),
+    ]);
+
+    // Estimación económica de prestaciones en el período
+    const facturacionEstimada = citasRango.reduce((acc, c) => {
+      if (c.estado === 'atendida' || c.estado_pago === 'pagado') {
+        return acc + (Number(c.precio_estimado) || 0);
       }
-      return true;
+      return acc;
+    }, 0);
+
+    return {
+      totalConsultas,
+      finalizadas,
+      citasTotal,
+      citasCompletadas,
+      tasaAsistencia,
+      pacientesUnicos: pacientesUnicosIds.size,
+      facturacionEstimada,
+    };
+  }, [consultasRango, citasRango]);
+
+  // Diagnósticos más frecuentes del período
+  const topDiagnosticos = useMemo(() => {
+    const conteo: Record<string, number> = {};
+    consultasRango.forEach((c) => {
+      const diag = c.diagnostico_principal || c.motivo_consulta;
+      if (diag && diag.trim()) {
+        conteo[diag.trim()] = (conteo[diag.trim()] || 0) + 1;
+      }
     });
-  }, [consultasHoy, activeTab, searchQuery]);
+    return Object.entries(conteo)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4);
+  }, [consultasRango]);
+
+  // ── APEXCHARTS 1: Evolución Temporal de Consultas vs Citas (Area Chart) ──
+  const chartTimelineData = useMemo(() => {
+    // Agrupar por fecha dentro del rango
+    const fechasMap: Record<string, { consultas: number; citas: number }> = {};
+
+    // Obtener días intermedios ordenados
+    const start = new Date(fechaDesde);
+    const end = new Date(fechaHasta);
+    const cur = new Date(start);
+
+    while (cur <= end) {
+      const key = cur.toLocaleDateString('en-CA');
+      fechasMap[key] = { consultas: 0, citas: 0 };
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    consultasRango.forEach((c) => {
+      const d = c.fecha_consulta?.split('T')[0] || c.created_at?.split('T')[0];
+      if (d && fechasMap[d]) {
+        if (c.estado === 'finalizada') {
+          fechasMap[d].consultas += 1;
+        }
+      }
+    });
+
+    citasRango.forEach((c) => {
+      const d = c.fecha?.split('T')[0];
+      if (d && fechasMap[d]) {
+        fechasMap[d].citas += 1;
+      }
+    });
+
+    const categories = Object.keys(fechasMap).map((f) => {
+      const parts = f.split('-');
+      return `${parts[2]}/${parts[1]}`;
+    });
+
+    const seriesConsultas = Object.values(fechasMap).map((v) => v.consultas);
+    const seriesCitas = Object.values(fechasMap).map((v) => v.citas);
+
+    return { categories, seriesConsultas, seriesCitas };
+  }, [consultasRango, citasRango, fechaDesde, fechaHasta]);
+
+  const timelineChartOptions: ApexOptions = useMemo(() => ({
+    chart: {
+      type: 'area',
+      height: 290,
+      toolbar: { show: false },
+      fontFamily: 'inherit',
+    },
+    colors: ['#0d9488', '#0284c7'],
+    stroke: { curve: 'smooth', width: 2.5 },
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shadeIntensity: 1,
+        opacityFrom: 0.4,
+        opacityTo: 0.05,
+        stops: [0, 95, 100],
+      },
+    },
+    dataLabels: { enabled: false },
+    xaxis: {
+      categories: chartTimelineData.categories,
+      labels: {
+        style: { fontSize: '11px', colors: '#94a3b8' },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: {
+      labels: {
+        style: { fontSize: '11px', colors: '#94a3b8' },
+      },
+    },
+    grid: {
+      borderColor: 'rgba(148, 163, 184, 0.15)',
+      strokeDashArray: 4,
+    },
+    legend: {
+      position: 'top',
+      horizontalAlign: 'right',
+      fontSize: '12px',
+      markers: { size: 5 },
+    },
+    tooltip: {
+      theme: 'dark',
+      y: {
+        formatter: (val: number) => `${val} ${val === 1 ? 'paciente' : 'pacientes'}`,
+      },
+    },
+  }), [chartTimelineData.categories]);
+
+  // ── APEXCHARTS 2: Categorías de Atención / Servicios (Donut Chart) ────
+  const chartCategoriasData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    consultasRango.forEach((c) => {
+      let cat = 'Consulta Médica';
+      if (c.cita?.servicio?.categoria) {
+        cat = c.cita.servicio.categoria;
+      } else if (c.motivo_consulta && c.motivo_consulta.toLowerCase().includes('control')) {
+        cat = 'Control Clínico';
+      } else if (c.estudios_solicitados && c.estudios_solicitados.length > 0) {
+        cat = 'Estudio / Examen';
+      }
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+
+    const labels = Object.keys(counts);
+    const series = Object.values(counts);
+
+    if (labels.length === 0) {
+      return { labels: ['Sin registros'], series: [1] };
+    }
+    return { labels, series };
+  }, [consultasRango]);
+
+  const donutChartOptions: ApexOptions = useMemo(() => ({
+    chart: {
+      type: 'donut',
+      height: 290,
+      fontFamily: 'inherit',
+    },
+    labels: chartCategoriasData.labels,
+    colors: ['#0d9488', '#0284c7', '#8b5cf6', '#f59e0b', '#ec4899', '#10b981'],
+    legend: {
+      position: 'bottom',
+      fontSize: '11px',
+      horizontalAlign: 'center',
+    },
+    dataLabels: { enabled: false },
+    stroke: { width: 0 },
+    plotOptions: {
+      pie: {
+        donut: {
+          size: '72%',
+          labels: {
+            show: true,
+            total: {
+              show: true,
+              label: 'Atenciones',
+              fontSize: '13px',
+              fontWeight: 700,
+              color: '#94a3b8',
+              formatter: () => `${consultasRango.length}`,
+            },
+          },
+        },
+      },
+    },
+    tooltip: { theme: 'dark' },
+  }), [chartCategoriasData, consultasRango.length]);
+
+  // ── APEXCHARTS 3: Distribución Horaria de Atención (Column Chart) ──────
+  const chartHorariosData = useMemo(() => {
+    const slots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
+    const counts = new Array(slots.length).fill(0);
+
+    citasRango.forEach((c) => {
+      if (c.hora_inicio) {
+        const hourStr = c.hora_inicio.slice(0, 2);
+        const hour = parseInt(hourStr, 10);
+        if (hour >= 8 && hour <= 17) {
+          counts[hour - 8] += 1;
+        }
+      }
+    });
+
+    return { categories: slots, series: counts };
+  }, [citasRango]);
+
+  const barHorariosOptions: ApexOptions = useMemo(() => ({
+    chart: {
+      type: 'bar',
+      height: 290,
+      toolbar: { show: false },
+      fontFamily: 'inherit',
+    },
+    plotOptions: {
+      bar: {
+        borderRadius: 6,
+        columnWidth: '45%',
+      },
+    },
+    colors: ['#0d9488'],
+    dataLabels: { enabled: false },
+    xaxis: {
+      categories: chartHorariosData.categories,
+      labels: {
+        style: { fontSize: '10px', colors: '#94a3b8' },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: {
+      labels: {
+        style: { fontSize: '11px', colors: '#94a3b8' },
+      },
+    },
+    grid: {
+      borderColor: 'rgba(148, 163, 184, 0.15)',
+      strokeDashArray: 4,
+    },
+    tooltip: {
+      theme: 'dark',
+      y: {
+        formatter: (val: number) => `${val} citas`,
+      },
+    },
+  }), [chartHorariosData.categories]);
+
+  // ── APEXCHARTS 4: Tasa de Asistencia / Cumplimiento (RadialBar) ────────
+  const radialChartOptions: ApexOptions = useMemo(() => ({
+    chart: {
+      type: 'radialBar',
+      height: 290,
+      fontFamily: 'inherit',
+    },
+    plotOptions: {
+      radialBar: {
+        startAngle: -135,
+        endAngle: 135,
+        hollow: { size: '68%' },
+        track: {
+          background: 'rgba(148, 163, 184, 0.15)',
+          strokeWidth: '100%',
+        },
+        dataLabels: {
+          name: {
+            fontSize: '12px',
+            color: '#94a3b8',
+            offsetY: -8,
+          },
+          value: {
+            fontSize: '24px',
+            fontWeight: 800,
+            color: '#10b981',
+            offsetY: 6,
+            formatter: (v: number) => `${v}%`,
+          },
+        },
+      },
+    },
+    colors: ['#10b981'],
+    labels: ['Asistencia'],
+  }), []);
+
+  // Lista de pacientes según la pestaña activa
+  const pacientesAMostrar = useMemo(() => {
+    let sourceList: ConsultaMedica[] = [];
+    if (activeTab === 'hoy_espera') {
+      sourceList = enEsperaHoy;
+    } else if (activeTab === 'hoy_consulta') {
+      sourceList = enConsultaHoy;
+    } else if (activeTab === 'hoy_todas') {
+      sourceList = consultasHoy;
+    } else {
+      sourceList = consultasRango;
+    }
+
+    if (!searchQuery.trim()) return sourceList;
+
+    const q = searchQuery.toLowerCase();
+    return sourceList.filter((c) => {
+      const pacNom = `${c.paciente?.nombres || ''} ${c.paciente?.apellidos || ''}`.toLowerCase();
+      const doc = (c.paciente?.documento_identidad || c.paciente?.numero_documento || '').toLowerCase();
+      const mot = (c.motivo_consulta || '').toLowerCase();
+      return pacNom.includes(q) || doc.includes(q) || mot.includes(q);
+    });
+  }, [activeTab, enEsperaHoy, enConsultaHoy, consultasHoy, consultasRango, searchQuery]);
 
   return (
     <div className="space-y-6 pb-12">
-      {/* ── HERO BANNER EJECUTIVO MÉDICO ──────────────────────────────── */}
+      {/* ── HERO BANNER DEL FACULTATIVO ───────────────────────────────── */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 border border-teal-500/20 p-6 md:p-8 text-white shadow-xl">
-        <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-1/3 -mb-12 w-48 h-48 bg-primary/10 rounded-full blur-2xl pointer-events-none"></div>
+        <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 -mb-12 w-48 h-48 bg-primary/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-bold tracking-wide">
                 <HeartPulse className="size-3.5 text-teal-400" />
-                PANEL DEL FACULTATIVO • MEDISOFT CLÍNICO
+                PANEL CLÍNICO DEL FACULTATIVO • MEDISOFT SUITE
               </span>
               {doctorEspecialidad && (
                 <span
@@ -230,15 +567,11 @@ export const MedicoDashboardPage: React.FC = () => {
             </h1>
 
             <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Bienvenido a su espacio clínico. Aquí dispone de una vista centralizada de su jornada asistencial,
-              pacientes en sala de espera, consultas en progreso y acceso directo a sus expedientes.
+              Métricas asistenciales, evolución de atenciones, afluencia de pacientes y flujo en tiempo real
+              de su consultorio médico.
             </p>
 
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300 pt-1 font-medium">
-              <span className="flex items-center gap-1.5 capitalize text-teal-200">
-                <Calendar className="size-3.5 text-teal-400" />
-                {formattedToday}
-              </span>
               <span className="flex items-center gap-1.5 text-slate-300">
                 <MapPin className="size-3.5 text-teal-400" />
                 {sucursalActiva?.nombre || 'Sede Principal'}
@@ -246,7 +579,7 @@ export const MedicoDashboardPage: React.FC = () => {
               {currentDoctor?.licencia_medica && (
                 <span className="flex items-center gap-1.5 text-slate-300 font-mono">
                   <ShieldCheck className="size-3.5 text-teal-400" />
-                  Licencia: {currentDoctor.licencia_medica}
+                  Licencia / Colegiado: {currentDoctor.licencia_medica}
                 </span>
               )}
             </div>
@@ -281,110 +614,291 @@ export const MedicoDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ── TARJETAS KPI DE ATENCIÓN MÉDICA ───────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {/* 1. Sala de Espera */}
+      {/* ── BARRA DE FILTRO POR RANGO DE FECHAS ──────────────────────── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 rounded-2xl border border-border/70 bg-card shadow-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mr-1">
+            <CalendarRange className="size-4 text-teal-600 dark:text-teal-400" />
+            Período:
+          </span>
+
+          <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-xl border border-border/60">
+            {(
+              [
+                { id: 'hoy', label: 'Hoy' },
+                { id: 'semana', label: '7 Días' },
+                { id: 'mes', label: 'Este Mes' },
+                { id: '30dias', label: '30 Días' },
+                { id: 'personalizado', label: 'Personalizado' },
+              ] as { id: DateRangePreset; label: string }[]
+            ).map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => handleSelectPreset(preset.id)}
+                className={cn(
+                  'px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer',
+                  dateRangeMode === preset.id
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Fechas personalizadas y botón refrescar */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-muted-foreground">Desde:</span>
+            <Input
+              type="date"
+              value={fechaDesde}
+              onChange={(e) => {
+                setDateRangeMode('personalizado');
+                setFechaDesde(e.target.value);
+              }}
+              className="h-8 text-xs w-36 font-mono"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-muted-foreground">Hasta:</span>
+            <Input
+              type="date"
+              value={fechaHasta}
+              onChange={(e) => {
+                setDateRangeMode('personalizado');
+                setFechaHasta(e.target.value);
+              }}
+              className="h-8 text-xs w-36 font-mono"
+            />
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="h-8 text-xs cursor-pointer border-border/80"
+          >
+            <RefreshCw className={cn('size-3.5 mr-1.5 text-teal-600 dark:text-teal-400', refreshing && 'animate-spin')} />
+            <span>{refreshing ? 'Cargando...' : 'Actualizar'}</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* ── TARJETAS KPI EJECUTIVAS ──────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 sm:gap-4">
+        {/* 1. Atendidas en el Período */}
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Atendidas (Rango)</p>
+            <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+              {kpisPeriodo.finalizadas}
+            </h3>
+            <p className="text-[10px] text-muted-foreground mt-0.5 font-medium flex items-center gap-1">
+              <CheckCircle2 className="size-3 text-emerald-500" />
+              <span>Completadas</span>
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* 2. Citas Agendadas */}
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Citas (Rango)</p>
+            <h3 className="text-2xl font-black text-sky-600 dark:text-sky-400 mt-1">
+              {kpisPeriodo.citasTotal}
+            </h3>
+            <p className="text-[10px] text-muted-foreground mt-0.5 font-medium flex items-center gap-1">
+              <CalendarDays className="size-3 text-sky-500" />
+              <span>Programadas</span>
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* 3. Pacientes en Espera (Hoy) */}
         <Card
           onClick={() => navigate('/clinica/consultas/sala-espera')}
-          className="border-border/60 bg-card/60 backdrop-blur-xs hover:border-amber-500/40 hover:shadow-md transition cursor-pointer group"
+          className="border-border/60 bg-card/60 backdrop-blur-xs hover:border-amber-500/40 transition cursor-pointer"
         >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <span>En Espera (Hoy)</span>
-                {enEsperaHoy.length > 0 && (
-                  <span className="size-2 rounded-full bg-amber-500 animate-pulse" />
-                )}
-              </p>
-              <h3 className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 mt-1">
-                {enEsperaHoy.length}
-              </h3>
-              <p className="text-[10px] text-muted-foreground mt-0.5 group-hover:text-foreground transition-colors flex items-center gap-1">
-                <span>Ver lista de espera</span>
-                <ChevronRight className="size-3 group-hover:translate-x-0.5 transition-transform" />
-              </p>
-            </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-              <Hourglass className="size-5" />
-            </div>
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+              <span>En Espera (Hoy)</span>
+              {enEsperaHoy.length > 0 && <span className="size-2 rounded-full bg-amber-500 animate-pulse" />}
+            </p>
+            <h3 className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">
+              {enEsperaHoy.length}
+            </h3>
+            <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5 font-medium flex items-center gap-1">
+              <Hourglass className="size-3" />
+              <span>En sala ahora</span>
+            </p>
           </CardContent>
         </Card>
 
-        {/* 2. En Consulta Activa */}
+        {/* 4. En Consulta Activa (Hoy) */}
         <Card
           onClick={() => navigate('/clinica/consultas/en-consulta')}
-          className="border-border/60 bg-card/60 backdrop-blur-xs hover:border-primary/40 hover:shadow-md transition cursor-pointer group"
+          className="border-border/60 bg-card/60 backdrop-blur-xs hover:border-primary/40 transition cursor-pointer"
         >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <span>En Consulta</span>
-                {enConsultaHoy.length > 0 && (
-                  <span className="size-2 rounded-full bg-sky-500 animate-pulse" />
-                )}
-              </p>
-              <h3 className="text-2xl sm:text-3xl font-black text-sky-600 dark:text-sky-400 mt-1">
-                {enConsultaHoy.length}
-              </h3>
-              <p className="text-[10px] text-muted-foreground mt-0.5 group-hover:text-foreground transition-colors flex items-center gap-1">
-                <span>Atención activa</span>
-                <ChevronRight className="size-3 group-hover:translate-x-0.5 transition-transform" />
-              </p>
-            </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-              <Activity className="size-5" />
-            </div>
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+              <span>En Consulta</span>
+              {enConsultaHoy.length > 0 && <span className="size-2 rounded-full bg-sky-500 animate-pulse" />}
+            </p>
+            <h3 className="text-2xl font-black text-primary mt-1">
+              {enConsultaHoy.length}
+            </h3>
+            <p className="text-[10px] text-primary/80 mt-0.5 font-medium flex items-center gap-1">
+              <Activity className="size-3" />
+              <span>En consultorio</span>
+            </p>
           </CardContent>
         </Card>
 
-        {/* 3. Atendidas Hoy */}
-        <Card
-          onClick={() => navigate('/clinica/consultas/atendidas')}
-          className="border-border/60 bg-card/60 backdrop-blur-xs hover:border-emerald-500/40 hover:shadow-md transition cursor-pointer group"
-        >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Atendidas (Hoy)</p>
-              <h3 className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
-                {atendidasHoy.length}
-              </h3>
-              <p className="text-[10px] text-muted-foreground mt-0.5 group-hover:text-foreground transition-colors flex items-center gap-1">
-                <span>Historial del día</span>
-                <ChevronRight className="size-3 group-hover:translate-x-0.5 transition-transform" />
-              </p>
-            </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-              <CheckCircle2 className="size-5" />
-            </div>
+        {/* 5. Pacientes Únicos */}
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Pacientes Únicos</p>
+            <h3 className="text-2xl font-black text-teal-600 dark:text-teal-400 mt-1">
+              {kpisPeriodo.pacientesUnicos}
+            </h3>
+            <p className="text-[10px] text-muted-foreground mt-0.5 font-medium flex items-center gap-1">
+              <Users className="size-3 text-teal-500" />
+              <span>Expedientes</span>
+            </p>
           </CardContent>
         </Card>
 
-        {/* 4. Total Citas Programadas Hoy */}
-        <Card
-          onClick={() => navigate('/clinica/agenda')}
-          className="border-border/60 bg-card/60 backdrop-blur-xs hover:border-teal-500/40 hover:shadow-md transition cursor-pointer group"
-        >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Citas de Hoy</p>
-              <h3 className="text-2xl sm:text-3xl font-black text-teal-600 dark:text-teal-400 mt-1">
-                {citas.length || consultasHoy.length}
-              </h3>
-              <p className="text-[10px] text-muted-foreground mt-0.5 group-hover:text-foreground transition-colors flex items-center gap-1">
-                <span>Revisar agenda</span>
-                <ChevronRight className="size-3 group-hover:translate-x-0.5 transition-transform" />
-              </p>
-            </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-              <CalendarDays className="size-5" />
-            </div>
+        {/* 6. Tarifas Estimadas */}
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tarifas / Ingresos</p>
+            <h3 className="text-xl font-black text-indigo-600 dark:text-indigo-400 mt-1 truncate font-mono">
+              {formatMoney(kpisPeriodo.facturacionEstimada)}
+            </h3>
+            <p className="text-[10px] text-muted-foreground mt-0.5 font-medium flex items-center gap-1">
+              <DollarSign className="size-3 text-indigo-500" />
+              <span>Prestaciones</span>
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* ── CUERPO PRINCIPAL: 2 COLUMNAS (LISTA DE PACIENTES + WIDGETS) ── */}
+      {/* ── SECCIÓN APEXCHARTS: EVOLUCIÓN ASISTENCIAL & CATEGORÍAS ────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Gráfico 1: Evolución Temporal (Area Chart) (2/3 de ancho) */}
+        <Card className="lg:col-span-2 border-border/70 bg-card shadow-xs">
+          <CardHeader className="p-5 pb-2 flex flex-row items-center justify-between border-b border-border/60">
+            <div>
+              <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                <TrendingUp className="size-4 text-teal-500" />
+                <span>Evolución Asistencial en el Período</span>
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                Comparativa diaria de consultas atendidas y citas agendadas
+              </CardDescription>
+            </div>
+            <Badge variant="outline" className="text-[11px] font-mono border-teal-500/30 text-teal-600 dark:text-teal-400">
+              {fechaDesde} al {fechaHasta}
+            </Badge>
+          </CardHeader>
+          <CardContent className="p-5 pt-3">
+            <ApexChart
+              type="area"
+              options={timelineChartOptions}
+              series={[
+                { name: 'Consultas Atendidas', data: chartTimelineData.seriesConsultas },
+                { name: 'Citas Agendadas', data: chartTimelineData.seriesCitas },
+              ]}
+              height={290}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Gráfico 2: Distribución por Servicio / Categoría (Donut Chart) (1/3 de ancho) */}
+        <Card className="border-border/70 bg-card shadow-xs">
+          <CardHeader className="p-5 pb-2 border-b border-border/60">
+            <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+              <PieChart className="size-4 text-teal-500" />
+              <span>Servicios y Prestaciones</span>
+            </CardTitle>
+            <CardDescription className="text-xs text-muted-foreground mt-0.5">
+              Distribución por categoría de atención
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-5 pt-3">
+            <ApexChart
+              type="donut"
+              options={donutChartOptions}
+              series={chartCategoriasData.series}
+              height={290}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── SECCIÓN APEXCHARTS 2: DEMANDA HORARIA & ASISTENCIA ─────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Gráfico 3: Demanda Horaria (Column Chart) (2/3 de ancho) */}
+        <Card className="lg:col-span-2 border-border/70 bg-card shadow-xs">
+          <CardHeader className="p-5 pb-2 flex flex-row items-center justify-between border-b border-border/60">
+            <div>
+              <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                <BarChart3 className="size-4 text-teal-500" />
+                <span>Afluencia por Franja Horaria</span>
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                Distribución de pacientes según la hora de agendamiento
+              </CardDescription>
+            </div>
+            <span className="text-[11px] text-muted-foreground font-semibold flex items-center gap-1">
+              <Clock className="size-3.5 text-teal-500" />
+              Horas pico
+            </span>
+          </CardHeader>
+          <CardContent className="p-5 pt-3">
+            <ApexChart
+              type="bar"
+              options={barHorariosOptions}
+              series={[{ name: 'Pacientes', data: chartHorariosData.series }]}
+              height={290}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Gráfico 4: Tasa de Cumplimiento / Asistencia (RadialBar) (1/3) */}
+        <Card className="border-border/70 bg-card shadow-xs">
+          <CardHeader className="p-5 pb-2 border-b border-border/60">
+            <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Activity className="size-4 text-teal-500" />
+              <span>Efectividad Asistencial</span>
+            </CardTitle>
+            <CardDescription className="text-xs text-muted-foreground mt-0.5">
+              Tasa de asistencia de pacientes citados
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-5 pt-3 flex flex-col items-center justify-center">
+            <ApexChart
+              type="radialBar"
+              options={radialChartOptions}
+              series={[kpisPeriodo.tasaAsistencia]}
+              height={260}
+            />
+            <p className="text-xs text-muted-foreground text-center font-medium mt-1">
+              {kpisPeriodo.citasCompletadas} de {kpisPeriodo.citasTotal} citas completadas
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── CUERPO PRINCIPAL: LISTADO DE PACIENTES + ACCESOS RÁPIDOS ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Columna Izquierda: Flujo de Pacientes de Hoy (2/3) */}
+        {/* Columna Izquierda: Flujo Asistencial de Pacientes (2/3) */}
         <div className="lg:col-span-2 space-y-4">
           <Card className="border-border/70 bg-card shadow-xs overflow-hidden">
             <CardHeader className="p-5 pb-4 border-b border-border/70 bg-muted/20">
@@ -395,20 +909,20 @@ export const MedicoDashboardPage: React.FC = () => {
                   </div>
                   <div>
                     <CardTitle className="text-base font-bold text-foreground">
-                      Pacientes y Consultas de Hoy
+                      Flujo de Pacientes en Consultorio
                     </CardTitle>
                     <CardDescription className="text-xs text-muted-foreground mt-0.5">
-                      Flujo de atención de su consultorio para la jornada actual
+                      Gestión directa de pacientes en espera, en consulta o completados
                     </CardDescription>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <div className="relative w-44 sm:w-52">
+                  <div className="relative w-44 sm:w-56">
                     <Search className="size-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <Input
                       type="text"
-                      placeholder="Buscar paciente..."
+                      placeholder="Buscar paciente o DNI..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="h-8 pl-8 text-xs"
@@ -417,41 +931,30 @@ export const MedicoDashboardPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Pestañas de Estado */}
+              {/* Pestañas de Vista */}
               <div className="flex items-center gap-1.5 pt-3 overflow-x-auto scrollbar-thin">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('todas')}
-                  className={cn(
-                    'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border',
-                    activeTab === 'todas'
-                      ? 'bg-primary text-primary-foreground border-primary shadow-xs'
-                      : 'bg-card text-muted-foreground hover:text-foreground border-border'
-                  )}
-                >
-                  Todas ({consultasHoy.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('espera')}
+                  onClick={() => setActiveTab('hoy_espera')}
                   className={cn(
                     'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border flex items-center gap-1.5',
-                    activeTab === 'espera'
+                    activeTab === 'hoy_espera'
                       ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                       : 'bg-card text-muted-foreground hover:text-foreground border-border'
                   )}
                 >
-                  <span>En Espera</span>
+                  <span>En Espera (Hoy)</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/20 text-white font-bold">
                     {enEsperaHoy.length}
                   </span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => setActiveTab('consulta')}
+                  onClick={() => setActiveTab('hoy_consulta')}
                   className={cn(
                     'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border flex items-center gap-1.5',
-                    activeTab === 'consulta'
+                    activeTab === 'hoy_consulta'
                       ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
                       : 'bg-card text-muted-foreground hover:text-foreground border-border'
                   )}
@@ -461,20 +964,31 @@ export const MedicoDashboardPage: React.FC = () => {
                     {enConsultaHoy.length}
                   </span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => setActiveTab('atendidas')}
+                  onClick={() => setActiveTab('hoy_todas')}
                   className={cn(
-                    'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border flex items-center gap-1.5',
-                    activeTab === 'atendidas'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                    'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border',
+                    activeTab === 'hoy_todas'
+                      ? 'bg-primary text-primary-foreground border-primary shadow-xs'
                       : 'bg-card text-muted-foreground hover:text-foreground border-border'
                   )}
                 >
-                  <span>Atendidas</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/20 text-white font-bold">
-                    {atendidasHoy.length}
-                  </span>
+                  Todas de Hoy ({consultasHoy.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('rango_todas')}
+                  className={cn(
+                    'px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border',
+                    activeTab === 'rango_todas'
+                      ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                      : 'bg-card text-muted-foreground hover:text-foreground border-border'
+                  )}
+                >
+                  Todo el Período ({consultasRango.length})
                 </button>
               </div>
             </CardHeader>
@@ -483,9 +997,9 @@ export const MedicoDashboardPage: React.FC = () => {
               {loading ? (
                 <div className="p-12 text-center text-xs text-muted-foreground">
                   <div className="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  Cargando consultas de la jornada...
+                  Cargando pacientes del consultorio...
                 </div>
-              ) : filteredConsultasHoy.length === 0 ? (
+              ) : pacientesAMostrar.length === 0 ? (
                 <div className="p-10 text-center space-y-3">
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 mx-auto">
                     <CheckCircle2 className="size-6" />
@@ -494,16 +1008,16 @@ export const MedicoDashboardPage: React.FC = () => {
                     <h4 className="text-sm font-bold text-foreground">
                       {searchQuery
                         ? 'No se encontraron pacientes con ese criterio'
-                        : activeTab === 'espera'
-                        ? 'No hay pacientes en sala de espera en este momento'
-                        : activeTab === 'consulta'
+                        : activeTab === 'hoy_espera'
+                        ? 'No hay pacientes en espera en este momento'
+                        : activeTab === 'hoy_consulta'
                         ? 'No hay consultas activas en curso'
-                        : 'No tiene citas registradas para hoy'}
+                        : 'No hay consultas registradas para este filtro'}
                     </h4>
                     <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                       {searchQuery
-                        ? 'Intente con otro nombre o documento de identidad.'
-                        : 'Puede consultar la agenda general o revisar el directorio de pacientes.'}
+                        ? 'Verifique los términos de búsqueda o intente con otro criterio.'
+                        : 'Puede consultar la agenda para programar citas o revisar el historial.'}
                     </p>
                   </div>
                   <div className="flex items-center justify-center gap-2 pt-2">
@@ -520,7 +1034,7 @@ export const MedicoDashboardPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="divide-y divide-border/60">
-                  {filteredConsultasHoy.map((c) => {
+                  {pacientesAMostrar.map((c) => {
                     const pac = c.paciente;
                     const nombrePac = pac ? `${pac.nombres} ${pac.apellidos}` : 'Paciente sin nombre';
                     const docId = pac?.documento_identidad || pac?.numero_documento || 'S/D';
@@ -579,6 +1093,9 @@ export const MedicoDashboardPage: React.FC = () => {
                                   {c.cita.hora_inicio}
                                 </span>
                               )}
+                              {c.fecha_consulta && (
+                                <span>{c.fecha_consulta.split('T')[0]}</span>
+                              )}
                             </div>
                             {c.motivo_consulta && (
                               <p className="text-xs text-foreground/80 font-medium truncate max-w-md">
@@ -634,7 +1151,7 @@ export const MedicoDashboardPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Columna Derecha: Widgets y Perfil Profesional (1/3) */}
+        {/* Columna Derecha: Ficha del Médico y Diagnósticos (1/3) */}
         <div className="space-y-4">
           {/* Tarjeta Perfil del Médico */}
           <Card className="border-border/70 bg-card shadow-xs overflow-hidden">
@@ -672,7 +1189,7 @@ export const MedicoDashboardPage: React.FC = () => {
                 <div className="space-y-0.5">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold">Total Pacientes</span>
                   <p className="font-mono font-black text-teal-600 dark:text-teal-400 text-sm">
-                    {totalPacientesUnicos}
+                    {kpisPeriodo.pacientesUnicos}
                   </p>
                 </div>
               </div>
@@ -690,7 +1207,31 @@ export const MedicoDashboardPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Accesos Directos Clínicos */}
+          {/* Diagnósticos Más Frecuentes del Período */}
+          {topDiagnosticos.length > 0 && (
+            <Card className="border-border/70 bg-card shadow-xs">
+              <CardHeader className="p-4 pb-2 border-b border-border/60">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <FileText className="size-3.5 text-teal-500" />
+                  <span>Diagnósticos Frecuentes</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3 space-y-2">
+                {topDiagnosticos.map(([diag, count], idx) => (
+                  <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-lg bg-muted/30">
+                    <span className="font-medium text-foreground truncate max-w-[200px]" title={diag}>
+                      {diag}
+                    </span>
+                    <Badge variant="outline" className="text-[10px] border-teal-500/30 text-teal-600 dark:text-teal-400 font-bold shrink-0">
+                      {count} {count === 1 ? 'caso' : 'casos'}
+                    </Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Accesos Directos Asistenciales */}
           <Card className="border-border/70 bg-card shadow-xs">
             <CardHeader className="p-4 pb-2 border-b border-border/60">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -770,3 +1311,5 @@ export const MedicoDashboardPage: React.FC = () => {
     </div>
   );
 };
+
+export default MedicoDashboardPage;

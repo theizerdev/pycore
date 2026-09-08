@@ -62,6 +62,12 @@ export interface CitaMini {
   hora_fin?: string;
   estado?: string;
   motivo?: string;
+  servicio?: {
+    id?: number;
+    nombre?: string;
+    categoria?: string;
+  } | null;
+  servicio_nombre?: string | null;
 }
 
 export interface EstudioSolicitado {
