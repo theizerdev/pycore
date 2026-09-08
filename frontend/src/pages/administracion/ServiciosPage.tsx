@@ -3,7 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useRegional } from '../../context/RegionalContext';
 import { serviciosApi } from '../../api/servicios';
 import { especialidadesApi } from '../../api/especialidades';
-import type { Servicio, ServicioCreateInput, Especialidad } from '../../types';
+import { medicosApi } from '../../api/medicos';
+import type { Servicio, ServicioCreateInput, Especialidad, Medico } from '../../types';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -68,7 +69,7 @@ const CATEGORIAS_SERVICIOS = [
 ];
 
 export const ServiciosPage: React.FC = () => {
-  const { hasPermission, sucursalActiva } = useAuth();
+  const { user, hasPermission, sucursalActiva } = useAuth();
   const { formatMoney } = useRegional();
 
   const canCreate = hasPermission('servicios.crear');
@@ -78,8 +79,26 @@ export const ServiciosPage: React.FC = () => {
   // Estados principales
   const [servicios, setServicios] = useState<Servicio[]>([]);
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
+  const [medicos, setMedicos] = useState<Medico[]>([]);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
+
+  // Detección de perfil médico autenticado
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+
+  const currentDoctor = useMemo(() => {
+    if (!isDoctorUser || !user) return null;
+    return medicos.find(
+      (m) =>
+        m.usuario_id === user.id ||
+        (m.email && m.email.toLowerCase() === user.email.toLowerCase())
+    );
+  }, [isDoctorUser, user, medicos]);
+
+  const doctorEspecialidad = useMemo(() => {
+    if (!isDoctorUser || !currentDoctor?.especialidad_id) return null;
+    return especialidades.find((e) => e.id === currentDoctor.especialidad_id) || null;
+  }, [isDoctorUser, currentDoctor, especialidades]);
 
   // Filtros
   const [selectedEspecialidadId, setSelectedEspecialidadId] = useState<number | 'all'>('all');
@@ -87,6 +106,13 @@ export const ServiciosPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+
+  // Si es doctor, fijar siempre el filtro de especialidad a su especialidad asignada
+  useEffect(() => {
+    if (isDoctorUser && currentDoctor?.especialidad_id) {
+      setSelectedEspecialidadId(currentDoctor.especialidad_id);
+    }
+  }, [isDoctorUser, currentDoctor]);
 
   // Modales
   const [modalOpen, setModalOpen] = useState(false);
@@ -118,6 +144,7 @@ export const ServiciosPage: React.FC = () => {
       const results = await Promise.allSettled([
         serviciosApi.list({ sucursal_id: sucursalActiva?.id }),
         especialidadesApi.list({ activo: true, sucursal_id: sucursalActiva?.id }),
+        medicosApi.list({ activo: true }).catch(() => []),
       ]);
 
       if (results[0].status === 'fulfilled') {
@@ -130,6 +157,10 @@ export const ServiciosPage: React.FC = () => {
         setEspecialidades(results[1].value || []);
       } else {
         console.error('Error cargando especialidades:', results[1].reason);
+      }
+
+      if (results[2].status === 'fulfilled') {
+        setMedicos(results[2].value || []);
       }
 
       if (results[0].status === 'rejected' && results[1].status === 'rejected') {
@@ -193,7 +224,9 @@ export const ServiciosPage: React.FC = () => {
   // Abrir modal de creación
   const handleOpenCreate = () => {
     const defaultEspId =
-      selectedEspecialidadId !== 'all'
+      isDoctorUser && currentDoctor?.especialidad_id
+        ? currentDoctor.especialidad_id
+        : selectedEspecialidadId !== 'all'
         ? selectedEspecialidadId
         : especialidades.length > 0
         ? especialidades[0].id
@@ -314,7 +347,11 @@ export const ServiciosPage: React.FC = () => {
       setSeeding(true);
       const res = await serviciosApi.seedDefaults(sucursalActiva?.id);
       setServicios(res);
-      toast.success('Catálogo de servicios sugeridos sincronizado con éxito');
+      toast.success(
+        isDoctorUser
+          ? 'Servicios sugeridos de su especialidad sincronizados con éxito'
+          : 'Catálogo de servicios sugeridos sincronizado con éxito'
+      );
     } catch (error: any) {
       console.error('Error generando servicios sugeridos:', error);
       toast.error('Error al sincronizar servicios sugeridos', {
@@ -342,7 +379,9 @@ export const ServiciosPage: React.FC = () => {
                 </Badge>
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                Catálogo de prestaciones, consultas, procedimientos y estudios clínicos por especialidad
+                {isDoctorUser
+                  ? `Catálogo exclusivo de servicios y prestaciones para su especialidad (${doctorEspecialidad?.nombre || 'Especialidad Médica'})`
+                  : 'Catálogo de prestaciones, consultas, procedimientos y estudios clínicos por especialidad'}
               </p>
             </div>
           </div>
@@ -358,7 +397,13 @@ export const ServiciosPage: React.FC = () => {
               className="border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer text-xs"
             >
               <Sparkles className={cn('size-4 mr-1.5 text-teal-500', seeding && 'animate-spin')} />
-              <span>{seeding ? 'Sincronizando...' : 'Sincronizar Catálogo Sugerido'}</span>
+              <span>
+                {seeding
+                  ? 'Sincronizando...'
+                  : isDoctorUser
+                  ? 'Sincronizar de Mi Especialidad'
+                  : 'Sincronizar Catálogo Sugerido'}
+              </span>
             </Button>
           )}
 
@@ -403,13 +448,17 @@ export const ServiciosPage: React.FC = () => {
 
         <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
           <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Especialidades</p>
-              <h3 className="text-2xl font-black text-teal-600 dark:text-teal-400 mt-1">
-                {stats.especialidadesConServicios} / {especialidades.length}
+            <div className="min-w-0 pr-2">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                {isDoctorUser ? 'Especialidad' : 'Especialidades'}
+              </p>
+              <h3 className="text-xl sm:text-2xl font-black text-teal-600 dark:text-teal-400 mt-1 truncate" title={doctorEspecialidad?.nombre}>
+                {isDoctorUser
+                  ? (doctorEspecialidad?.nombre || 'Asignada')
+                  : `${stats.especialidadesConServicios} / ${especialidades.length}`}
               </h3>
             </div>
-            <div className="flex size-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
               <Stethoscope className="size-5" />
             </div>
           </CardContent>
@@ -430,75 +479,98 @@ export const ServiciosPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* ── BARRA DE PESTAÑAS POR ESPECIALIDAD MÉDICA ─────────────────── */}
-      {especialidades.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Stethoscope className="size-3.5 text-primary" />
-              Filtrar por Especialidad Médica:
-            </span>
+      {/* ── BARRA DE PESTAÑAS POR ESPECIALIDAD MÉDICA O BANNER FACULTATIVO ── */}
+      {isDoctorUser ? (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 rounded-xl border border-teal-500/30 bg-teal-500/5 text-xs text-foreground">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
+              style={{ backgroundColor: doctorEspecialidad?.color || '#0ea5e9' }}
+            />
+            <div>
+              <span className="font-semibold text-teal-700 dark:text-teal-300">
+                Vista restringida a su especialidad médica:
+              </span>{' '}
+              <span className="font-bold">{doctorEspecialidad?.nombre || 'Especialidad Asignada'}</span>
+              <span className="text-muted-foreground ml-1.5 hidden sm:inline">
+                (Dr(a). {currentDoctor ? `${currentDoctor.nombres} ${currentDoctor.apellidos}` : user?.nombre})
+              </span>
+            </div>
           </div>
+          <Badge variant="outline" className="border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-500/10 text-[11px] font-semibold w-fit">
+            {filteredServicios.length} {filteredServicios.length === 1 ? 'servicio registrado' : 'servicios registrados'}
+          </Badge>
+        </div>
+      ) : (
+        especialidades.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Stethoscope className="size-3.5 text-primary" />
+                Filtrar por Especialidad Médica:
+              </span>
+            </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-            <button
-              type="button"
-              onClick={() => setSelectedEspecialidadId('all')}
-              className={cn(
-                'px-3.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all border flex items-center gap-2 cursor-pointer',
-                selectedEspecialidadId === 'all'
-                  ? 'bg-primary text-primary-foreground border-primary shadow-xs'
-                  : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 border-border/80'
-              )}
-            >
-              <span>Todas las Especialidades</span>
-              <span
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              <button
+                type="button"
+                onClick={() => setSelectedEspecialidadId('all')}
                 className={cn(
-                  'text-[10px] font-bold px-1.5 py-0.2 rounded-full',
+                  'px-3.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all border flex items-center gap-2 cursor-pointer',
                   selectedEspecialidadId === 'all'
-                    ? 'bg-primary-foreground/20 text-primary-foreground'
-                    : 'bg-muted text-muted-foreground'
+                    ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                    : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 border-border/80'
                 )}
               >
-                {servicios.length}
-              </span>
-            </button>
-
-            {especialidades.map((esp) => {
-              const count = especialidadCounts[esp.id] || 0;
-              const isSelected = selectedEspecialidadId === esp.id;
-              return (
-                <button
-                  key={esp.id}
-                  type="button"
-                  onClick={() => setSelectedEspecialidadId(esp.id)}
+                <span>Todas las Especialidades</span>
+                <span
                   className={cn(
-                    'px-3.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all border flex items-center gap-2 cursor-pointer',
-                    isSelected
-                      ? 'bg-primary text-primary-foreground border-primary shadow-xs'
-                      : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 border-border/80'
+                    'text-[10px] font-bold px-1.5 py-0.2 rounded-full',
+                    selectedEspecialidadId === 'all'
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-muted text-muted-foreground'
                   )}
                 >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: esp.color || '#0ea5e9' }}
-                  />
-                  <span>{esp.nombre}</span>
-                  <span
+                  {servicios.length}
+                </span>
+              </button>
+
+              {especialidades.map((esp) => {
+                const count = especialidadCounts[esp.id] || 0;
+                const isSelected = selectedEspecialidadId === esp.id;
+                return (
+                  <button
+                    key={esp.id}
+                    type="button"
+                    onClick={() => setSelectedEspecialidadId(esp.id)}
                     className={cn(
-                      'text-[10px] font-bold px-1.5 py-0.2 rounded-full',
+                      'px-3.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all border flex items-center gap-2 cursor-pointer',
                       isSelected
-                        ? 'bg-primary-foreground/20 text-primary-foreground'
-                        : 'bg-muted text-muted-foreground'
+                        ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                        : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40 border-border/80'
                     )}
                   >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: esp.color || '#0ea5e9' }}
+                    />
+                    <span>{esp.nombre}</span>
+                    <span
+                      className={cn(
+                        'text-[10px] font-bold px-1.5 py-0.2 rounded-full',
+                        isSelected
+                          ? 'bg-primary-foreground/20 text-primary-foreground'
+                          : 'bg-muted text-muted-foreground'
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )
       )}
 
       {/* ── BARRA DE BÚSQUEDA Y FILTROS SECUNDARIOS ──────────────────── */}
@@ -914,32 +986,57 @@ export const ServiciosPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
             {/* Especialidad Médica Asignada */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-foreground">
-                Especialidad Médica <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={String(formData.especialidad_id || '')}
-                onValueChange={(val) => {
-                  const espId = Number(val);
-                  const espObj = especialidades.find((x) => x.id === espId);
-                  setFormData({
-                    ...formData,
-                    especialidad_id: espId,
-                    color: espObj?.color || formData.color,
-                  });
-                }}
-              >
-                <SelectTrigger className="w-full h-9 text-xs">
-                  <SelectValue placeholder="-- Seleccione la Especialidad Médica --" />
-                </SelectTrigger>
-                <SelectContent>
-                  {especialidades.map((esp) => (
-                    <SelectItem key={esp.id} value={String(esp.id)} className="text-xs">
-                      {esp.nombre} {esp.codigo ? `(${esp.codigo})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-foreground">
+                  Especialidad Médica <span className="text-red-500">*</span>
+                </Label>
+                {isDoctorUser && (
+                  <span className="text-[10px] text-teal-600 dark:text-teal-400 font-medium flex items-center gap-1">
+                    <ShieldCheck className="size-3" />
+                    Fijada a su especialidad médica
+                  </span>
+                )}
+              </div>
+
+              {isDoctorUser ? (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-border/70 bg-muted/30 text-xs font-medium text-foreground">
+                  <span
+                    className="w-3 h-3 rounded-full shrink-0 shadow-xs"
+                    style={{ backgroundColor: doctorEspecialidad?.color || '#0ea5e9' }}
+                  />
+                  <span className="font-semibold">{doctorEspecialidad?.nombre || 'Especialidad Médica'}</span>
+                  {doctorEspecialidad?.codigo && (
+                    <span className="text-muted-foreground font-mono text-[10px]">({doctorEspecialidad.codigo})</span>
+                  )}
+                  <Badge variant="outline" className="ml-auto text-[10px] text-muted-foreground border-border bg-background/50">
+                    Asignada
+                  </Badge>
+                </div>
+              ) : (
+                <Select
+                  value={String(formData.especialidad_id || '')}
+                  onValueChange={(val) => {
+                    const espId = Number(val);
+                    const espObj = especialidades.find((x) => x.id === espId);
+                    setFormData({
+                      ...formData,
+                      especialidad_id: espId,
+                      color: espObj?.color || formData.color,
+                    });
+                  }}
+                >
+                  <SelectTrigger className="w-full h-9 text-xs">
+                    <SelectValue placeholder="-- Seleccione la Especialidad Médica --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {especialidades.map((esp) => (
+                      <SelectItem key={esp.id} value={String(esp.id)} className="text-xs">
+                        {esp.nombre} {esp.codigo ? `(${esp.codigo})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Nombre del Servicio y Código */}
