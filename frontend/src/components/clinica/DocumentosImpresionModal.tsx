@@ -716,14 +716,19 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                         <FileText className="h-3 w-3 text-primary" />
                         1. Motivo de Consulta & Anamnesis
                       </h3>
-                      <div className="bg-zinc-50/70 p-2 rounded-lg border border-zinc-200/80 space-y-0.5">
-                        <p className="text-zinc-800 font-medium">
+                      <div className="bg-zinc-50/70 p-2 rounded-lg border border-zinc-200/80 space-y-1.5">
+                        <p className="text-zinc-800 font-medium break-words [overflow-wrap:anywhere] leading-tight">
                           <strong className="text-zinc-900">Motivo:</strong> {consulta.motivo_consulta || 'Control facultativo de rutina.'}
                         </p>
                         {consulta.enfermedad_actual && (
-                          <p className="text-zinc-700 text-[10px] leading-tight">
-                            <strong className="text-zinc-900">Enfermedad Actual / Semiología:</strong> {consulta.enfermedad_actual}
-                          </p>
+                          <div className="text-zinc-700 text-[10px] leading-relaxed border-t border-zinc-200/80 pt-1.5">
+                            <strong className="text-zinc-900 font-semibold block mb-0.5">
+                              Enfermedad Actual / Semiología:
+                            </strong>
+                            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                              {consulta.enfermedad_actual}
+                            </p>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -801,7 +806,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                               <span className="text-zinc-500 font-semibold block text-[9px] uppercase">
                                 {formatKeyLabel(key)}
                               </span>
-                              <p className="text-zinc-900 font-medium text-[10.5px] truncate">
+                              <p className="text-zinc-900 font-medium text-[10.5px] break-words [overflow-wrap:anywhere]">
                                 {String(val)}
                               </p>
                             </div>
@@ -818,7 +823,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                       </h3>
                       <div className="space-y-1">
                         <div className="p-2 rounded-lg bg-primary/5 border border-primary/20">
-                          <p className="font-bold text-primary text-[11px]">
+                          <p className="font-bold text-primary text-[11px] break-words [overflow-wrap:anywhere]">
                             Diagnóstico Principal: {consulta.diagnostico_principal || 'Sin diagnóstico registrado'}
                           </p>
                         </div>
@@ -828,7 +833,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                               Secundarios / Comorbilidades:
                             </span>
                             {consulta.diagnosticos_secundarios.map((diag, idx) => (
-                              <p key={idx} className="text-zinc-700 font-medium pl-1">
+                              <p key={idx} className="text-zinc-700 font-medium pl-1 break-words [overflow-wrap:anywhere]">
                                 • {typeof diag === 'string' ? diag : diag?.descripcion || diag?.codigo}
                               </p>
                             ))}
@@ -843,11 +848,11 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                         5. Plan de Tratamiento y Conducta Médica
                       </h3>
                       <div className="p-2 rounded-lg bg-zinc-50/70 border border-zinc-200/80 space-y-1 text-[10.5px]">
-                        <p className="text-zinc-800 leading-tight">
+                        <p className="text-zinc-800 leading-tight whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                           {consulta.plan_tratamiento || 'Tratamiento y conducta según prescripción facultativa adjunta.'}
                         </p>
                         {consulta.indicaciones_generales && (
-                          <p className="text-zinc-700 text-[10px] border-t border-zinc-200 pt-1 leading-tight">
+                          <p className="text-zinc-700 text-[10px] border-t border-zinc-200 pt-1 leading-tight whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                             <strong className="text-zinc-900">Indicaciones:</strong> {consulta.indicaciones_generales}
                           </p>
                         )}
@@ -860,24 +865,24 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                         <h3 className="font-bold text-zinc-900 uppercase text-[10px] border-b border-zinc-200 pb-0.5">
                           6. Interconsulta & Observaciones
                         </h3>
-                        <div className="grid grid-cols-2 gap-1.5">
+                        <div className="space-y-1.5">
                           {tieneReferido && (
-                            <div className="p-2 rounded-lg bg-amber-500/5 border border-amber-500/20 text-[10px]">
+                            <div className="w-full p-2 rounded-lg bg-amber-500/5 border border-amber-500/20 text-[10px]">
                               <strong className="font-bold text-amber-800 uppercase tracking-wider text-[9px] block">
                                 Referido para:
                               </strong>
-                              <p className="text-zinc-800 leading-tight font-medium">
+                              <p className="text-zinc-800 leading-tight font-medium break-words [overflow-wrap:anywhere]">
                                 {referidoTexto}
                               </p>
                             </div>
                           )}
 
                           {tieneObservaciones && (
-                            <div className="p-2 rounded-lg bg-zinc-50/70 border border-zinc-200/80 text-[10px]">
+                            <div className="w-full p-2 rounded-lg bg-zinc-50/70 border border-zinc-200/80 text-[10px]">
                               <strong className="font-bold text-zinc-500 uppercase tracking-wider text-[9px] block">
                                 Observaciones:
                               </strong>
-                              <p className="text-zinc-700 leading-tight">
+                              <p className="text-zinc-700 leading-tight whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {observacionesTexto}
                               </p>
                             </div>
