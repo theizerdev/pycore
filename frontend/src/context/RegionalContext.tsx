@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect, useCallback } from 'react';
 import type { Pais } from '../types';
 import { useAuth } from './AuthContext';
+import { tasasApi } from '../api/tasas';
 
 // Mapeo de código ISO a Emoji de Bandera
 export const getCountryFlagEmoji = (iso2?: string | null): string => {
@@ -47,9 +48,22 @@ export interface RegionalContextType {
   separadorDecimales: string;
   decimalesMoneda: number;
   bandera: string;
+
+  // Tasa Oficial BCV & Moneda de Empresa
+  tasaBcv: number;
+  tasaBcvFecha: string | null;
+  tasaBcvFuente: string;
+  monedaEmpresa: string;
+  refreshBcvRate: () => Promise<void>;
   
   // Funciones de formateo regionalizado
   formatMoney: (amount: number | string | null | undefined, customSymbol?: string) => string;
+  formatMoneyDual: (amount: number | string | null | undefined) => {
+    primary: string;
+    secondary: string;
+    fullText: string;
+    rate: number;
+  };
   formatDate: (date: string | Date | null | undefined, style?: 'short' | 'medium' | 'long' | 'datetime' | 'time') => string;
   formatNumber: (value: number | string | null | undefined, decimals?: number) => string;
   formatTax: (subtotal: number) => {
@@ -91,12 +105,20 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return DEFAULT_REGIONAL_CONFIG as Pais;
   }, [user, sucursalActiva]);
 
+  // Moneda configurada explícitamente en la Empresa (Prioridad: Empresa > País)
+  const monedaEmpresa = useMemo(() => {
+    return user?.empresa?.moneda_principal || 'USD';
+  }, [user?.empresa?.moneda_principal]);
+
   const paisNombre = paisActivo.nombre || 'Venezuela';
   const codigoIso2 = paisActivo.codigo_iso2 || 'VE';
   const codigoIso3 = paisActivo.codigo_iso3 || 'VEN';
   const codigoTelefonico = paisActivo.codigo_telefonico || '+58';
-  const moneda = paisActivo.moneda_principal || 'VES';
-  const simboloMoneda = paisActivo.simbolo_moneda || (moneda === 'VES' ? 'Bs.' : '$');
+
+  // Si la empresa tiene 'USD' o 'VES', se adopta directamente esa moneda
+  const moneda = monedaEmpresa || paisActivo.moneda_principal || 'USD';
+  const simboloMoneda = moneda === 'VES' ? 'Bs.' : '$';
+
   const idioma = paisActivo.idioma_principal || 'es';
   const zonaHoraria = paisActivo.zona_horaria || 'America/Caracas';
   const formatoFecha = paisActivo.formato_fecha || 'dd/mm/yyyy';
@@ -106,9 +128,35 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const decimalesMoneda = paisActivo.decimales_moneda ?? 2;
   const bandera = getCountryFlagEmoji(codigoIso2);
 
-  // 1. Formateo de Moneda Regional
+  // ── ESTADO TASA OFICIAL BCV ──────────────────────────────────────────
+  const [tasaBcv, setTasaBcv] = useState<number>(814.69);
+  const [tasaBcvFecha, setTasaBcvFecha] = useState<string | null>(null);
+  const [tasaBcvFuente, setTasaBcvFuente] = useState<string>('BCV Oficial');
+
+  const refreshBcvRate = useCallback(async () => {
+    try {
+      const res = await tasasApi.getCurrentRates();
+      if (res.tasas?.USD?.tasa) {
+        setTasaBcv(res.tasas.USD.tasa);
+        setTasaBcvFecha(res.tasas.USD.fecha_tasa || res.sincronizado_at || null);
+        if (res.tasas.USD.fuente) {
+          setTasaBcvFuente(res.tasas.USD.fuente);
+        }
+      }
+    } catch (err) {
+      console.warn('No se pudo sincronizar la tasa BCV:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshBcvRate();
+  }, [refreshBcvRate]);
+
+  // 1. Formateo de Moneda Principal
   const formatMoney = (amount: number | string | null | undefined, customSymbol?: string): string => {
-    if (amount === null || amount === undefined || amount === '') return `${customSymbol || simboloMoneda} 0${separadorDecimales}00`;
+    if (amount === null || amount === undefined || amount === '') {
+      return `${customSymbol || simboloMoneda} 0${separadorDecimales}00`;
+    }
 
     const num = typeof amount === 'string' ? parseFloat(amount.replace(/[^0-9.-]+/g, '')) : amount;
     if (isNaN(num)) return `${customSymbol || simboloMoneda} 0${separadorDecimales}00`;
@@ -123,13 +171,13 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const formattedAmount = decPart ? `${intPart}${separadorDecimales}${decPart}` : intPart;
 
-    // En Venezuela se acostumbra "1.250,00 Bs.", en México/USA "$1,250.00", en Europa "1.250,00 €"
     if (moneda === 'VES') {
-      return `${formattedAmount} ${symbol}`;
+      return `Bs. ${formattedAmount}`;
     }
     if (moneda === 'EUR') {
-      return `${formattedAmount} ${symbol}`;
+      return `${formattedAmount} €`;
     }
+    // Dólar por defecto: "$ 100.00"
     return `${symbol} ${formattedAmount}`;
   };
 
@@ -233,6 +281,34 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return `${codigoTelefonico} ${clean}`;
   };
 
+  // 6. Formateo Dual (Moneda Principal con Equivalencia en Moneda Secundaria a Tasa BCV)
+  const formatMoneyDual = (amount: number | string | null | undefined) => {
+    const num = typeof amount === 'string' ? parseFloat(amount.replace(/[^0-9.-]+/g, '')) : (amount || 0);
+    const validNum = isNaN(num) ? 0 : num;
+
+    if (moneda === 'USD') {
+      const primary = formatMoney(validNum);
+      const secondaryNum = validNum * tasaBcv;
+      const secondary = `Bs. ${formatNumber(secondaryNum, 2)}`;
+      return {
+        primary,
+        secondary,
+        fullText: `${primary} (≈ ${secondary})`,
+        rate: tasaBcv,
+      };
+    } else {
+      const primary = formatMoney(validNum);
+      const secondaryNum = tasaBcv > 0 ? validNum / tasaBcv : 0;
+      const secondary = `$ ${formatNumber(secondaryNum, 2)}`;
+      return {
+        primary,
+        secondary,
+        fullText: `${primary} (≈ ${secondary})`,
+        rate: tasaBcv,
+      };
+    }
+  };
+
   return (
     <RegionalContext.Provider
       value={{
@@ -251,7 +327,13 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         separadorDecimales,
         decimalesMoneda,
         bandera,
+        tasaBcv,
+        tasaBcvFecha,
+        tasaBcvFuente,
+        monedaEmpresa,
+        refreshBcvRate,
         formatMoney,
+        formatMoneyDual,
         formatDate,
         formatNumber,
         formatTax,

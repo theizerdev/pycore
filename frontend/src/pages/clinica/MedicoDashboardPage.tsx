@@ -47,6 +47,7 @@ import {
   BarChart3,
   CalendarRange,
   Filter,
+  Coins,
 } from 'lucide-react';
 import { cn, getInitials } from '../../lib/utils';
 import { toast } from 'sonner';
@@ -56,7 +57,15 @@ type DateRangePreset = 'hoy' | 'semana' | 'mes' | '30dias' | 'personalizado';
 export const MedicoDashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, sucursalActiva } = useAuth();
-  const { formatMoney } = useRegional();
+  const {
+    formatMoney,
+    formatMoneyDual,
+    tasaBcv,
+    tasaBcvFecha,
+    tasaBcvFuente,
+    refreshBcvRate,
+    moneda,
+  } = useRegional();
 
   // Estados de datos
   const [medicos, setMedicos] = useState<Medico[]>([]);
@@ -687,6 +696,31 @@ export const MedicoDashboardPage: React.FC = () => {
             <RefreshCw className={cn('size-3.5 mr-1.5 text-teal-600 dark:text-teal-400', refreshing && 'animate-spin')} />
             <span>{refreshing ? 'Cargando...' : 'Actualizar'}</span>
           </Button>
+
+          {/* Badge Tasa Oficial BCV */}
+          <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 px-3 py-1 rounded-xl shadow-2xs">
+            <Coins className="size-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                Tasa BCV:
+              </span>
+              <span className="font-mono font-black text-emerald-700 dark:text-emerald-300">
+                Bs. {tasaBcv.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span className="text-[10px] text-muted-foreground">/ USD</span>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                await refreshBcvRate();
+                toast.success('Tasa oficial del BCV sincronizada');
+              }}
+              title="Actualizar tasa del BCV"
+              className="p-1 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded-md transition cursor-pointer ml-0.5"
+            >
+              <RefreshCw className="size-3" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -774,16 +808,24 @@ export const MedicoDashboardPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* 6. Tarifas Estimadas */}
+        {/* 6. Tarifas Estimadas / Facturación */}
         <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
           <CardContent className="p-4">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tarifas / Ingresos</p>
-            <h3 className="text-xl font-black text-indigo-600 dark:text-indigo-400 mt-1 truncate font-mono">
-              {formatMoney(kpisPeriodo.facturacionEstimada)}
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tarifas / Ingresos</p>
+              <Badge variant="outline" className="text-[9px] px-1 py-0 font-mono text-emerald-600 border-emerald-500/30">
+                {moneda === 'USD' ? 'USD ($)' : 'VES (Bs.)'}
+              </Badge>
+            </div>
+            <h3 className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 truncate font-mono">
+              {formatMoneyDual(kpisPeriodo.facturacionEstimada).primary}
             </h3>
-            <p className="text-[10px] text-muted-foreground mt-0.5 font-medium flex items-center gap-1">
-              <DollarSign className="size-3 text-indigo-500" />
-              <span>Prestaciones</span>
+            <div className="text-[11px] text-muted-foreground mt-0.5 font-medium flex items-center gap-1 truncate font-mono">
+              <Coins className="size-3 text-emerald-500 shrink-0" />
+              <span className="text-foreground/80 font-bold">{formatMoneyDual(kpisPeriodo.facturacionEstimada).secondary}</span>
+            </div>
+            <p className="text-[9px] text-muted-foreground/70 mt-1 truncate">
+              {moneda === 'USD' ? `≈ Equiv. BCV (${tasaBcv.toFixed(2)} Bs/$)` : `≈ Equiv. USD (${tasaBcv.toFixed(2)} Bs/$)`}
             </p>
           </CardContent>
         </Card>
@@ -1096,6 +1138,15 @@ export const MedicoDashboardPage: React.FC = () => {
                               {c.fecha_consulta && (
                                 <span>{c.fecha_consulta.split('T')[0]}</span>
                               )}
+                              {c.cita?.precio_estimado ? (
+                                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold">
+                                  <DollarSign className="size-3 text-emerald-500" />
+                                  <span>{formatMoney(c.cita.precio_estimado)}</span>
+                                  <span className="text-[10px] text-muted-foreground font-normal">
+                                    (≈ {formatMoneyDual(c.cita.precio_estimado).secondary})
+                                  </span>
+                                </span>
+                              ) : null}
                             </div>
                             {c.motivo_consulta && (
                               <p className="text-xs text-foreground/80 font-medium truncate max-w-md">
@@ -1230,6 +1281,44 @@ export const MedicoDashboardPage: React.FC = () => {
               </CardContent>
             </Card>
           )}
+
+          {/* Widget Informativo de Moneda y Tasa Oficial */}
+          <Card className="border-border/70 bg-gradient-to-br from-emerald-500/5 via-card to-card shadow-xs">
+            <CardHeader className="p-4 pb-2 border-b border-border/60">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                <Coins className="size-3.5" />
+                <span>Moneda Base & Tasa Oficial</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Moneda de la Clínica:</span>
+                <Badge variant="outline" className="font-mono text-[11px] font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
+                  {moneda === 'USD' ? 'Dólar (USD - $)' : 'Bolívar (VES - Bs.)'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Tasa Oficial BCV:</span>
+                <span className="font-mono font-black text-xs text-foreground">
+                  Bs. {tasaBcv.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40">
+                <span className="truncate">{tasaBcvFuente}</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await refreshBcvRate();
+                    toast.success('Tasa BCV actualizada');
+                  }}
+                  className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                >
+                  <RefreshCw className="size-2.5" />
+                  Actualizar
+                </button>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Accesos Directos Asistenciales */}
           <Card className="border-border/70 bg-card shadow-xs">

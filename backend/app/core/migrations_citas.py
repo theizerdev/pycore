@@ -37,6 +37,11 @@ async def run_citas_migrations():
                 ("horario_atencion", "JSON NULL" if dialect_name == "mysql" else "TEXT NULL"),
             ]
 
+            # Columnas para empresas
+            empresas_columns = [
+                ("moneda_principal", "VARCHAR(10) DEFAULT 'USD'"),
+            ]
+
             if dialect_name == "mysql":
                 for col_name, col_type in citas_columns:
                     try:
@@ -64,6 +69,19 @@ async def run_citas_migrations():
                     except Exception as err:
                         logger.warning(f"Error verificando columna {col_name} en medicos: {err}")
 
+                for col_name, col_type in empresas_columns:
+                    try:
+                        res = await conn.execute(text(
+                            f"SELECT COUNT(*) FROM information_schema.columns "
+                            f"WHERE table_schema = DATABASE() AND table_name = 'empresas' AND column_name = '{col_name}'"
+                        ))
+                        exists = res.scalar() > 0
+                        if not exists:
+                            logger.info(f"Agregando columna {col_name} a empresas...")
+                            await conn.execute(text(f"ALTER TABLE empresas ADD COLUMN {col_name} {col_type}"))
+                    except Exception as err:
+                        logger.warning(f"Error verificando columna {col_name} en empresas: {err}")
+
             elif dialect_name == "sqlite":
                 res = await conn.execute(text("PRAGMA table_info(citas_medicas)"))
                 existing_citas_cols = [row[1] for row in res.fetchall()]
@@ -79,6 +97,13 @@ async def run_citas_migrations():
                         logger.info(f"Agregando columna SQLite {col_name} a medicos...")
                         await conn.execute(text(f"ALTER TABLE medicos ADD COLUMN {col_name} {col_type}"))
 
-        logger.info("Migraciones de Citas Médicas verificadas y actualizadas exitosamente.")
+                res_emp = await conn.execute(text("PRAGMA table_info(empresas)"))
+                existing_emp_cols = [row[1] for row in res_emp.fetchall()]
+                for col_name, col_type in empresas_columns:
+                    if col_name not in existing_emp_cols:
+                        logger.info(f"Agregando columna SQLite {col_name} a empresas...")
+                        await conn.execute(text(f"ALTER TABLE empresas ADD COLUMN {col_name} {col_type}"))
+
+        logger.info("Migraciones de Citas Médicas y Empresas verificadas y actualizadas exitosamente.")
     except Exception as e:
         logger.error(f"Error en run_citas_migrations: {e}")

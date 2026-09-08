@@ -68,6 +68,8 @@ export interface CitaMini {
     categoria?: string;
   } | null;
   servicio_nombre?: string | null;
+  precio_estimado?: number | null;
+  estado_pago?: string | null;
 }
 
 export interface EstudioSolicitado {

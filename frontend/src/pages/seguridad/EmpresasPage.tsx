@@ -28,7 +28,8 @@ import {
   Link as LinkIcon,
   CreditCard,
   Landmark,
-  Smartphone
+  Smartphone,
+  Coins
 } from 'lucide-react';
 import { ModuleHeader } from '../../components/common/ModuleHeader';
 import { StatCard } from '../../components/common/StatCard';
@@ -66,7 +67,7 @@ import { Badge } from '../../components/ui/badge';
 import { cn } from '../../lib/utils';
 
 export const EmpresasPage: React.FC = () => {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, refreshUser } = useAuth();
   const isSuperAdmin = user?.es_superadmin ?? false;
 
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -99,6 +100,7 @@ export const EmpresasPage: React.FC = () => {
     email: '',
     pais_id: undefined as number | undefined,
     pais_telefono_id: undefined as number | undefined,
+    moneda_principal: 'USD' as 'USD' | 'VES',
     direccion: '',
     ciudad: '',
     latitud: '' as string | number,
@@ -177,6 +179,7 @@ export const EmpresasPage: React.FC = () => {
           email: myEmp.email || '',
           pais_id: myEmp.pais_id || undefined,
           pais_telefono_id: myEmp.pais_telefono_id || undefined,
+          moneda_principal: (myEmp.moneda_principal as 'USD' | 'VES') || 'USD',
           direccion: myEmp.direccion || '',
           ciudad: myEmp.ciudad || '',
           latitud: myEmp.latitud !== null && myEmp.latitud !== undefined ? myEmp.latitud : '',
@@ -252,6 +255,7 @@ export const EmpresasPage: React.FC = () => {
       ...initialFormState,
       pais_id: defaultPais?.id,
       pais_telefono_id: defaultPais?.id,
+      moneda_principal: 'USD',
       latitud: defaultPais?.latitud ?? '',
       longitud: defaultPais?.longitud ?? '',
     });
@@ -269,6 +273,7 @@ export const EmpresasPage: React.FC = () => {
       email: emp.email || '',
       pais_id: emp.pais_id || undefined,
       pais_telefono_id: emp.pais_telefono_id || emp.pais_id || undefined,
+      moneda_principal: (emp.moneda_principal as 'USD' | 'VES') || 'USD',
       direccion: emp.direccion || '',
       ciudad: emp.ciudad || '',
       latitud: emp.latitud !== null && emp.latitud !== undefined ? emp.latitud : '',
@@ -350,6 +355,9 @@ export const EmpresasPage: React.FC = () => {
       if (editingEmpresa) {
         await empresasApi.update(editingEmpresa.id, payload);
         toast.success('Empresa actualizada exitosamente');
+        if (user && editingEmpresa.id === user.empresa_id) {
+          await refreshUser();
+        }
       } else {
         await empresasApi.create(payload);
         toast.success('Empresa creada exitosamente');
@@ -469,6 +477,19 @@ export const EmpresasPage: React.FC = () => {
           <Building className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
           <span>{empresa.sucursales?.length || 0} sedes</span>
         </div>
+      ),
+    },
+    {
+      header: 'Moneda',
+      cell: (empresa) => (
+        <span className={cn(
+          'text-xs font-semibold px-2 py-0.5 rounded-md border flex items-center gap-1 w-fit',
+          empresa.moneda_principal === 'VES'
+            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400'
+            : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400'
+        )}>
+          {empresa.moneda_principal === 'VES' ? '🇻🇪 VES (Bs.)' : '💵 USD ($)'}
+        </span>
       ),
     },
     {
@@ -605,6 +626,41 @@ export const EmpresasPage: React.FC = () => {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Moneda Principal de Operación */}
+          <div className="space-y-1.5">
+            <Label htmlFor="moneda_principal" className="flex items-center gap-1.5">
+              <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Moneda Principal de Operación *</span>
+            </Label>
+            <Select
+              value={formData.moneda_principal || 'USD'}
+              onValueChange={(val: 'USD' | 'VES') => setFormData({ ...formData, moneda_principal: val })}
+            >
+              <SelectTrigger id="moneda_principal">
+                <SelectValue placeholder="Selecciona la moneda principal" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="USD">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-emerald-600">$</span>
+                    <span>Dólar Estadounidense (USD - $)</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="VES">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-blue-600">Bs.</span>
+                    <span>Bolívar Venezolano (VES - Bs.)</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {formData.moneda_principal === 'USD'
+                ? '💵 Precios y montos en Dólares ($) con equivalencia en Bolívares a la tasa BCV.'
+                : '🇻🇪 Precios y montos reflejados directamente en Bolívares (Bs.).'}
+            </p>
           </div>
 
           {/* Email */}

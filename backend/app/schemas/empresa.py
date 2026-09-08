@@ -15,6 +15,7 @@ class EmpresaBase(BaseModel):
     logo_mini_dark_url: Optional[str] = None
     pais_id: Optional[int] = None
     pais_telefono_id: Optional[int] = None
+    moneda_principal: Optional[str] = "USD"
     latitud: Optional[float] = None
     longitud: Optional[float] = None
     plan_id: Optional[int] = None
@@ -45,6 +46,7 @@ class EmpresaUpdate(BaseModel):
     logo_mini_dark_url: Optional[str] = None
     pais_id: Optional[int] = None
     pais_telefono_id: Optional[int] = None
+    moneda_principal: Optional[str] = None
     latitud: Optional[float] = None
     longitud: Optional[float] = None
     plan_id: Optional[int] = None

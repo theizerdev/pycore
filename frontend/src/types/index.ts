@@ -9,6 +9,7 @@ export interface Empresa {
   ciudad?: string | null;
   pais_id?: number | null;
   pais_telefono_id?: number | null;
+  moneda_principal?: 'USD' | 'VES' | string;
   latitud?: number | null;
   longitud?: number | null;
   maptiler_api_key?: string | null;
