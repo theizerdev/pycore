@@ -1136,7 +1136,7 @@ export const AgendaCalendarioPage: React.FC = () => {
 
       {/* ── MODAL DE BLOQUEO DE AGENDA ─────────────────────────────── */}
       <Dialog open={bloqueoModalOpen} onOpenChange={setBloqueoModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Lock className="size-4 text-slate-700 dark:text-slate-300" />
@@ -1261,7 +1261,7 @@ export const AgendaCalendarioPage: React.FC = () => {
 
       {/* ── MODAL ELIMINAR / DESBLOQUEAR AGENDA ─────────────────────── */}
       <Dialog open={deleteBloqueoModalOpen} onOpenChange={setDeleteBloqueoModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
               <Unlock className="size-4 text-amber-600" />
@@ -1323,7 +1323,7 @@ export const AgendaCalendarioPage: React.FC = () => {
 
       {/* ── MODAL CONFIRMACIÓN ENVÍO DE RECORDATORIOS WHATSAPP ──────── */}
       <Dialog open={recordatorioConfirmOpen} onOpenChange={setRecordatorioConfirmOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold text-emerald-700 dark:text-emerald-300">
               <MessageCircle className="size-5 text-emerald-600" />

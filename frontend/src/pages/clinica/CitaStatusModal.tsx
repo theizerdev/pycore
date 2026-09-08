@@ -175,7 +175,7 @@ export const CitaStatusModal: React.FC<CitaStatusModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden">
         {/* Franja superior con el color de la especialidad */}
         <div
           className="h-2 w-full"

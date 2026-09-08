@@ -147,7 +147,7 @@ export const CitaQuickActionDialog: React.FC<CitaQuickActionDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
         {/* Cabecera con franja de color del médico */}
         <div
           className="h-2 w-full"
