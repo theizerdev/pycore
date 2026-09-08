@@ -78,8 +78,15 @@ import {
   FlaskConical,
   BedDouble,
   FileCheck2,
+  Table as TableIcon,
+  LayoutGrid,
+  CalendarClock,
+  Eye,
+  Filter,
 } from 'lucide-react';
 import { DocumentosImpresionModal, type TipoDocumentoClinico } from '../../components/clinica/DocumentosImpresionModal';
+import { PatientRecordDrawer } from './PatientRecordDrawer';
+import type { Paciente } from '../../types';
 
 type TabKey = 'sala-espera' | 'en-consulta' | 'atendidas';
 
@@ -137,6 +144,26 @@ export const ConsultasPage: React.FC = () => {
       setSelectedMedico(String(currentDoctor.id));
     }
   }, [currentDoctor]);
+
+  // Modo de vista: 'table' | 'cards' (persistido en localStorage)
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+    return (localStorage.getItem('consultas_view_mode') as 'table' | 'cards') || 'table';
+  });
+
+  const handleViewModeChange = (mode: 'table' | 'cards') => {
+    setViewMode(mode);
+    localStorage.setItem('consultas_view_mode', mode);
+  };
+
+  // Drawer de Historia / Ficha del Paciente
+  const [recordDrawerOpen, setRecordDrawerOpen] = useState<boolean>(false);
+  const [patientForRecord, setPatientForRecord] = useState<Paciente | null>(null);
+
+  const handleOpenPatientRecord = (paciente: any) => {
+    if (!paciente) return;
+    setPatientForRecord(paciente);
+    setRecordDrawerOpen(true);
+  };
 
   // Drawer de Preconsulta
   const [selectedPreconsulta, setSelectedPreconsulta] = useState<ConsultaMedica | null>(null);
@@ -391,6 +418,52 @@ export const ConsultasPage: React.FC = () => {
     }
   };
 
+  // Semáforo clínico de tiempo de espera
+  const getWaitTimeStatus = (dateStr: string) => {
+    try {
+      const start = new Date(dateStr).getTime();
+      const now = new Date().getTime();
+      const diffMinutes = Math.max(0, Math.floor((now - start) / (1000 * 60)));
+
+      if (diffMinutes < 15) {
+        return {
+          minutes: diffMinutes,
+          text: `${diffMinutes} min`,
+          badgeClass: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+          dotClass: 'bg-emerald-500',
+          label: 'A tiempo',
+        };
+      }
+      if (diffMinutes <= 30) {
+        return {
+          minutes: diffMinutes,
+          text: `${diffMinutes} min`,
+          badgeClass: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+          dotClass: 'bg-amber-500',
+          label: 'Demora leve',
+        };
+      }
+      const hours = Math.floor(diffMinutes / 60);
+      const mins = diffMinutes % 60;
+      const formatted = hours > 0 ? `${hours}h ${mins}m` : `${diffMinutes} min`;
+      return {
+        minutes: diffMinutes,
+        text: formatted,
+        badgeClass: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 animate-pulse',
+        dotClass: 'bg-rose-500',
+        label: 'Demora alta',
+      };
+    } catch {
+      return {
+        minutes: 0,
+        text: '-',
+        badgeClass: 'bg-muted text-muted-foreground border-border',
+        dotClass: 'bg-muted-foreground',
+        label: 'N/A',
+      };
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
       {/* ── ENCABEZADO PRINCIPAL ── */}
@@ -569,7 +642,7 @@ export const ConsultasPage: React.FC = () => {
 
       {/* ── BARRA DE BÚSQUEDA Y FILTROS ── */}
       <Card className="border-border/60 shadow-xs">
-        <CardContent className="p-4">
+        <CardContent className="p-4 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {/* Buscador */}
             <div className="relative lg:col-span-2">
@@ -578,12 +651,12 @@ export const ConsultasPage: React.FC = () => {
                 placeholder="Buscar por paciente, cédula, código o motivo..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 bg-background h-10 rounded-xl"
+                className="pl-9 bg-background h-10 rounded-xl text-xs"
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -596,20 +669,20 @@ export const ConsultasPage: React.FC = () => {
                 type="date"
                 value={selectedFecha}
                 onChange={(e) => setSelectedFecha(e.target.value)}
-                className="bg-background h-10 rounded-xl"
+                className="bg-background h-10 rounded-xl text-xs"
               />
             </div>
 
             {/* Especialidad */}
             <div>
               <Select value={selectedEspecialidad} onValueChange={setSelectedEspecialidad}>
-                <SelectTrigger className="h-10 rounded-xl bg-background">
+                <SelectTrigger className="h-10 rounded-xl bg-background text-xs">
                   <SelectValue placeholder="Especialidad: Todas" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas las especialidades</SelectItem>
                   {especialidades.map((esp) => (
-                    <SelectItem key={esp.id} value={String(esp.id)}>
+                    <SelectItem key={esp.id} value={String(esp.id)} className="text-xs">
                       {esp.nombre}
                     </SelectItem>
                   ))}
@@ -626,19 +699,79 @@ export const ConsultasPage: React.FC = () => {
                 </div>
               ) : (
                 <Select value={selectedMedico} onValueChange={setSelectedMedico}>
-                  <SelectTrigger className="h-10 rounded-xl bg-background">
+                  <SelectTrigger className="h-10 rounded-xl bg-background text-xs">
                     <SelectValue placeholder="Médico: Todos" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos los médicos</SelectItem>
                     {medicos.map((med) => (
-                      <SelectItem key={med.id} value={String(med.id)}>
+                      <SelectItem key={med.id} value={String(med.id)} className="text-xs">
                         Dr(a). {med.nombres} {med.apellidos}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
+            </div>
+          </div>
+
+          {/* Sub-barra: Contador de resultados y Selector de Vista */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/60">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-bold text-foreground">{consultas.length}</span>
+              <span>{consultas.length === 1 ? 'consulta encontrada' : 'consultas encontradas'}</span>
+              {(search || selectedMedico !== 'all' || selectedEspecialidad !== 'all' || selectedFecha !== new Date().toISOString().split('T')[0]) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearch('');
+                    setSelectedMedico('all');
+                    setSelectedEspecialidad('all');
+                    setSelectedFecha(new Date().toISOString().split('T')[0]);
+                  }}
+                  className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer ml-1"
+                >
+                  <X className="size-3 mr-1" />
+                  Restablecer filtros
+                </Button>
+              )}
+            </div>
+
+            {/* Selector de Vista: Tabla Clínica o Tarjetas */}
+            <div className="flex items-center gap-1 p-1 bg-muted/60 rounded-xl border border-border/80">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => handleViewModeChange('table')}
+                className={cn(
+                  'h-7 px-2.5 text-xs font-semibold rounded-lg gap-1.5 transition-all cursor-pointer',
+                  viewMode === 'table'
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                title="Vista de Tabla Médica Estructurada"
+              >
+                <TableIcon className="size-3.5" />
+                <span>Tabla</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => handleViewModeChange('cards')}
+                className={cn(
+                  'h-7 px-2.5 text-xs font-semibold rounded-lg gap-1.5 transition-all cursor-pointer',
+                  viewMode === 'cards'
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                title="Vista de Tarjetas Modernas"
+              >
+                <LayoutGrid className="size-3.5" />
+                <span>Tarjetas</span>
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -670,419 +803,825 @@ export const ConsultasPage: React.FC = () => {
             </h3>
             <p className="text-sm text-muted-foreground text-balance">
               {currentTab === 'sala-espera' &&
-                'Cuando pase una cita al estado "Sala de Espera", aparecerá aquí automáticamente y se le enviará el formulario de preconsulta por WhatsApp.'}
+                'Cuando pase una cita al estado "Sala de Espera", aparecerá aquí automáticamente con su semáforo de tiempo de espera.'}
               {currentTab === 'en-consulta' &&
                 'Cuando llame a un paciente desde la Sala de Espera, la consulta se activará en este panel.'}
               {currentTab === 'atendidas' &&
-                'Las consultas finalizadas se archivarán aquí para consulta del historial clínico.'}
+                'Las consultas finalizadas se archivarán aquí para consulta del historial clínico e impresión de recaudos.'}
             </p>
             {search && (
-              <Button variant="outline" size="sm" onClick={() => setSearch('')} className="mt-2">
+              <Button variant="outline" size="sm" onClick={() => setSearch('')} className="mt-2 cursor-pointer">
                 Limpiar búsqueda
               </Button>
             )}
           </CardContent>
         </Card>
+      ) : viewMode === 'table' ? (
+        /* ═════════════════════════════════════════════════════════════════
+           ── VISTA TABLA CLÍNICA EJECUTIVA (viewMode === 'table') ──
+           ═════════════════════════════════════════════════════════════════ */
+        <Card className="border-border/80 shadow-xs overflow-hidden rounded-2xl bg-card">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-muted/50 border-b border-border text-[11px] font-bold text-muted-foreground uppercase tracking-wider select-none">
+                  <th className="py-3 px-4 w-[150px]">Turno / Espera</th>
+                  <th className="py-3 px-4 min-w-[240px]">Paciente</th>
+                  <th className="py-3 px-4 min-w-[200px]">Médico Especialista</th>
+                  <th className="py-3 px-4 min-w-[260px]">Motivo & Triaje</th>
+                  <th className="py-3 px-4 text-right min-w-[190px]">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {consultas.map((consulta) => {
+                  const hasPreconsulta = Boolean(consulta.preconsulta);
+                  const isPreconsultaCompletada = consulta.preconsulta?.estado === 'completada';
+                  const waitStatus = getWaitTimeStatus(consulta.fecha_consulta);
+                  const cleanPhone = consulta.paciente?.telefono ? consulta.paciente.telefono.replace(/\D/g, '') : '';
+
+                  return (
+                    <tr
+                      key={consulta.id}
+                      className={cn(
+                        'hover:bg-muted/35 transition-colors group',
+                        currentTab === 'en-consulta' && 'bg-primary/5 hover:bg-primary/10'
+                      )}
+                    >
+                      {/* Turno / Espera */}
+                      <td className="py-3.5 px-4 align-top">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-foreground text-xs">
+                            <Clock className="size-3 text-muted-foreground" />
+                            <span>{formatHora(consulta.fecha_consulta)}</span>
+                          </div>
+                          {consulta.codigo && (
+                            <span className="font-mono text-[10.5px] text-muted-foreground block">
+                              {consulta.codigo}
+                            </span>
+                          )}
+                          {currentTab === 'sala-espera' && (
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0',
+                                waitStatus.badgeClass
+                              )}
+                              title={`Tiempo transcurrido en espera: ${waitStatus.text}`}
+                            >
+                              <span className={cn('size-1.5 rounded-full', waitStatus.dotClass)} />
+                              <span>{waitStatus.text}</span>
+                            </span>
+                          )}
+                          {currentTab === 'en-consulta' && (
+                            <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px] py-0 px-1.5">
+                              En Atención
+                            </Badge>
+                          )}
+                          {currentTab === 'atendidas' && (
+                            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px] py-0 px-1.5">
+                              Finalizada
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Paciente */}
+                      <td className="py-3.5 px-4 align-top">
+                        <div className="flex items-start gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPatientRecord(consulta.paciente)}
+                            className="size-9 rounded-xl bg-gradient-to-br from-teal-500/20 to-teal-500/5 text-teal-700 dark:text-teal-300 font-bold text-xs flex items-center justify-center border border-teal-500/25 shrink-0 shadow-2xs hover:scale-105 transition-transform cursor-pointer"
+                            title="Ver expediente clínico del paciente"
+                          >
+                            {consulta.paciente
+                              ? getInitials(`${consulta.paciente.nombres} ${consulta.paciente.apellidos}`)
+                              : 'PA'}
+                          </button>
+                          <div className="space-y-0.5 min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPatientRecord(consulta.paciente)}
+                              className="font-bold text-xs text-foreground hover:text-primary transition-colors text-left truncate block cursor-pointer"
+                            >
+                              {consulta.paciente
+                                ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}`
+                                : 'Paciente no identificado'}
+                            </button>
+                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+                              {(consulta.paciente?.documento_identidad || consulta.paciente?.numero_documento) && (
+                                <span>
+                                  {consulta.paciente.tipo_documento || 'V'}-
+                                  {consulta.paciente.documento_identidad || consulta.paciente.numero_documento}
+                                </span>
+                              )}
+                              <span>•</span>
+                              <span>{calculateAge(consulta.paciente?.fecha_nacimiento, consulta.paciente?.edad)}</span>
+                            </div>
+                            {consulta.paciente?.telefono && (
+                              <a
+                                href={`https://wa.me/${cleanPhone}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline font-mono font-medium"
+                                title="Enviar mensaje de WhatsApp"
+                              >
+                                <Phone className="size-2.5" />
+                                <span>{consulta.paciente.telefono}</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Médico Especialista */}
+                      <td className="py-3.5 px-4 align-top">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-foreground text-xs">
+                            <span
+                              className="size-2 rounded-full shrink-0"
+                              style={{ backgroundColor: consulta.medico?.color_calendario || consulta.especialidad?.color || '#0d9488' }}
+                            />
+                            <span className="truncate">
+                              {consulta.medico
+                                ? `Dr(a). ${consulta.medico.nombres} ${consulta.medico.apellidos}`
+                                : 'Sin especialista asignado'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-medium bg-muted/30">
+                              {consulta.especialidad?.nombre || 'General'}
+                            </Badge>
+                            {consulta.sucursal?.nombre && (
+                              <span className="text-[10px] text-muted-foreground truncate">
+                                • {consulta.sucursal.nombre}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Motivo & Triaje Clínico */}
+                      <td className="py-3.5 px-4 align-top">
+                        <div className="space-y-1.5">
+                          <p className="text-xs text-foreground/90 font-medium line-clamp-2" title={consulta.motivo_consulta}>
+                            {consulta.motivo_consulta || 'Consulta clínica general'}
+                          </p>
+
+                          {/* Preconsulta / Triaje / Documentos generados */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {hasPreconsulta ? (
+                              isPreconsultaCompletada ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedPreconsulta(consulta);
+                                    setPreconsultaDrawerOpen(true);
+                                  }}
+                                  className="h-6 text-[10.5px] px-2 gap-1 bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 font-semibold cursor-pointer"
+                                >
+                                  <ClipboardList className="size-3 text-emerald-600" />
+                                  <span>Preconsulta Lista</span>
+                                  <span className="size-1.5 rounded-full bg-emerald-500" />
+                                </Button>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <Badge
+                                    variant="outline"
+                                    className="h-5 text-[10px] gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2"
+                                  >
+                                    <Hourglass className="size-2.5" />
+                                    <span>Triaje Pendiente</span>
+                                  </Badge>
+                                  {consulta.preconsulta?.token && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyPreconsultaLink(consulta.preconsulta!.token)}
+                                      className="size-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
+                                      title="Copiar link de preconsulta"
+                                    >
+                                      <Copy className="size-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            ) : null}
+
+                            {/* En atendidas: resumen de lo generado */}
+                            {currentTab === 'atendidas' && (
+                              <>
+                                {consulta.receta_medica && consulta.receta_medica.length > 0 && (
+                                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5 gap-1">
+                                    <Pill className="size-2.5 text-emerald-600" />
+                                    <span>{consulta.receta_medica.length} Rx</span>
+                                  </Badge>
+                                )}
+                                {consulta.estudios_solicitados && consulta.estudios_solicitados.length > 0 && (
+                                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5 gap-1">
+                                    <FlaskConical className="size-2.5 text-violet-600" />
+                                    <span>{consulta.estudios_solicitados.length} Est.</span>
+                                  </Badge>
+                                )}
+                                {consulta.reposo_medico?.requiere_reposo && (
+                                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5 gap-1 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                                    <BedDouble className="size-2.5 text-amber-600" />
+                                    <span>{consulta.reposo_medico.dias_reposo}d</span>
+                                  </Badge>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="py-3.5 px-4 align-top text-right">
+                        {currentTab === 'sala-espera' && (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              onClick={() => handleLlamarConsultorio(consulta)}
+                              className="h-8 text-xs px-2.5 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs cursor-pointer"
+                            >
+                              <Stethoscope className="size-3.5" />
+                              <span>Llamar</span>
+                              <ChevronRight className="size-3 opacity-70" />
+                            </Button>
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 cursor-pointer">
+                                  <MoreVertical className="size-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {isPreconsultaCompletada && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setSelectedPreconsulta(consulta);
+                                      setPreconsultaDrawerOpen(true);
+                                    }}
+                                  >
+                                    <ClipboardList className="mr-2 size-3.5 text-emerald-500" />
+                                    Ver Preconsulta del Paciente
+                                  </DropdownMenuItem>
+                                )}
+                                {consulta.preconsulta?.token && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleCopyPreconsultaLink(consulta.preconsulta!.token)}
+                                  >
+                                    <Copy className="mr-2 size-3.5" />
+                                    Copiar Link de Preconsulta
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleAnularConsulta(consulta)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <X className="mr-2 size-3.5" />
+                                  Anular Consulta
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        )}
+
+                        {currentTab === 'en-consulta' && (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              onClick={() => navigate(`/clinica/consultas/${consulta.id}/atencion`)}
+                              className="h-8 text-xs px-2.5 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-xs cursor-pointer"
+                            >
+                              <Stethoscope className="size-3.5" />
+                              <span>Atender</span>
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDevolverSalaEspera(consulta)}
+                              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                              title="Devolver a sala de espera"
+                            >
+                              <CornerUpLeft className="size-3" />
+                              <span className="hidden sm:inline">Espera</span>
+                            </Button>
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 cursor-pointer">
+                                  <MoreVertical className="size-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => navigate(`/clinica/consultas/${consulta.id}/atencion`)}
+                                >
+                                  <Stethoscope className="mr-2 size-3.5 text-primary" />
+                                  Abrir Consulta Médica
+                                </DropdownMenuItem>
+                                {isPreconsultaCompletada && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setSelectedPreconsulta(consulta);
+                                      setPreconsultaDrawerOpen(true);
+                                    }}
+                                  >
+                                    <ClipboardList className="mr-2 size-3.5 text-emerald-500" />
+                                    Ver Respuestas de Preconsulta
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => handleFinalizarConsulta(consulta)}
+                                >
+                                  <CheckCircle2 className="mr-2 size-3.5 text-emerald-600" />
+                                  Finalización Rápida
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleAnularConsulta(consulta)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <X className="mr-2 size-3.5" />
+                                  Anular Consulta
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        )}
+
+                        {currentTab === 'atendidas' && (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/clinica/consultas/${consulta.id}/detalle`)}
+                              className="h-8 px-2.5 text-xs border-primary/30 text-primary hover:bg-primary/5 font-semibold gap-1 cursor-pointer"
+                            >
+                              <FileText className="size-3.5" />
+                              <span>Ficha</span>
+                            </Button>
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="h-8 px-2.5 text-xs gap-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs cursor-pointer"
+                                >
+                                  <Printer className="size-3.5" />
+                                  <span>Imprimir</span>
+                                  <ChevronRight className="size-3 opacity-70 rotate-90" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem
+                                  onClick={() => handleAbrirImpresion(consulta, 'informe')}
+                                  className="cursor-pointer gap-2 py-1.5 text-xs"
+                                >
+                                  <FileText className="size-3.5 text-sky-500" />
+                                  <span>Informe Médico</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleAbrirImpresion(consulta, 'receta')}
+                                  className="cursor-pointer gap-2 py-1.5 text-xs"
+                                >
+                                  <Pill className="size-3.5 text-emerald-500" />
+                                  <span>Receta Médica (Rx)</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleAbrirImpresion(consulta, 'estudios')}
+                                  className="cursor-pointer gap-2 py-1.5 text-xs"
+                                >
+                                  <FlaskConical className="size-3.5 text-violet-500" />
+                                  <span>Orden de Estudios</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleAbrirImpresion(consulta, 'reposo')}
+                                  className="cursor-pointer gap-2 py-1.5 text-xs"
+                                >
+                                  <BedDouble className="size-3.5 text-amber-500" />
+                                  <span>Reposo Médico</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleAbrirImpresion(consulta, 'constancia')}
+                                  className="cursor-pointer gap-2 py-1.5 text-xs"
+                                >
+                                  <FileCheck2 className="size-3.5 text-indigo-500" />
+                                  <span>Constancia de Asistencia</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
+        /* ═════════════════════════════════════════════════════════════════
+           ── VISTA TARJETAS MODERNAS (viewMode === 'cards') ──
+           ═════════════════════════════════════════════════════════════════ */
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4.5">
           {consultas.map((consulta) => {
             const hasPreconsulta = Boolean(consulta.preconsulta);
             const isPreconsultaCompletada = consulta.preconsulta?.estado === 'completada';
+            const waitStatus = getWaitTimeStatus(consulta.fecha_consulta);
+            const cleanPhone = consulta.paciente?.telefono ? consulta.paciente.telefono.replace(/\D/g, '') : '';
 
             return (
               <Card
                 key={consulta.id}
                 className={cn(
-                  'group relative overflow-hidden transition-all duration-200 border-border/80 hover:shadow-md hover:border-primary/40',
+                  'group relative overflow-hidden transition-all duration-200 border-border/80 hover:shadow-md hover:border-primary/40 flex flex-col justify-between',
                   currentTab === 'en-consulta' && 'border-primary/40 bg-primary/5'
                 )}
               >
-                {/* Barra lateral de color según estado */}
+                {/* Franja superior con color de especialidad / médico */}
                 <div
-                  className={cn(
-                    'absolute left-0 top-0 bottom-0 w-1.5',
-                    currentTab === 'sala-espera' && 'bg-amber-500',
-                    currentTab === 'en-consulta' && 'bg-primary animate-pulse',
-                    currentTab === 'atendidas' && 'bg-emerald-500'
-                  )}
+                  className="h-1.5 w-full shrink-0"
+                  style={{ backgroundColor: consulta.medico?.color_calendario || consulta.especialidad?.color || (currentTab === 'sala-espera' ? '#f59e0b' : currentTab === 'atendidas' ? '#10b981' : '#0d9488') }}
                 />
 
-                <CardContent className="p-5 pl-6">
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                    {/* Información del Paciente y Cita */}
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary font-bold text-lg ring-1 ring-primary/20 shadow-xs">
-                        {consulta.paciente
-                          ? getInitials(`${consulta.paciente.nombres} ${consulta.paciente.apellidos}`)
-                          : 'PA'}
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-base font-bold text-foreground hover:text-primary transition-colors">
-                            {consulta.paciente
-                              ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}`
-                              : 'Paciente no identificado'}
-                          </h4>
-
-                          {consulta.codigo && (
-                            <Badge variant="outline" className="text-xs font-mono bg-muted/40">
-                              {consulta.codigo}
-                            </Badge>
-                          )}
-
-                          <Badge variant="secondary" className="text-xs font-normal">
-                            {calculateAge(consulta.paciente?.fecha_nacimiento, consulta.paciente?.edad)}
-                          </Badge>
-
-                          {(consulta.paciente?.documento_identidad || consulta.paciente?.numero_documento) && (
-                            <span className="text-xs text-muted-foreground font-mono">
-                              Doc: {consulta.paciente.tipo_documento || 'V'}-
-                              {consulta.paciente.documento_identidad || consulta.paciente.numero_documento}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Motivo de consulta */}
-                        <p className="text-sm font-medium text-foreground/90 flex items-center gap-1.5 line-clamp-1">
-                          <span className="text-muted-foreground font-normal">Motivo:</span>
-                          <span className="italic">{consulta.motivo_consulta}</span>
-                        </p>
-
-                        {/* Especialista y Especialidad */}
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pt-1">
-                          <div className="flex items-center gap-1">
-                            <Stethoscope className="h-3.5 w-3.5 text-primary" />
-                            <span className="font-semibold text-foreground">
-                              Dr(a). {consulta.medico?.nombres} {consulta.medico?.apellidos}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <Badge
-                              variant="outline"
-                              className="text-[11px] font-medium py-0 px-2 bg-background/80"
-                            >
-                              {consulta.especialidad?.nombre || 'General'}
-                            </Badge>
-                          </div>
-
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <Clock className="h-3.5 w-3.5" />
-                            <span>Hora: {formatHora(consulta.fecha_consulta)}</span>
-                          </div>
-
-                          {currentTab === 'sala-espera' && (
-                            <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-md">
-                              <Hourglass className="h-3 w-3" />
-                              <span>En espera: {formatTiempoEspera(consulta.fecha_consulta)}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                <CardContent className="p-4 space-y-3.5 flex-1 flex flex-col justify-between">
+                  {/* Fila Superior: Hora, Código y Semáforo */}
+                  <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="size-3.5 text-muted-foreground" />
+                      <span className="font-bold text-foreground text-xs">
+                        {formatHora(consulta.fecha_consulta)}
+                      </span>
+                      {consulta.codigo && (
+                        <span className="font-mono text-[10px] text-muted-foreground pl-1">
+                          #{consulta.codigo}
+                        </span>
+                      )}
                     </div>
 
-                    {/* Preconsulta y Acciones */}
-                    <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 self-end lg:self-center">
-                      {/* Estado de Preconsulta */}
+                    {currentTab === 'sala-espera' && (
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-full border',
+                          waitStatus.badgeClass
+                        )}
+                        title={`Tiempo en espera: ${waitStatus.text}`}
+                      >
+                        <span className={cn('size-1.5 rounded-full', waitStatus.dotClass)} />
+                        <span>{waitStatus.text}</span>
+                      </span>
+                    )}
+
+                    {currentTab === 'en-consulta' && (
+                      <Badge className="bg-primary/15 text-primary border-primary/30 text-[10.5px] py-0 px-2 font-bold animate-pulse">
+                        En Atención
+                      </Badge>
+                    )}
+
+                    {currentTab === 'atendidas' && (
+                      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px] py-0 px-2 font-semibold">
+                        Finalizada
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Sección del Paciente */}
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenPatientRecord(consulta.paciente)}
+                      className="size-10 rounded-2xl bg-gradient-to-br from-teal-500/20 to-teal-500/5 text-teal-700 dark:text-teal-300 font-bold text-sm flex items-center justify-center border border-teal-500/25 shrink-0 shadow-2xs hover:scale-105 transition-transform cursor-pointer"
+                      title="Ver expediente clínico"
+                    >
+                      {consulta.paciente
+                        ? getInitials(`${consulta.paciente.nombres} ${consulta.paciente.apellidos}`)
+                        : 'PA'}
+                    </button>
+
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPatientRecord(consulta.paciente)}
+                        className="font-bold text-sm text-foreground hover:text-primary transition-colors text-left truncate block cursor-pointer"
+                      >
+                        {consulta.paciente
+                          ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}`
+                          : 'Paciente no identificado'}
+                      </button>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+                        {(consulta.paciente?.documento_identidad || consulta.paciente?.numero_documento) && (
+                          <span>
+                            {consulta.paciente.tipo_documento || 'V'}-
+                            {consulta.paciente.documento_identidad || consulta.paciente.numero_documento}
+                          </span>
+                        )}
+                        <span>•</span>
+                        <span>{calculateAge(consulta.paciente?.fecha_nacimiento, consulta.paciente?.edad)}</span>
+                      </div>
+                      {consulta.paciente?.telefono && (
+                        <a
+                          href={`https://wa.me/${cleanPhone}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline font-mono font-medium pt-0.5"
+                          title="Enviar mensaje por WhatsApp"
+                        >
+                          <Phone className="size-2.5" />
+                          <span>{consulta.paciente.telefono}</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Médico y Especialidad */}
+                  <div className="p-2.5 rounded-xl border border-border/70 bg-muted/20 space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 font-semibold text-foreground truncate">
+                        <Stethoscope className="size-3.5 text-primary shrink-0" />
+                        <span className="truncate">
+                          {consulta.medico
+                            ? `Dr(a). ${consulta.medico.nombres} ${consulta.medico.apellidos}`
+                            : 'Especialista'}
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-medium shrink-0">
+                        {consulta.especialidad?.nombre || 'General'}
+                      </Badge>
+                    </div>
+                    {consulta.sucursal?.nombre && (
+                      <span className="text-[10.5px] text-muted-foreground block truncate">
+                        Sede: {consulta.sucursal.nombre}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Motivo y Preconsulta */}
+                  <div className="p-2.5 rounded-xl border border-border/60 bg-muted/10 space-y-2">
+                    <div>
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                        Motivo de consulta:
+                      </span>
+                      <p className="text-xs font-medium text-foreground/90 line-clamp-2 mt-0.5">
+                        {consulta.motivo_consulta || 'Consulta de rutina / Control'}
+                      </p>
+                    </div>
+
+                    {/* Preconsulta / Resumen */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                       {hasPreconsulta ? (
                         isPreconsultaCompletada ? (
                           <Button
+                            type="button"
                             variant="outline"
                             size="sm"
                             onClick={() => {
                               setSelectedPreconsulta(consulta);
                               setPreconsultaDrawerOpen(true);
                             }}
-                            className="h-9 gap-1.5 bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 shadow-xs font-semibold"
+                            className="h-6 text-[10.5px] px-2 gap-1 bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 font-semibold cursor-pointer"
                           >
-                            <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                            <ClipboardList className="size-3 text-emerald-600" />
                             <span>Preconsulta Lista</span>
-                            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+                            <span className="size-1.5 rounded-full bg-emerald-500" />
                           </Button>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Badge
-                                    variant="outline"
-                                    className="h-8 gap-1.5 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2.5"
-                                  >
-                                    <Hourglass className="h-3.5 w-3.5" />
-                                    <span>Preconsulta Pendiente</span>
-                                  </Badge>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>
-                                    {consulta.preconsulta?.whatsapp_enviado
-                                      ? 'Enlace enviado al WhatsApp del paciente'
-                                      : 'Enlace generado, pendiente de respuesta'}
-                                  </p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-
+                          <div className="flex items-center gap-1">
+                            <Badge
+                              variant="outline"
+                              className="h-5 text-[10px] gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2"
+                            >
+                              <Hourglass className="size-2.5" />
+                              <span>Triaje Pendiente</span>
+                            </Badge>
                             {consulta.preconsulta?.token && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              <button
+                                type="button"
                                 onClick={() => handleCopyPreconsultaLink(consulta.preconsulta!.token)}
-                                title="Copiar enlace de preconsulta"
+                                className="size-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
+                                title="Copiar link"
                               >
-                                <Copy className="h-3.5 w-3.5" />
-                              </Button>
+                                <Copy className="size-3" />
+                              </button>
                             )}
                           </div>
                         )
                       ) : null}
 
-                      {/* Botones de acción según la pestaña */}
-                      {currentTab === 'sala-espera' && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleLlamarConsultorio(consulta)}
-                            className="h-9 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs"
-                          >
-                            <Stethoscope className="h-4 w-4" />
-                            <span>Llamar a Consultorio</span>
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-9 w-9">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {isPreconsultaCompletada && (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedPreconsulta(consulta);
-                                    setPreconsultaDrawerOpen(true);
-                                  }}
-                                >
-                                  <ClipboardList className="mr-2 h-4 w-4 text-emerald-500" />
-                                  Ver Preconsulta del Paciente
-                                </DropdownMenuItem>
-                              )}
-                              {consulta.preconsulta?.token && (
-                                <DropdownMenuItem
-                                  onClick={() => handleCopyPreconsultaLink(consulta.preconsulta!.token)}
-                                >
-                                  <Copy className="mr-2 h-4 w-4" />
-                                  Copiar Link de Preconsulta
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleAnularConsulta(consulta)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <X className="mr-2 h-4 w-4" />
-                                Anular Consulta
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      )}
-
-                      {currentTab === 'en-consulta' && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => navigate(`/clinica/consultas/${consulta.id}/atencion`)}
-                            className="h-9 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-xs"
-                          >
-                            <Stethoscope className="h-4 w-4" />
-                            <span>Atender Paciente</span>
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDevolverSalaEspera(consulta)}
-                            className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
-                            title="Devolver a sala de espera"
-                          >
-                            <CornerUpLeft className="h-4 w-4" />
-                            <span className="hidden sm:inline">A Espera</span>
-                          </Button>
-
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-9 w-9">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => navigate(`/clinica/consultas/${consulta.id}/atencion`)}
-                              >
-                                <Stethoscope className="mr-2 h-4 w-4 text-primary" />
-                                Abrir Consulta Médica
-                              </DropdownMenuItem>
-                              {isPreconsultaCompletada && (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedPreconsulta(consulta);
-                                    setPreconsultaDrawerOpen(true);
-                                  }}
-                                >
-                                  <ClipboardList className="mr-2 h-4 w-4 text-emerald-500" />
-                                  Ver Respuestas de Preconsulta
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem
-                                onClick={() => handleFinalizarConsulta(consulta)}
-                              >
-                                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" />
-                                Finalización Rápida
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleAnularConsulta(consulta)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <X className="mr-2 h-4 w-4" />
-                                Anular Consulta
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      )}
-
                       {currentTab === 'atendidas' && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => navigate(`/clinica/consultas/${consulta.id}/detalle`)}
-                            className="h-9 gap-1.5 border-primary/30 text-primary hover:bg-primary/5 font-semibold"
-                          >
-                            <FileText className="h-4 w-4" />
-                            <span>Ver Ficha de Consulta</span>
-                          </Button>
-
-                          {/* Menú Desplegable de Impresión de Documentos Clínicos */}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="default"
-                                size="sm"
-                                className="h-9 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs cursor-pointer"
-                              >
-                                <Printer className="h-4 w-4" />
-                                <span>Imprimir</span>
-                                <ChevronRight className="h-3.5 w-3.5 opacity-70 rotate-90" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-60">
-                              <DropdownMenuItem
-                                onClick={() => handleAbrirImpresion(consulta, 'informe')}
-                                className="cursor-pointer gap-2 py-2"
-                              >
-                                <FileText className="h-4 w-4 text-sky-500" />
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-xs">Informe Médico</span>
-                                  <span className="text-[10px] text-muted-foreground">Ficha clínica y diagnósticos</span>
-                                </div>
-                              </DropdownMenuItem>
-
-                              <DropdownMenuItem
-                                onClick={() => handleAbrirImpresion(consulta, 'receta')}
-                                className="cursor-pointer gap-2 py-2"
-                              >
-                                <Pill className="h-4 w-4 text-emerald-500" />
-                                <div className="flex items-center justify-between w-full">
-                                  <div className="flex flex-col">
-                                    <span className="font-semibold text-xs">Receta Médica (Rx)</span>
-                                    <span className="text-[10px] text-muted-foreground">Prescripción de fármacos</span>
-                                  </div>
-                                  {consulta.receta_medica && consulta.receta_medica.length > 0 && (
-                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                                      {consulta.receta_medica.length}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </DropdownMenuItem>
-
-                              <DropdownMenuItem
-                                onClick={() => handleAbrirImpresion(consulta, 'estudios')}
-                                className="cursor-pointer gap-2 py-2"
-                              >
-                                <FlaskConical className="h-4 w-4 text-violet-500" />
-                                <div className="flex items-center justify-between w-full">
-                                  <div className="flex flex-col">
-                                    <span className="font-semibold text-xs">Orden de Estudios</span>
-                                    <span className="text-[10px] text-muted-foreground">Exámenes y laboratorio</span>
-                                  </div>
-                                  {consulta.estudios_solicitados && consulta.estudios_solicitados.length > 0 && (
-                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                                      {consulta.estudios_solicitados.length}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </DropdownMenuItem>
-
-                              <DropdownMenuItem
-                                onClick={() => handleAbrirImpresion(consulta, 'reposo')}
-                                className="cursor-pointer gap-2 py-2"
-                              >
-                                <BedDouble className="h-4 w-4 text-amber-500" />
-                                <div className="flex items-center justify-between w-full">
-                                  <div className="flex flex-col">
-                                    <span className="font-semibold text-xs">Reposo Médico</span>
-                                    <span className="text-[10px] text-muted-foreground">Incapacidad temporal</span>
-                                  </div>
-                                  {consulta.reposo_medico?.requiere_reposo && (
-                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                                      {consulta.reposo_medico.dias_reposo}d
-                                    </Badge>
-                                  )}
-                                </div>
-                              </DropdownMenuItem>
-
-                              <DropdownMenuSeparator />
-
-                              <DropdownMenuItem
-                                onClick={() => handleAbrirImpresion(consulta, 'constancia')}
-                                className="cursor-pointer gap-2 py-2"
-                              >
-                                <FileCheck2 className="h-4 w-4 text-indigo-500" />
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-xs">Constancia de Asistencia</span>
-                                  <span className="text-[10px] text-muted-foreground">Justificante de consulta</span>
-                                </div>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-
-                          <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 py-1 px-2.5">
-                            <Check className="h-3.5 w-3.5 text-emerald-600" />
-                            <span>Atendida</span>
-                          </Badge>
-
-                          {isPreconsultaCompletada && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedPreconsulta(consulta);
-                                setPreconsultaDrawerOpen(true);
-                              }}
-                              className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
-                            >
-                              <ClipboardList className="h-4 w-4" />
-                              <span className="hidden lg:inline">Preconsulta</span>
-                            </Button>
+                        <>
+                          {consulta.receta_medica && consulta.receta_medica.length > 0 && (
+                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5 gap-1">
+                              <Pill className="size-2.5 text-emerald-600" />
+                              <span>{consulta.receta_medica.length} Rx</span>
+                            </Badge>
                           )}
-                        </div>
+                          {consulta.estudios_solicitados && consulta.estudios_solicitados.length > 0 && (
+                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5 gap-1">
+                              <FlaskConical className="size-2.5 text-violet-600" />
+                              <span>{consulta.estudios_solicitados.length} Est.</span>
+                            </Badge>
+                          )}
+                          {consulta.reposo_medico?.requiere_reposo && (
+                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5 gap-1 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                              <BedDouble className="size-2.5 text-amber-600" />
+                              <span>{consulta.reposo_medico.dias_reposo}d Reposo</span>
+                            </Badge>
+                          )}
+                        </>
                       )}
                     </div>
+                  </div>
+
+                  {/* Barra inferior de acciones */}
+                  <div className="pt-2 border-t border-border/60">
+                    {currentTab === 'sala-espera' && (
+                      <div className="flex items-center justify-between gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleLlamarConsultorio(consulta)}
+                          className="h-8.5 text-xs px-3 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs cursor-pointer flex-1"
+                        >
+                          <Stethoscope className="size-3.5" />
+                          <span>Llamar a Consultorio</span>
+                          <ChevronRight className="size-3 opacity-70" />
+                        </Button>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-8.5 w-8.5 shrink-0 cursor-pointer">
+                              <MoreVertical className="size-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {isPreconsultaCompletada && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedPreconsulta(consulta);
+                                  setPreconsultaDrawerOpen(true);
+                                }}
+                              >
+                                <ClipboardList className="mr-2 size-3.5 text-emerald-500" />
+                                Ver Preconsulta
+                              </DropdownMenuItem>
+                            )}
+                            {consulta.preconsulta?.token && (
+                              <DropdownMenuItem
+                                onClick={() => handleCopyPreconsultaLink(consulta.preconsulta!.token)}
+                              >
+                                <Copy className="mr-2 size-3.5" />
+                                Copiar Link Preconsulta
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleAnularConsulta(consulta)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <X className="mr-2 size-3.5" />
+                              Anular Consulta
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
+
+                    {currentTab === 'en-consulta' && (
+                      <div className="flex items-center justify-between gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => navigate(`/clinica/consultas/${consulta.id}/atencion`)}
+                          className="h-8.5 text-xs px-3 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-xs cursor-pointer flex-1"
+                        >
+                          <Stethoscope className="size-3.5" />
+                          <span>Atender Paciente</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDevolverSalaEspera(consulta)}
+                          className="h-8.5 px-2.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Devolver a sala de espera"
+                        >
+                          <CornerUpLeft className="size-3 mr-1" />
+                          <span>A Espera</span>
+                        </Button>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-8.5 w-8.5 shrink-0 cursor-pointer">
+                              <MoreVertical className="size-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => navigate(`/clinica/consultas/${consulta.id}/atencion`)}
+                            >
+                              <Stethoscope className="mr-2 size-3.5 text-primary" />
+                              Abrir Consulta
+                            </DropdownMenuItem>
+                            {isPreconsultaCompletada && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedPreconsulta(consulta);
+                                  setPreconsultaDrawerOpen(true);
+                                }}
+                              >
+                                <ClipboardList className="mr-2 size-3.5 text-emerald-500" />
+                                Ver Preconsulta
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => handleFinalizarConsulta(consulta)}
+                            >
+                              <CheckCircle2 className="mr-2 size-3.5 text-emerald-600" />
+                              Finalización Rápida
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleAnularConsulta(consulta)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <X className="mr-2 size-3.5" />
+                              Anular Consulta
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
+
+                    {currentTab === 'atendidas' && (
+                      <div className="flex items-center justify-between gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/clinica/consultas/${consulta.id}/detalle`)}
+                          className="h-8.5 text-xs px-3 border-primary/30 text-primary hover:bg-primary/5 font-semibold gap-1.5 cursor-pointer flex-1"
+                        >
+                          <FileText className="size-3.5" />
+                          <span>Ver Ficha</span>
+                        </Button>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-8.5 text-xs px-3 gap-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs cursor-pointer"
+                            >
+                              <Printer className="size-3.5" />
+                              <span>Imprimir</span>
+                              <ChevronRight className="size-3 opacity-70 rotate-90" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                              onClick={() => handleAbrirImpresion(consulta, 'informe')}
+                              className="cursor-pointer gap-2 py-1.5 text-xs"
+                            >
+                              <FileText className="size-3.5 text-sky-500" />
+                              <span>Informe Médico</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleAbrirImpresion(consulta, 'receta')}
+                              className="cursor-pointer gap-2 py-1.5 text-xs"
+                            >
+                              <Pill className="size-3.5 text-emerald-500" />
+                              <span>Receta Médica (Rx)</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleAbrirImpresion(consulta, 'estudios')}
+                              className="cursor-pointer gap-2 py-1.5 text-xs"
+                            >
+                              <FlaskConical className="size-3.5 text-violet-500" />
+                              <span>Orden de Estudios</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleAbrirImpresion(consulta, 'reposo')}
+                              className="cursor-pointer gap-2 py-1.5 text-xs"
+                            >
+                              <BedDouble className="size-3.5 text-amber-500" />
+                              <span>Reposo Médico</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleAbrirImpresion(consulta, 'constancia')}
+                              className="cursor-pointer gap-2 py-1.5 text-xs"
+                            >
+                              <FileCheck2 className="size-3.5 text-indigo-500" />
+                              <span>Constancia de Asistencia</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1342,6 +1881,14 @@ export const ConsultasPage: React.FC = () => {
         consulta={consultaParaImprimir}
         initialDocumento={documentoInicialImpresion}
       />
+
+      {/* ── DRAWER DE EXPEDIENTE / FICHA DEL PACIENTE ── */}
+      <PatientRecordDrawer
+        open={recordDrawerOpen}
+        onOpenChange={setRecordDrawerOpen}
+        paciente={patientForRecord}
+      />
     </div>
   );
 };
+
