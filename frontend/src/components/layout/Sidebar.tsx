@@ -135,140 +135,152 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </div>
 
             {/* 1. Organización */}
-            <div>
-              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                Organización
+            {(user?.es_superadmin || hasPermission('empresas.ver') || hasPermission('sucursales.ver')) && (
+              <div>
+                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Organización
+                </div>
+                <div className="space-y-1">
+                  {(user?.es_superadmin || hasPermission('empresas.ver')) && (
+                    <NavLink to="/seguridad/empresas" onClick={onClose} className={navItemClass}>
+                      <Building2 className="w-4 h-4" />
+                      <span>{user?.es_superadmin ? 'Empresas' : 'Mi Empresa'}</span>
+                    </NavLink>
+                  )}
+
+                  {hasPermission('sucursales.ver') && (
+                    <NavLink to="/seguridad/sucursales" onClick={onClose} className={navItemClass}>
+                      <MapPin className="w-4 h-4" />
+                      <span>Sucursales / Sedes</span>
+                    </NavLink>
+                  )}
+
+                  {(user?.es_superadmin || hasPermission('empresas.ver')) && (
+                    <NavLink to="/saas/suscripciones" onClick={onClose} className={navItemClass}>
+                      <CreditCard className="w-4 h-4 text-emerald-500" />
+                      <span>Suscripción & Tarifas</span>
+                    </NavLink>
+                  )}
+
+                  {user?.es_superadmin && (
+                    <NavLink to="/saas/suscripciones-admin" onClick={onClose} className={navItemClass}>
+                      <Sparkles className="w-4 h-4 text-purple-500" />
+                      <span>Suscripciones Empresas</span>
+                    </NavLink>
+                  )}
+                </div>
               </div>
-              <div className="space-y-1">
-                {(user?.es_superadmin || hasPermission('empresas.ver') || Boolean(user?.empresa_id)) && (
-                  <NavLink to="/seguridad/empresas" onClick={onClose} className={navItemClass}>
-                    <Building2 className="w-4 h-4" />
-                    <span>{user?.es_superadmin ? 'Empresas' : 'Mi Empresa'}</span>
-                  </NavLink>
-                )}
-
-                {hasPermission('sucursales.ver') && (
-                  <NavLink to="/seguridad/sucursales" onClick={onClose} className={navItemClass}>
-                    <MapPin className="w-4 h-4" />
-                    <span>Sucursales / Sedes</span>
-                  </NavLink>
-                )}
-
-                <NavLink to="/saas/suscripciones" onClick={onClose} className={navItemClass}>
-                  <CreditCard className="w-4 h-4 text-emerald-500" />
-                  <span>Suscripción & Tarifas</span>
-                </NavLink>
-
-                {user?.es_superadmin && (
-                  <NavLink to="/saas/suscripciones-admin" onClick={onClose} className={navItemClass}>
-                    <Sparkles className="w-4 h-4 text-purple-500" />
-                    <span>Suscripciones Empresas</span>
-                  </NavLink>
-                )}
-              </div>
-            </div>
+            )}
 
             {/* 2. Seguridad */}
-            <div>
-              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                Seguridad
-              </div>
-              <div className="space-y-1">
-                {hasPermission('usuarios.ver') && (
-                  <NavLink to="/seguridad/usuarios" onClick={onClose} className={navItemClass}>
-                    <Users className="w-4 h-4" />
-                    <span>Usuarios</span>
-                  </NavLink>
-                )}
+            {(user?.es_superadmin || hasPermission('usuarios.ver') || hasPermission('roles.ver')) && (
+              <div>
+                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Seguridad
+                </div>
+                <div className="space-y-1">
+                  {hasPermission('usuarios.ver') && (
+                    <NavLink to="/seguridad/usuarios" onClick={onClose} className={navItemClass}>
+                      <Users className="w-4 h-4" />
+                      <span>Usuarios</span>
+                    </NavLink>
+                  )}
 
-                {hasPermission('roles.ver') && (
-                  <NavLink to="/seguridad/roles" onClick={onClose} className={navItemClass}>
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Roles & Permisos</span>
-                  </NavLink>
-                )}
+                  {hasPermission('roles.ver') && (
+                    <NavLink to="/seguridad/roles" onClick={onClose} className={navItemClass}>
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Roles & Permisos</span>
+                    </NavLink>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* 3. Configuración */}
-            <div>
-              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                Configuración
+            {(user?.es_superadmin || hasPermission('paises.ver')) && (
+              <div>
+                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Configuración
+                </div>
+                <div className="space-y-1">
+                  {hasPermission('paises.ver') && (
+                    <NavLink to="/seguridad/paises" onClick={onClose} className={navItemClass}>
+                      <Globe className="w-4 h-4" />
+                      <span>Países & Localización</span>
+                    </NavLink>
+                  )}
+                </div>
               </div>
-              <div className="space-y-1">
-                {hasPermission('paises.ver') && (
-                  <NavLink to="/seguridad/paises" onClick={onClose} className={navItemClass}>
-                    <Globe className="w-4 h-4" />
-                    <span>Países & Localización</span>
-                  </NavLink>
-                )}
-              </div>
-            </div>
+            )}
 
             {/* 4. Monitoreo */}
-            <div>
-              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                Monitoreo
+            {(user?.es_superadmin || hasPermission('auditoria.ver') || hasPermission('sesiones.ver') || hasPermission('seguridad_accesos.ver') || hasPermission('salud_sistema.ver')) && (
+              <div>
+                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Monitoreo
+                </div>
+                <div className="space-y-1">
+                  {hasPermission('auditoria.ver') && (
+                    <NavLink to="/seguridad/auditoria" onClick={onClose} className={navItemClass}>
+                      <FileClock className="w-4 h-4" />
+                      <span>Bitácora de Auditoría</span>
+                    </NavLink>
+                  )}
+
+                  {hasPermission('sesiones.ver') && (
+                    <NavLink to="/monitoreo/sesiones" onClick={onClose} className={navItemClass}>
+                      <Radio className="w-4 h-4" />
+                      <span>Sesiones Activas</span>
+                    </NavLink>
+                  )}
+
+                  {hasPermission('seguridad_accesos.ver') && (
+                    <NavLink to="/monitoreo/seguridad-accesos" onClick={onClose} className={navItemClass}>
+                      <ShieldAlert className="w-4 h-4" />
+                      <span>Seguridad & Accesos</span>
+                    </NavLink>
+                  )}
+
+                  {hasPermission('salud_sistema.ver') && (
+                    <NavLink to="/monitoreo/salud-sistema" onClick={onClose} className={navItemClass}>
+                      <Activity className="w-4 h-4" />
+                      <span>Salud del Sistema</span>
+                    </NavLink>
+                  )}
+                </div>
               </div>
-              <div className="space-y-1">
-                {hasPermission('auditoria.ver') && (
-                  <NavLink to="/seguridad/auditoria" onClick={onClose} className={navItemClass}>
-                    <FileClock className="w-4 h-4" />
-                    <span>Bitácora de Auditoría</span>
-                  </NavLink>
-                )}
-
-                {hasPermission('sesiones.ver') && (
-                  <NavLink to="/monitoreo/sesiones" onClick={onClose} className={navItemClass}>
-                    <Radio className="w-4 h-4" />
-                    <span>Sesiones Activas</span>
-                  </NavLink>
-                )}
-
-                {hasPermission('seguridad_accesos.ver') && (
-                  <NavLink to="/monitoreo/seguridad-accesos" onClick={onClose} className={navItemClass}>
-                    <ShieldAlert className="w-4 h-4" />
-                    <span>Seguridad & Accesos</span>
-                  </NavLink>
-                )}
-
-                {hasPermission('salud_sistema.ver') && (
-                  <NavLink to="/monitoreo/salud-sistema" onClick={onClose} className={navItemClass}>
-                    <Activity className="w-4 h-4" />
-                    <span>Salud del Sistema</span>
-                  </NavLink>
-                )}
-              </div>
-            </div>
+            )}
 
             {/* 5. Integraciones & Servicios */}
-            <div>
-              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                Integraciones
-              </div>
-              <div className="space-y-1">
-                {hasPermission('integraciones.ver') && (
-                  <NavLink to="/integraciones" onClick={onClose} className={navItemClass} end>
-                    <Layers className="w-4 h-4" />
-                    <span>Catálogo de Servicios</span>
-                  </NavLink>
-                )}
+            {(user?.es_superadmin || hasPermission('integraciones.ver') || hasPermission('whatsapp.ver') || hasPermission('integraciones.editar')) && (
+              <div>
+                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Integraciones
+                </div>
+                <div className="space-y-1">
+                  {hasPermission('integraciones.ver') && (
+                    <NavLink to="/integraciones" onClick={onClose} className={navItemClass} end>
+                      <Layers className="w-4 h-4" />
+                      <span>Catálogo de Servicios</span>
+                    </NavLink>
+                  )}
 
-                {hasPermission('whatsapp.ver') && (
-                  <NavLink to="/integraciones/whatsapp" onClick={onClose} className={navItemClass}>
-                    <MessageSquare className="w-4 h-4" />
-                    <span>WhatsApp Center</span>
-                  </NavLink>
-                )}
+                  {hasPermission('whatsapp.ver') && (
+                    <NavLink to="/integraciones/whatsapp" onClick={onClose} className={navItemClass}>
+                      <MessageSquare className="w-4 h-4" />
+                      <span>WhatsApp Center</span>
+                    </NavLink>
+                  )}
 
-                {(hasPermission('integraciones.editar') || hasPermission('mapas.ver') || hasPermission('pagos.ver')) && (
-                  <NavLink to="/integraciones/mapas-pagos" onClick={onClose} className={navItemClass}>
-                    <CreditCard className="w-4 h-4" />
-                    <span>Mapas & Pasarelas</span>
-                  </NavLink>
-                )}
+                  {(hasPermission('integraciones.editar') || hasPermission('mapas.ver') || hasPermission('pagos.ver')) && (
+                    <NavLink to="/integraciones/mapas-pagos" onClick={onClose} className={navItemClass}>
+                      <CreditCard className="w-4 h-4" />
+                      <span>Mapas & Pasarelas</span>
+                    </NavLink>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 

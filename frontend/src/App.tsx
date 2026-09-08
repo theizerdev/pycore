@@ -209,7 +209,7 @@ export const App: React.FC = () => {
               <Route
                 path="monitoreo/sesiones"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredPermission="sesiones.ver">
                     <SesionesActivasPage />
                   </ProtectedRoute>
                 }
@@ -217,7 +217,7 @@ export const App: React.FC = () => {
               <Route
                 path="monitoreo/seguridad-accesos"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredPermission="seguridad_accesos.ver">
                     <SeguridadAccesosPage />
                   </ProtectedRoute>
                 }
@@ -225,7 +225,7 @@ export const App: React.FC = () => {
               <Route
                 path="monitoreo/salud-sistema"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredPermission="salud_sistema.ver">
                     <SaludSistemaPage />
                   </ProtectedRoute>
                 }
@@ -284,7 +284,7 @@ export const App: React.FC = () => {
               <Route
                 path="saas/suscripciones"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredPermission="empresas.ver">
                     <PlanesBillingPage />
                   </ProtectedRoute>
                 }

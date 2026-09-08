@@ -10,10 +10,25 @@ from app.models.usuario import Usuario
 from app.models.especialidad import Especialidad
 from app.models.servicio import Servicio
 from app.models.sucursal import Sucursal
+from app.models.medico import Medico
 from app.schemas.servicio import ServicioCreate, ServicioUpdate, ServicioResponse
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/servicios", tags=["Servicios Médicos"])
+
+async def get_medico_for_user(db: AsyncSession, user: Usuario) -> Optional[Medico]:
+    """Obtiene la ficha médica asociada al usuario autenticado dentro de su empresa."""
+    if user.es_superadmin:
+        return None
+    stmt = select(Medico).where(
+        Medico.empresa_id == user.empresa_id,
+        or_(
+            Medico.usuario_id == user.id,
+            func.lower(Medico.email) == user.email.lower()
+        )
+    )
+    res = await db.execute(stmt)
+    return res.scalar_one_or_none()
 
 # Catálogo por defecto de servicios recomendados según especialidad médica
 DEFAULT_SERVICIOS_POR_ESPECIALIDAD = {
@@ -98,8 +113,17 @@ async def list_servicios(
     elif empresa_id is not None:
         stmt = stmt.where(Servicio.empresa_id == empresa_id)
 
-    # 2. Filtro por Especialidad
-    if especialidad_id is not None:
+    # 2. Restricción por Perfil Médico: Si el usuario es médico, filtrar exclusivamente por su especialidad
+    medico = await get_medico_for_user(db, current_user)
+    is_doctor = bool(current_user.rol and current_user.rol.slug == "medico") or (medico is not None)
+
+    if is_doctor:
+        if medico and medico.especialidad_id:
+            stmt = stmt.where(Servicio.especialidad_id == medico.especialidad_id)
+        else:
+            # Médico sin especialidad asignada: no mostrar servicios de otras especialidades
+            stmt = stmt.where(Servicio.especialidad_id == -1)
+    elif especialidad_id is not None:
         stmt = stmt.where(Servicio.especialidad_id == especialidad_id)
 
     # 3. Filtro por Sucursal
@@ -145,6 +169,18 @@ async def get_servicio(
     servicio = result.scalar_one_or_none()
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio médico no encontrado")
+
+    # Validación de especialidad si el usuario es médico
+    medico = await get_medico_for_user(db, current_user)
+    is_doctor = bool(current_user.rol and current_user.rol.slug == "medico") or (medico is not None)
+    if is_doctor:
+        doctor_esp_id = medico.especialidad_id if medico else None
+        if not doctor_esp_id or servicio.especialidad_id != doctor_esp_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene autorización para acceder a servicios de otra especialidad médica."
+            )
+
     return servicio
 
 @router.post("", response_model=ServicioResponse, status_code=status.HTTP_201_CREATED)
@@ -156,6 +192,22 @@ async def create_servicio(
 ):
     await ensure_tables_exist()
     empresa_id = current_user.empresa_id
+
+    # Validación de especialidad si el usuario es médico
+    medico = await get_medico_for_user(db, current_user)
+    is_doctor = bool(current_user.rol and current_user.rol.slug == "medico") or (medico is not None)
+    if is_doctor:
+        doctor_esp_id = medico.especialidad_id if medico else None
+        if not doctor_esp_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Su perfil médico no tiene una especialidad asignada en el sistema."
+            )
+        if payload.especialidad_id != doctor_esp_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo tiene autorización para crear servicios para su propia especialidad médica."
+            )
 
     # Verificar que la especialidad exista y pertenezca a la empresa
     stmt_esp = select(Especialidad).where(Especialidad.id == payload.especialidad_id)
@@ -231,6 +283,22 @@ async def update_servicio(
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio médico no encontrado")
 
+    # Validación de especialidad si el usuario es médico
+    medico = await get_medico_for_user(db, current_user)
+    is_doctor = bool(current_user.rol and current_user.rol.slug == "medico") or (medico is not None)
+    if is_doctor:
+        doctor_esp_id = medico.especialidad_id if medico else None
+        if not doctor_esp_id or servicio.especialidad_id != doctor_esp_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene autorización para modificar servicios de otra especialidad médica."
+            )
+        if payload.especialidad_id is not None and payload.especialidad_id != doctor_esp_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No puede reasignar un servicio a una especialidad distinta a la suya."
+            )
+
     update_data = payload.dict(exclude_unset=True)
 
     # Validar especialidad si se cambia
@@ -291,6 +359,17 @@ async def delete_servicio(
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio médico no encontrado")
 
+    # Validación de especialidad si el usuario es médico
+    medico = await get_medico_for_user(db, current_user)
+    is_doctor = bool(current_user.rol and current_user.rol.slug == "medico") or (medico is not None)
+    if is_doctor:
+        doctor_esp_id = medico.especialidad_id if medico else None
+        if not doctor_esp_id or servicio.especialidad_id != doctor_esp_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene autorización para eliminar servicios de otra especialidad médica."
+            )
+
     nombre_srv = servicio.nombre
     codigo_srv = servicio.codigo
 
@@ -323,11 +402,26 @@ async def seed_default_servicios(
     await ensure_tables_exist()
     empresa_id = current_user.empresa_id
 
-    # Obtener todas las especialidades activas de la empresa
+    # Si es médico, restringir sincronización a su especialidad asignada
+    medico = await get_medico_for_user(db, current_user)
+    is_doctor = bool(current_user.rol and current_user.rol.slug == "medico") or (medico is not None)
+    doctor_esp_id = None
+    if is_doctor:
+        doctor_esp_id = medico.especialidad_id if medico else None
+        if not doctor_esp_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Su perfil médico no tiene una especialidad asignada para sincronizar servicios."
+            )
+
+    # Obtener todas las especialidades activas de la empresa (o restringidas a la del médico)
     stmt_esp = select(Especialidad).where(
         Especialidad.empresa_id == empresa_id,
         Especialidad.activo == True
     )
+    if is_doctor and doctor_esp_id:
+        stmt_esp = stmt_esp.where(Especialidad.id == doctor_esp_id)
+
     res_esp = await db.execute(stmt_esp)
     especialidades = res_esp.scalars().all()
 
@@ -391,7 +485,10 @@ async def seed_default_servicios(
         for s in servicios_creados:
             await db.refresh(s)
 
-    # Retornar lista completa actualizada
-    stmt_all = select(Servicio).options(selectinload(Servicio.especialidad), selectinload(Servicio.sucursal)).where(Servicio.empresa_id == empresa_id).order_by(Servicio.especialidad_id.asc(), Servicio.nombre.asc())
+    # Retornar lista completa actualizada (o filtrada si es médico)
+    stmt_all = select(Servicio).options(selectinload(Servicio.especialidad), selectinload(Servicio.sucursal)).where(Servicio.empresa_id == empresa_id)
+    if is_doctor and doctor_esp_id:
+        stmt_all = stmt_all.where(Servicio.especialidad_id == doctor_esp_id)
+    stmt_all = stmt_all.order_by(Servicio.especialidad_id.asc(), Servicio.nombre.asc())
     res_all = await db.execute(stmt_all)
     return res_all.scalars().all()

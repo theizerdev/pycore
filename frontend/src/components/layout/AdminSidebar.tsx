@@ -194,6 +194,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           title: 'Suscripción & Tarifas',
           href: '/saas/suscripciones',
           icon: CreditCard,
+          permission: 'empresas.ver',
           badge: 'SaaS',
           badgeVariant: 'secondary'
         },
@@ -225,7 +226,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           title: 'Usuarios',
           href: '/seguridad/usuarios',
           icon: Users,
-          permission: 'users.ver',
+          permission: 'usuarios.ver',
         },
         {
           title: 'Roles & Permisos',
@@ -266,16 +267,19 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           title: 'Sesiones Activas',
           href: '/monitoreo/sesiones',
           icon: Radio,
+          permission: 'sesiones.ver',
         },
         {
           title: 'Alertas & Accesos',
           href: '/monitoreo/seguridad-accesos',
           icon: ShieldAlert,
+          permission: 'seguridad_accesos.ver',
         },
         {
           title: 'Salud del Sistema',
           href: '/monitoreo/salud-sistema',
           icon: Server,
+          permission: 'salud_sistema.ver',
         },
       ],
     },
@@ -487,26 +491,28 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
             // ── CASO 2: SECTOR CON SUBMENÚS (Ej. Seguridad, Clínico) ────
             const visibleChildren = menu.children.filter((child) => {
-              if (child.href === '/seguridad/empresas') {
-                return user?.es_superadmin || hasPermission('empresas.ver') || Boolean(user?.empresa_id);
+              // 1. Si es exclusivo de SuperAdmin y el usuario no lo es, ocultar
+              if (child.superAdminOnly && !user?.es_superadmin) {
+                return false;
               }
-              if (child.href === '/clinica/agenda') {
-                return user?.es_superadmin || hasPermission('citas.ver') || hasPermission('pacientes.ver') || Boolean(user?.empresa_id);
+
+              // 2. Si es exclusivo de Venezuela y la empresa no es venezolana, ocultar
+              if (child.venezuelaOnly && !isVenezuelaEmpresa) {
+                return false;
               }
-              if (child.href === '/clinica/doctores') {
-                return user?.es_superadmin || hasPermission('medicos.ver') || hasPermission('especialidades.ver') || Boolean(user?.empresa_id);
+
+              // 3. Si el usuario es SuperAdmin, tiene acceso a todos los módulos permitidos
+              if (user?.es_superadmin) {
+                return true;
               }
-              if (child.href === '/clinica/pacientes') {
-                return user?.es_superadmin || hasPermission('pacientes.ver') || hasPermission('medicos.ver') || hasPermission('especialidades.ver') || Boolean(user?.empresa_id);
+
+              // 4. Si el submenú exige un permiso específico, verificarlo estrictamente
+              if (child.permission) {
+                return hasPermission(child.permission);
               }
-              if (child.href.startsWith('/clinica/consultas/')) {
-                return user?.es_superadmin || (child.permission && hasPermission(child.permission)) || hasPermission('consultas.ver') || Boolean(user?.empresa_id);
-              }
-              return (
-                (!child.permission || hasPermission(child.permission)) &&
-                (!child.superAdminOnly || user?.es_superadmin) &&
-                (!child.venezuelaOnly || isVenezuelaEmpresa)
-              );
+
+              // 5. Si no tiene permiso ni es superAdminOnly, no mostrar por seguridad
+              return false;
             });
 
             if (visibleChildren.length === 0) return null;
