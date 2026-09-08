@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
