@@ -12,7 +12,7 @@ import {
   Server,
   KeyRound
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { empresasApi } from '../../api/empresas';
 import { sucursalesApi } from '../../api/sucursales';
 import { usuariosApi } from '../../api/usuarios';
@@ -24,6 +24,10 @@ import { Button } from '../../components/ui/button';
 
 export const Dashboard: React.FC = () => {
   const { user, sucursalActiva, hasPermission } = useAuth();
+
+  if (user?.rol?.slug === 'medico') {
+    return <Navigate to="/medico/dashboard" replace />;
+  }
   const [stats, setStats] = useState({
     empresas: 0,
     sucursales: 0,

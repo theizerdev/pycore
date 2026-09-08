@@ -99,13 +99,15 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     (user?.empresa?.pais?.nombre && user.empresa.pais.nombre.toLowerCase().includes('venezuela'))
   );
 
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+
   // Definición completa de la estructura de menú agrupada por sectores
   const menuStructure: SectorMenuItem[] = [
     {
       id: 'dashboard',
-      title: 'Dashboard',
+      title: isDoctorUser ? 'Panel Médico' : 'Dashboard',
       sectorKey: 'inicio',
-      href: '/dashboard',
+      href: isDoctorUser ? '/medico/dashboard' : '/dashboard',
       icon: LayoutDashboard,
     },
     {

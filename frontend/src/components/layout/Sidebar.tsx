@@ -98,9 +98,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 Principal
               </div>
               <div className="space-y-1">
-                <NavLink to="/dashboard" onClick={onClose} className={navItemClass}>
+                <NavLink
+                  to={user?.rol?.slug === 'medico' ? '/medico/dashboard' : '/dashboard'}
+                  onClick={onClose}
+                  className={navItemClass}
+                >
                   <LayoutDashboard className="w-4 h-4" />
-                  <span>Dashboard</span>
+                  <span>{user?.rol?.slug === 'medico' ? 'Panel Médico' : 'Dashboard'}</span>
                 </NavLink>
               </div>
             </div>

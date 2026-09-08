@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { TemplateSettingsProvider } from './context/TemplateSettingsContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout } from './components/layout/AdminLayout';
@@ -10,6 +10,7 @@ import { Login } from './pages/auth/Login';
 import { ForgotPassword } from './pages/auth/ForgotPassword';
 import { Perfil } from './pages/auth/Perfil';
 import { Dashboard } from './pages/dashboard/Dashboard';
+import { MedicoDashboardPage } from './pages/clinica/MedicoDashboardPage';
 import { EmpresasPage } from './pages/seguridad/EmpresasPage';
 import { SucursalesPage } from './pages/seguridad/SucursalesPage';
 import { PaisesPage } from './pages/seguridad/PaisesPage';
@@ -38,6 +39,14 @@ import { ServiciosPage } from './pages/administracion/ServiciosPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
 
+const HomeRedirect: React.FC = () => {
+  const { user } = useAuth();
+  if (user?.rol?.slug === 'medico') {
+    return <Navigate to="/medico/dashboard" replace />;
+  }
+  return <Navigate to="/dashboard" replace />;
+};
+
 export const App: React.FC = () => {
   return (
     <TemplateSettingsProvider>
@@ -61,8 +70,9 @@ export const App: React.FC = () => {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route index element={<HomeRedirect />} />
               <Route path="dashboard" element={<Dashboard />} />
+              <Route path="medico/dashboard" element={<MedicoDashboardPage />} />
               <Route path="perfil" element={<Perfil />} />
 
               {/* Módulo Clínico & Asistencial */}

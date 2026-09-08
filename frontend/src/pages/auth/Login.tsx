@@ -204,7 +204,11 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
         toast.info('Se requiere verificación de código OTP de WhatsApp para ingresar.');
       } else {
         toast.success(`Bienvenido de nuevo, ${data.user.nombre}`);
-        navigate('/dashboard');
+        if (data.user.rol?.slug === 'medico') {
+          navigate('/medico/dashboard');
+        } else {
+          navigate('/dashboard');
+        }
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Error al iniciar sesión. Verifica tus credenciales.');
@@ -275,7 +279,11 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
       const currentToken = localStorage.getItem('pycore_token') || '';
       login({ access_token: currentToken, user: profile.user, permisos: profile.permisos });
       toast.success(res.mensaje);
-      navigate('/dashboard');
+      if (profile.user.rol?.slug === 'medico') {
+        navigate('/medico/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Código de verificación incorrecto o no coincide.');
     } finally {
