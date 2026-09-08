@@ -13,9 +13,11 @@ from app.models.usuario import Usuario
 from app.models.empresa import Empresa
 from app.models.sucursal import Sucursal
 from app.models.especialidad import Especialidad
+from app.models.servicio import Servicio
 from app.models.medico import Medico
 from app.models.paciente import Paciente
 from app.models.cita import CitaMedica
+from app.models.bloqueo import BloqueoAgenda
 from app.models.preconsulta import Preconsulta
 from app.models.consulta import ConsultaMedica
 from app.models.integracion import WhatsAppMessage
@@ -24,8 +26,11 @@ from app.schemas.cita import (
     CitaCreate,
     CitaUpdate,
     CitaCambiarEstado,
+    CitaCambiarPago,
     CitaResponse,
     CitaNotificarWhatsAppResponse,
+    BloqueoAgendaCreate,
+    BloqueoAgendaResponse,
 )
 from app.services.whatsapp_service import WhatsAppService
 from app.api.v1.medicos import format_clean_whatsapp_number
@@ -55,6 +60,7 @@ def build_cita_response(c: CitaMedica) -> CitaResponse:
     esp_nombre = c.especialidad.nombre if c.especialidad else "Medicina General"
     esp_color = c.especialidad.color if c.especialidad and c.especialidad.color else "#8b5cf6"
     suc_nombre = c.sucursal.nombre if c.sucursal else "Sede Central"
+    serv_nombre = c.servicio.nombre if c.servicio else None
 
     return CitaResponse(
         id=c.id,
@@ -62,6 +68,7 @@ def build_cita_response(c: CitaMedica) -> CitaResponse:
         sucursal_id=c.sucursal_id,
         medico_id=c.medico_id,
         especialidad_id=c.especialidad_id,
+        servicio_id=c.servicio_id,
         paciente_id=c.paciente_id,
         fecha=c.fecha,
         hora_inicio=c.hora_inicio,
@@ -71,8 +78,16 @@ def build_cita_response(c: CitaMedica) -> CitaResponse:
         notas=c.notas,
         estado=c.estado,
         motivo_cancelacion=c.motivo_cancelacion,
+        servicio_nombre=serv_nombre,
+        precio_estimado=c.precio_estimado or 0.0,
+        estado_pago=c.estado_pago or "pendiente",
+        metodo_pago=c.metodo_pago,
+        es_sobreturno=bool(c.es_sobreturno),
+        motivo_sobreturno=c.motivo_sobreturno,
         whatsapp_notificado=c.whatsapp_notificado,
         whatsapp_notificado_at=c.whatsapp_notificado_at,
+        recordatorio_enviado=bool(c.recordatorio_enviado),
+        recordatorio_enviado_at=c.recordatorio_enviado_at,
         paciente_nombre=paciente_nombre,
         paciente_documento=paciente_doc,
         paciente_telefono=paciente_tel,
@@ -147,6 +162,7 @@ async def list_citas(
             selectinload(CitaMedica.medico),
             selectinload(CitaMedica.especialidad),
             selectinload(CitaMedica.sucursal),
+            selectinload(CitaMedica.servicio),
         )
         .order_by(CitaMedica.fecha.asc(), CitaMedica.hora_inicio.asc())
     )
@@ -179,6 +195,255 @@ async def list_citas(
     return [build_cita_response(c) for c in citas]
 
 
+@router.get("/bloqueos", response_model=List[BloqueoAgendaResponse])
+async def list_bloqueos(
+    fecha_inicio: Optional[date] = Query(None),
+    fecha_fin: Optional[date] = Query(None),
+    medico_id: Optional[int] = Query(None),
+    sucursal_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("citas.ver")),
+):
+    """
+    Listar bloqueos de horario de la clínica (cirugías, almuerzos, vacaciones, reuniones).
+    """
+    query = (
+        select(BloqueoAgenda)
+        .options(
+            selectinload(BloqueoAgenda.medico),
+            selectinload(BloqueoAgenda.sucursal),
+        )
+        .order_by(BloqueoAgenda.fecha.asc(), BloqueoAgenda.hora_inicio.asc())
+    )
+    if not current_user.es_superadmin:
+        query = query.where(BloqueoAgenda.empresa_id == current_user.empresa_id)
+
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        query = query.where(BloqueoAgenda.medico_id == doctor_auto_id)
+    elif medico_id:
+        query = query.where(BloqueoAgenda.medico_id == medico_id)
+
+    if fecha_inicio:
+        query = query.where(BloqueoAgenda.fecha >= fecha_inicio)
+    if fecha_fin:
+        query = query.where(BloqueoAgenda.fecha <= fecha_fin)
+    if sucursal_id:
+        query = query.where(BloqueoAgenda.sucursal_id == sucursal_id)
+
+    res = await db.execute(query)
+    bloqueos = res.scalars().all()
+
+    return [
+        BloqueoAgendaResponse(
+            id=b.id,
+            empresa_id=b.empresa_id,
+            sucursal_id=b.sucursal_id,
+            medico_id=b.medico_id,
+            fecha=b.fecha,
+            hora_inicio=b.hora_inicio,
+            hora_fin=b.hora_fin,
+            tipo=b.tipo,
+            motivo=b.motivo,
+            medico_nombre=f"{b.medico.nombres} {b.medico.apellidos}" if b.medico else None,
+            sucursal_nombre=b.sucursal.nombre if b.sucursal else None,
+            created_at=b.created_at,
+        )
+        for b in bloqueos
+    ]
+
+
+@router.post("/bloqueos", response_model=BloqueoAgendaResponse, status_code=status.HTTP_201_CREATED)
+async def create_bloqueo(
+    payload: BloqueoAgendaCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("citas.crear")),
+):
+    """
+    Registrar un bloqueo de horario para un médico.
+    """
+    empresa_id = current_user.empresa_id
+    if current_user.es_superadmin and not empresa_id:
+        res_emp = await db.execute(select(Empresa.id).limit(1))
+        empresa_id = res_emp.scalar() or 1
+
+    nuevo_bloqueo = BloqueoAgenda(
+        empresa_id=empresa_id,
+        sucursal_id=payload.sucursal_id,
+        medico_id=payload.medico_id,
+        fecha=payload.fecha,
+        hora_inicio=payload.hora_inicio,
+        hora_fin=payload.hora_fin,
+        tipo=payload.tipo,
+        motivo=payload.motivo,
+    )
+    db.add(nuevo_bloqueo)
+    await db.commit()
+
+    res_b = await db.execute(
+        select(BloqueoAgenda)
+        .options(selectinload(BloqueoAgenda.medico), selectinload(BloqueoAgenda.sucursal))
+        .where(BloqueoAgenda.id == nuevo_bloqueo.id)
+    )
+    b = res_b.scalar_one()
+    return BloqueoAgendaResponse(
+        id=b.id,
+        empresa_id=b.empresa_id,
+        sucursal_id=b.sucursal_id,
+        medico_id=b.medico_id,
+        fecha=b.fecha,
+        hora_inicio=b.hora_inicio,
+        hora_fin=b.hora_fin,
+        tipo=b.tipo,
+        motivo=b.motivo,
+        medico_nombre=f"{b.medico.nombres} {b.medico.apellidos}" if b.medico else None,
+        sucursal_nombre=b.sucursal.nombre if b.sucursal else None,
+        created_at=b.created_at,
+    )
+
+
+@router.delete("/bloqueos/{id}")
+async def delete_bloqueo(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("citas.eliminar")),
+):
+    """
+    Eliminar un bloqueo de horario existente.
+    """
+    query = select(BloqueoAgenda).where(BloqueoAgenda.id == id)
+    if not current_user.es_superadmin:
+        query = query.where(BloqueoAgenda.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(query)
+    b = res.scalar_one_or_none()
+    if not b:
+        raise HTTPException(status_code=404, detail="Bloqueo no encontrado")
+
+    await db.delete(b)
+    await db.commit()
+    return {"message": "Bloqueo eliminado exitosamente", "id": id}
+
+
+@router.post("/recordatorios/enviar-proximas")
+async def enviar_recordatorios_proximas(
+    fecha: Optional[date] = Query(None, description="Fecha a recordar (default: mañana)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("citas.editar")),
+):
+    """
+    Despachar recordatorios de WhatsApp a todas las citas activas del día indicado (o mañana).
+    """
+    from datetime import timedelta
+    target_fecha = fecha or (date.today() + timedelta(days=1))
+
+    query = (
+        select(CitaMedica)
+        .options(
+            selectinload(CitaMedica.paciente),
+            selectinload(CitaMedica.medico),
+            selectinload(CitaMedica.especialidad),
+            selectinload(CitaMedica.servicio),
+            selectinload(CitaMedica.sucursal),
+        )
+        .where(
+            CitaMedica.fecha == target_fecha,
+            CitaMedica.estado.in_(["programada", "confirmada"]),
+            CitaMedica.recordatorio_enviado == False,
+        )
+    )
+    if not current_user.es_superadmin:
+        query = query.where(CitaMedica.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(query)
+    citas_a_recordar = res.scalars().all()
+
+    if not citas_a_recordar:
+        return {
+            "success": True,
+            "total_citas": 0,
+            "enviados": 0,
+            "message": f"No hay citas pendientes de recordatorio para el {target_fecha.strftime('%d/%m/%Y')}",
+        }
+
+    # Obtener datos de empresa para WhatsApp
+    res_emp = await db.execute(
+        select(Empresa)
+        .options(selectinload(Empresa.pais_telefono), selectinload(Empresa.pais))
+        .where(Empresa.id == current_user.empresa_id)
+    )
+    empresa_obj = res_emp.scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais(empresa_obj)
+    nombre_clinica = empresa_obj.nombre if empresa_obj else "Centro Médico"
+
+    wa_service = WhatsAppService(
+        api_url=empresa_obj.whatsapp_api_url or "https://whatsapp.theizerdev.com",
+        api_key=empresa_obj.whatsapp_api_key,
+        instance_name=empresa_obj.whatsapp_instance or f"empresa_{empresa_obj.id}",
+        company_id=empresa_obj.id,
+        country_code=cod_pais
+    )
+
+    enviados_count = 0
+    fecha_str = target_fecha.strftime("%d/%m/%Y")
+
+    for cita in citas_a_recordar:
+        if not cita.paciente or not cita.paciente.telefono:
+            continue
+
+        clean_phone = format_clean_whatsapp_number(cita.paciente.telefono, cod_pais)
+        if not clean_phone:
+            continue
+
+        doc_name = f"{cita.medico.nombres} {cita.medico.apellidos}" if cita.medico else "Especialista"
+        serv_text = f"🩺 *Servicio:* {cita.servicio.nombre}\n" if cita.servicio else f"🩺 *Especialidad:* {cita.especialidad.nombre}\n"
+        monto_text = f"💳 *Arancel:* ${cita.precio_estimado:.2f}\n" if (cita.precio_estimado and cita.precio_estimado > 0) else ""
+
+        mensaje = (
+            f"👋 ¡Hola *{cita.paciente.nombres}*!\n\n"
+            f"⏰ Le recordamos que mañana *{fecha_str}* tiene cita programada en *{nombre_clinica}*:\n\n"
+            f"{serv_text}"
+            f"👨‍⚕️ *Especialista:* Dr(a). {doc_name}\n"
+            f"⏰ *Hora:* {cita.hora_inicio}\n"
+            f"📍 *Sede:* {cita.sucursal.nombre if cita.sucursal else 'Sede Central'}\n"
+            f"{monto_text}\n"
+            f"Le sugerimos presentarse 10 minutos antes. Si necesita confirmar o reprogramar su asistencia, por favor responda a este mensaje.\n\n"
+            f"¡Le deseamos un excelente día! ✨"
+        )
+
+        try:
+            send_res = await wa_service.send_message(
+                to=clean_phone,
+                message=mensaje,
+                sync=False,
+                simulate_typing=False,
+            )
+            if send_res.get("success"):
+                cita.recordatorio_enviado = True
+                cita.recordatorio_enviado_at = datetime.now()
+                enviados_count += 1
+                db.add(WhatsAppMessage(
+                    empresa_id=cita.empresa_id,
+                    recipient_phone=clean_phone,
+                    recipient_name=f"{cita.paciente.nombres} {cita.paciente.apellidos}",
+                    message_content=mensaje,
+                    status="sent",
+                    sent_at=datetime.now(),
+                ))
+        except Exception as e:
+            logger.warning(f"Error enviando recordatorio a {clean_phone}: {e}")
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "fecha": str(target_fecha),
+        "total_citas": len(citas_a_recordar),
+        "enviados": enviados_count,
+        "message": f"Se despacharon {enviados_count} recordatorios vía WhatsApp para el {fecha_str}.",
+    }
+
+
 @router.get("/{id}", response_model=CitaResponse)
 async def get_cita(
     id: int,
@@ -195,6 +460,7 @@ async def get_cita(
             selectinload(CitaMedica.medico),
             selectinload(CitaMedica.especialidad),
             selectinload(CitaMedica.sucursal),
+            selectinload(CitaMedica.servicio),
         )
         .where(CitaMedica.id == id)
     )
@@ -264,24 +530,52 @@ async def create_cita(
     if not sucursal:
         raise HTTPException(status_code=404, detail="Sucursal no válida")
 
-    # Verificar si hay conflicto de horario para el mismo médico (salvo citas canceladas)
-    conflicto_query = select(CitaMedica).where(
-        CitaMedica.medico_id == payload.medico_id,
-        CitaMedica.fecha == payload.fecha,
-        CitaMedica.estado != "cancelada",
-        or_(
-            and_(CitaMedica.hora_inicio <= payload.hora_inicio, CitaMedica.hora_fin > payload.hora_inicio),
-            and_(CitaMedica.hora_inicio < payload.hora_fin, CitaMedica.hora_fin >= payload.hora_fin),
-            and_(CitaMedica.hora_inicio >= payload.hora_inicio, CitaMedica.hora_fin <= payload.hora_fin),
+    # Validar servicio si se proporcionó
+    servicio = None
+    if payload.servicio_id:
+        res_serv = await db.execute(
+            select(Servicio).where(Servicio.id == payload.servicio_id, Servicio.empresa_id == empresa_id)
         )
-    )
-    res_conf = await db.execute(conflicto_query)
-    citas_traslapadas = res_conf.scalars().all()
-    if citas_traslapadas:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El médico ya tiene una cita agendada en ese horario ({citas_traslapadas[0].hora_inicio} - {citas_traslapadas[0].hora_fin}). Elija otro horario."
+        servicio = res_serv.scalar_one_or_none()
+
+    precio_final = payload.precio_estimado if (payload.precio_estimado is not None and payload.precio_estimado > 0) else (servicio.precio_base if servicio else 0.0)
+
+    # Verificar si hay conflicto de horario para el mismo médico (salvo citas canceladas y sobreturnos)
+    if not payload.es_sobreturno:
+        # 1. Validar contra bloqueos de agenda activos del médico
+        bloqueo_query = select(BloqueoAgenda).where(
+            BloqueoAgenda.medico_id == payload.medico_id,
+            BloqueoAgenda.fecha == payload.fecha,
+            and_(
+                BloqueoAgenda.hora_inicio < payload.hora_fin,
+                BloqueoAgenda.hora_fin > payload.hora_inicio,
+            )
         )
+        res_bloq = await db.execute(bloqueo_query)
+        bloqueo = res_bloq.scalar_one_or_none()
+        if bloqueo:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El médico tiene un bloqueo de agenda en ese horario ({bloqueo.hora_inicio} - {bloqueo.hora_fin}) por motivo: {bloqueo.motivo}"
+            )
+
+        # 2. Validar contra citas existentes
+        conflicto_query = select(CitaMedica).where(
+            CitaMedica.medico_id == payload.medico_id,
+            CitaMedica.fecha == payload.fecha,
+            CitaMedica.estado != "cancelada",
+            and_(
+                CitaMedica.hora_inicio < payload.hora_fin,
+                CitaMedica.hora_fin > payload.hora_inicio,
+            )
+        )
+        res_conf = await db.execute(conflicto_query)
+        citas_traslapadas = res_conf.scalars().all()
+        if citas_traslapadas:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El médico ya tiene una cita agendada en ese horario ({citas_traslapadas[0].hora_inicio} - {citas_traslapadas[0].hora_fin}). Elija otro horario o active la opción de Sobreturno si es un caso urgente."
+            )
 
     # Crear la cita
     nueva_cita = CitaMedica(
@@ -289,6 +583,7 @@ async def create_cita(
         sucursal_id=payload.sucursal_id,
         medico_id=payload.medico_id,
         especialidad_id=payload.especialidad_id,
+        servicio_id=payload.servicio_id,
         paciente_id=payload.paciente_id,
         fecha=payload.fecha,
         hora_inicio=payload.hora_inicio,
@@ -296,6 +591,11 @@ async def create_cita(
         duracion_minutos=payload.duracion_minutos,
         motivo=payload.motivo,
         notas=payload.notas,
+        precio_estimado=precio_final,
+        estado_pago=payload.estado_pago or "pendiente",
+        metodo_pago=payload.metodo_pago,
+        es_sobreturno=payload.es_sobreturno,
+        motivo_sobreturno=payload.motivo_sobreturno,
         estado="programada",
     )
     db.add(nueva_cita)
@@ -320,15 +620,20 @@ async def create_cita(
 
                 nombre_doc = f"{medico.nombres} {medico.apellidos}" if medico else "Especialista"
                 fecha_str = payload.fecha.strftime("%d/%m/%Y")
+                servicio_txt = f"🩺 *Servicio:* {servicio.nombre}\n" if servicio else f"🩺 *Especialidad:* {especialidad.nombre}\n"
+                arancel_txt = f"💵 *Arancel:* ${precio_final:.2f}\n" if precio_final > 0 else ""
+                sobreturno_txt = "⚡ *Modalidad:* Sobreturno / Urgencia autorizada\n" if payload.es_sobreturno else ""
 
                 mensaje_ws = (
                     f"👋 ¡Hola *{paciente.nombres}*!\n\n"
                     f"Le confirmamos su cita médica en *{nombre_clinica}*:\n\n"
-                    f"🩺 *Especialidad:* {especialidad.nombre}\n"
+                    f"{servicio_txt}"
                     f"👨‍⚕️ *Especialista:* Dr(a). {nombre_doc}\n"
                     f"📅 *Fecha:* {fecha_str}\n"
                     f"⏰ *Hora:* {payload.hora_inicio}\n"
-                    f"📍 *Sede:* {sucursal.nombre}\n\n"
+                    f"📍 *Sede:* {sucursal.nombre}\n"
+                    f"{sobreturno_txt}"
+                    f"{arancel_txt}"
                     f"💡 *Motivo:* {payload.motivo}\n\n"
                     f"Por favor presentarse 10 minutos antes de su consulta. En caso de requerir reprogramación, puede responder a este mensaje.\n\n"
                     f"¡Cuidamos de su salud! 🩺✨"
@@ -414,8 +719,27 @@ async def update_cita(
             detail="No es permitido registrar citas en horas anteriores"
         )
 
-    # Si se cambia horario, fecha o médico, validar que no colisione con otra cita activa
-    if payload.fecha or payload.hora_inicio or payload.hora_fin or payload.medico_id:
+    target_es_sobreturno = payload.es_sobreturno if payload.es_sobreturno is not None else cita.es_sobreturno
+
+    # Si se cambia horario, fecha o médico, validar que no colisione con bloqueos ni otra cita activa (salvo sobreturno)
+    if (payload.fecha or payload.hora_inicio or payload.hora_fin or payload.medico_id) and not target_es_sobreturno:
+        # Verificar bloqueo
+        bloq_query = select(BloqueoAgenda).where(
+            BloqueoAgenda.medico_id == target_medico_id,
+            BloqueoAgenda.fecha == target_fecha,
+            and_(
+                BloqueoAgenda.hora_inicio < target_hora_fin,
+                BloqueoAgenda.hora_fin > target_hora_inicio,
+            )
+        )
+        res_bloq = await db.execute(bloq_query)
+        bloqueo = res_bloq.scalar_one_or_none()
+        if bloqueo:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El médico tiene un bloqueo de agenda en ese horario ({bloqueo.hora_inicio} - {bloqueo.hora_fin}): {bloqueo.motivo}"
+            )
+
         overlap_query = select(CitaMedica).options(selectinload(CitaMedica.paciente)).where(
             CitaMedica.id != id,
             CitaMedica.medico_id == target_medico_id,
@@ -642,6 +966,49 @@ async def cambiar_estado_cita(
         )
     )
 
+    await db.commit()
+    return await get_cita(cita.id, db, current_user)
+
+
+@router.patch("/{id}/pago", response_model=CitaResponse)
+async def cambiar_pago_cita(
+    id: int,
+    payload: CitaCambiarPago,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("citas.editar")),
+):
+    """
+    Actualizar el estado y método de pago de una cita médica en caja/recepción.
+    """
+    valid_pagos = {"pendiente", "pagado", "aseguradora", "exonerado"}
+    if payload.estado_pago not in valid_pagos:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Estado de pago inválido. Opciones: {', '.join(valid_pagos)}"
+        )
+    query = select(CitaMedica).where(CitaMedica.id == id)
+    if not current_user.es_superadmin:
+        query = query.where(CitaMedica.empresa_id == current_user.empresa_id)
+
+    result = await db.execute(query)
+    cita = result.scalar_one_or_none()
+    if not cita:
+        raise HTTPException(status_code=404, detail="Cita médica no encontrada")
+
+    cita.estado_pago = payload.estado_pago
+    if payload.metodo_pago is not None:
+        cita.metodo_pago = payload.metodo_pago
+    cita.updated_at = datetime.now()
+
+    db.add(
+        AuditoriaLog(
+            empresa_id=cita.empresa_id,
+            usuario_id=current_user.id,
+            accion="ACTUALIZAR_PAGO",
+            modulo="citas",
+            detalles={"cita_id": id, "estado_pago": payload.estado_pago, "metodo_pago": payload.metodo_pago},
+        )
+    )
     await db.commit()
     return await get_cita(cita.id, db, current_user)
 

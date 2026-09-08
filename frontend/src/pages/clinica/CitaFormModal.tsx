@@ -3,7 +3,8 @@ import { citasApi } from '../../api/citas';
 import { medicosApi } from '../../api/medicos';
 import { pacientesApi } from '../../api/pacientes';
 import { sucursalesApi } from '../../api/sucursales';
-import type { CitaMedica, Medico, Paciente, Sucursal } from '../../types';
+import { serviciosApi } from '../../api/servicios';
+import type { CitaMedica, Medico, Paciente, Sucursal, Servicio, CitaEstadoPago } from '../../types';
 import { formatCleanWhatsAppNumber } from './DoctorWelcomeModal';
 import { toast } from 'sonner';
 import {
@@ -39,6 +40,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  DollarSign,
+  CreditCard,
+  Zap,
+  ShieldAlert,
+  CalendarClock,
 } from 'lucide-react';
 
 interface CitaFormModalProps {
@@ -80,6 +86,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [medicos, setMedicos] = useState<Medico[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
+  const [servicios, setServicios] = useState<Servicio[]>([]);
   const [allCitas, setAllCitas] = useState<CitaMedica[]>([]);
 
   // Buscador de pacientes
@@ -90,6 +97,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [medicoId, setMedicoId] = useState<number | null>(null);
   const [especialidadId, setEspecialidadId] = useState<number | null>(null);
   const [sucursalId, setSucursalId] = useState<number | null>(null);
+  const [servicioId, setServicioId] = useState<number | null>(null);
   const [fecha, setFecha] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
@@ -97,6 +105,11 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [duracionMinutos, setDuracionMinutos] = useState<number>(30);
   const [motivo, setMotivo] = useState<string>('');
   const [notas, setNotas] = useState<string>('');
+  const [precioEstimado, setPrecioEstimado] = useState<number | ''>('');
+  const [estadoPago, setEstadoPago] = useState<CitaEstadoPago>('pendiente');
+  const [metodoPago, setMetodoPago] = useState<string>('');
+  const [esSobreturno, setEsSobreturno] = useState<boolean>(false);
+  const [motivoSobreturno, setMotivoSobreturno] = useState<string>('');
   const [notificarWhatsApp, setNotificarWhatsApp] = useState<boolean>(true);
 
   // Cargar catálogos
@@ -105,25 +118,37 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
 
     const loadData = async () => {
       try {
-        const [meds, pacs, sucs] = await Promise.all([
+        const [meds, pacs, sucs, servs] = await Promise.all([
           medicosApi.list(),
           pacientesApi.list(),
           sucursalesApi.list(),
+          serviciosApi.list({ activo: true }),
         ]);
         setMedicos(meds);
         setPacientes(pacs);
         setSucursales(sucs);
+        setServicios(servs);
 
         if (citaToEdit) {
           setPacienteId(citaToEdit.paciente_id);
           setMedicoId(citaToEdit.medico_id);
           setEspecialidadId(citaToEdit.especialidad_id);
           setSucursalId(citaToEdit.sucursal_id);
+          setServicioId(citaToEdit.servicio_id || null);
           setFecha(citaToEdit.fecha);
           setHoraInicio(citaToEdit.hora_inicio);
           setDuracionMinutos(citaToEdit.duracion_minutos || 30);
           setMotivo(citaToEdit.motivo);
           setNotas(citaToEdit.notas || '');
+          setPrecioEstimado(
+            citaToEdit.precio_estimado !== undefined && citaToEdit.precio_estimado !== null
+              ? citaToEdit.precio_estimado
+              : ''
+          );
+          setEstadoPago(citaToEdit.estado_pago || 'pendiente');
+          setMetodoPago(citaToEdit.metodo_pago || '');
+          setEsSobreturno(!!citaToEdit.es_sobreturno);
+          setMotivoSobreturno(citaToEdit.motivo_sobreturno || '');
           setNotificarWhatsApp(false);
         } else {
           // Tomar siempre la fecha y hora exacta seleccionada/pulsada
@@ -140,6 +165,12 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
             setEspecialidadId(meds[0].especialidad_id);
           }
           if (sucs.length > 0) setSucursalId(sucs[0].id);
+          setServicioId(null);
+          setPrecioEstimado('');
+          setEstadoPago('pendiente');
+          setMetodoPago('');
+          setEsSobreturno(false);
+          setMotivoSobreturno('');
           setMotivo('');
           setNotas('');
           setNotificarWhatsApp(true);
@@ -166,6 +197,36 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
     if (med) {
       setEspecialidadId(med.especialidad_id);
       if (med.sucursal_defecto_id) setSucursalId(med.sucursal_defecto_id);
+    }
+  };
+
+  // Servicios filtrados por especialidad
+  const serviciosFiltrados = React.useMemo(() => {
+    if (!especialidadId) return servicios;
+    return servicios.filter(
+      (s) => !s.especialidad_id || s.especialidad_id === especialidadId
+    );
+  }, [servicios, especialidadId]);
+
+  // Selección de servicio del catálogo
+  const handleServicioChange = (val: string) => {
+    if (val === 'ninguno') {
+      setServicioId(null);
+      return;
+    }
+    const sId = Number(val);
+    setServicioId(sId);
+    const s = servicios.find((item) => item.id === sId);
+    if (s) {
+      if (s.duracion_estimada_minutos) {
+        setDuracionMinutos(s.duracion_estimada_minutos);
+      }
+      if (s.precio_base !== undefined && s.precio_base !== null) {
+        setPrecioEstimado(Number(s.precio_base));
+      }
+      if (!motivo.trim() || servicios.some((item) => item.nombre === motivo)) {
+        setMotivo(s.nombre);
+      }
     }
   };
 
@@ -306,6 +367,47 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const selectedPaciente = pacientes.find((p) => p.id === pacienteId);
   const selectedMedico = medicos.find((m) => m.id === medicoId);
 
+  // Verificación de horario habitual del médico
+  const advertenciaHorarioMedico = React.useMemo(() => {
+    if (!selectedMedico?.horario_atencion || !fecha) return null;
+    try {
+      const [y, m, d] = fecha.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      const diaSemana = dateObj.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
+      const diasNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      const diaNombre = diasNombres[diaSemana];
+
+      const h = selectedMedico.horario_atencion;
+      if (Array.isArray(h)) {
+        const configDia = h.find((item: any) => item.dia === diaSemana);
+        if (!configDia || !configDia.activo) {
+          return `El Dr(a). ${selectedMedico.nombres} ${selectedMedico.apellidos} no suele tener atención programada los ${diaNombre}s.`;
+        }
+        if (configDia.inicio && horaInicio < configDia.inicio) {
+          return `La hora (${horaInicio}) es anterior al inicio de atención configurado (${configDia.inicio}).`;
+        }
+        const finCita = calcularHoraFin(horaInicio, duracionMinutos);
+        if (configDia.fin && finCita > configDia.fin) {
+          return `La cita finalizaría a las ${finCita}, posterior al horario habitual (${configDia.fin}).`;
+        }
+      } else if (typeof h === 'object') {
+        if (Array.isArray(h.dias) && !h.dias.includes(diaSemana)) {
+          return `El Dr(a). ${selectedMedico.nombres} ${selectedMedico.apellidos} no atiende regularmente los días ${diaNombre}.`;
+        }
+        if (h.hora_inicio && horaInicio < h.hora_inicio) {
+          return `La hora (${horaInicio}) es anterior a su horario regular (${h.hora_inicio}).`;
+        }
+        const finCita = calcularHoraFin(horaInicio, duracionMinutos);
+        if (h.hora_fin && finCita > h.hora_fin) {
+          return `La cita finalizaría a las ${finCita}, después de su horario habitual (${h.hora_fin}).`;
+        }
+      }
+    } catch (e) {
+      console.error('Error evaluando horario del médico:', e);
+    }
+    return null;
+  }, [selectedMedico, fecha, horaInicio, duracionMinutos]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -319,6 +421,13 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
     }
     if (!motivo.trim()) {
       toast.error('Debe ingresar el motivo de la consulta');
+      return;
+    }
+
+    if (conflictoHorario && !esSobreturno) {
+      toast.error('Conflicto de horario detectado', {
+        description: `Coincide con la cita de ${conflictoHorario.paciente_nombre}. Seleccione otro horario o active la casilla "⚡ Cita de Sobreturno".`,
+      });
       return;
     }
 
@@ -339,32 +448,31 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
 
     setLoading(true);
     try {
+      const payloadBase = {
+        sucursal_id: sucursalId,
+        medico_id: medicoId,
+        especialidad_id: especialidadId,
+        servicio_id: servicioId,
+        paciente_id: pacienteId,
+        fecha,
+        hora_inicio: horaInicio,
+        hora_fin: horaFin,
+        duracion_minutos: duracionMinutos,
+        motivo,
+        notas,
+        precio_estimado: precioEstimado !== '' ? Number(precioEstimado) : undefined,
+        estado_pago: estadoPago,
+        metodo_pago: metodoPago.trim() ? metodoPago : undefined,
+        es_sobreturno: esSobreturno,
+        motivo_sobreturno: esSobreturno && motivoSobreturno.trim() ? motivoSobreturno : undefined,
+      };
+
       if (citaToEdit) {
-        await citasApi.update(citaToEdit.id, {
-          sucursal_id: sucursalId,
-          medico_id: medicoId,
-          especialidad_id: especialidadId,
-          paciente_id: pacienteId,
-          fecha,
-          hora_inicio: horaInicio,
-          hora_fin: horaFin,
-          duracion_minutos: duracionMinutos,
-          motivo,
-          notas,
-        });
+        await citasApi.update(citaToEdit.id, payloadBase);
         toast.success('Cita médica modificada exitosamente');
       } else {
         await citasApi.create({
-          sucursal_id: sucursalId,
-          medico_id: medicoId,
-          especialidad_id: especialidadId,
-          paciente_id: pacienteId,
-          fecha,
-          hora_inicio: horaInicio,
-          hora_fin: horaFin,
-          duracion_minutos: duracionMinutos,
-          motivo,
-          notas,
+          ...payloadBase,
           notificar_whatsapp: notificarWhatsApp,
         });
         toast.success('Cita médica agendada exitosamente', {
@@ -557,6 +665,48 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
             </div>
           </div>
 
+          {/* ── 2.1 SERVICIO CLÍNICO DEL CATÁLOGO ────────────────────── */}
+          <div className="space-y-1.5 p-3 rounded-xl border border-border/80 bg-card">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Sparkles className="size-3.5 text-teal-600" />
+                <span>Servicio Clínico / Tipo de Consulta</span>
+              </Label>
+              {servicioId && (
+                <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold bg-teal-500/10 px-2 py-0.5 rounded-md">
+                  Autocompleta duración y precio estimado
+                </span>
+              )}
+            </div>
+            <Select
+              value={servicioId ? String(servicioId) : 'ninguno'}
+              onValueChange={handleServicioChange}
+            >
+              <SelectTrigger className="text-xs h-9">
+                <SelectValue placeholder="Seleccionar servicio del catálogo..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ninguno">
+                  <span className="text-muted-foreground">-- Consulta Médica Estándar (Sin servicio específico) --</span>
+                </SelectItem>
+                {serviciosFiltrados.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    <div className="flex items-center justify-between w-full gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground">{s.nombre}</span>
+                        <span className="text-[10px] text-muted-foreground">({s.categoria})</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
+                        <span>⏱️ {s.duracion_estimada_minutos} min</span>
+                        <span className="text-teal-700 dark:text-teal-300 font-bold">${Number(s.precio_base).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* ── 3. FECHA, HORA Y DURACIÓN ─────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl border border-border/80 bg-muted/20">
             {/* Fecha */}
@@ -614,23 +764,49 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
               </Select>
             </div>
 
+            {/* Aviso si la fecha u hora está fuera del horario de atención del médico */}
+            {advertenciaHorarioMedico && (
+              <div className="col-span-1 sm:col-span-3 p-2.5 rounded-lg border border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-200 text-xs flex items-start gap-2">
+                <CalendarClock className="size-4 text-sky-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block">Aviso sobre Jornada de Atención:</span>
+                  <span>{advertenciaHorarioMedico}</span>
+                </div>
+              </div>
+            )}
+
             {/* ── PANEL DE DISPONIBILIDAD Y HUECOS ENTRE CITAS ────────────── */}
             <div className="col-span-1 sm:col-span-3 space-y-2 pt-1">
               {/* Alerta de Conflicto o Disponibilidad */}
               {conflictoHorario ? (
-                <div className="p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
-                  <AlertCircle className="size-4 shrink-0 text-amber-600 mt-0.5" />
-                  <div>
-                    <span className="font-bold block">
-                      ¡Conflicto de Horario detectado!
-                    </span>
-                    <span>
-                      El especialista ya tiene una cita agendada de{' '}
-                      <strong>{conflictoHorario.hora_inicio} a {conflictoHorario.hora_fin}</strong> con{' '}
-                      <strong>{conflictoHorario.paciente_nombre}</strong>. Por favor seleccione uno de los huecos libres a continuación.
-                    </span>
+                esSobreturno ? (
+                  <div className="p-2.5 rounded-lg border border-amber-500/50 bg-amber-500/15 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
+                    <Zap className="size-4 shrink-0 text-amber-600 mt-0.5" />
+                    <div>
+                      <span className="font-bold flex items-center gap-1.5">
+                        <span>Coincidencia de Horario (Modo Sobreturno Activo)</span>
+                        <Badge className="bg-amber-600 text-white text-[9px] px-1.5 py-0 h-4">⚡ Sobreturno</Badge>
+                      </span>
+                      <span>
+                        Existe solapamiento con la cita de <strong>{conflictoHorario.paciente_nombre}</strong> ({conflictoHorario.hora_inicio} a {conflictoHorario.hora_fin}). Se guardará como excepción prioritaria.
+                      </span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="p-2.5 rounded-lg border border-red-500/40 bg-red-500/10 text-red-900 dark:text-red-200 text-[11px] flex items-start gap-2">
+                    <AlertCircle className="size-4 shrink-0 text-red-600 mt-0.5" />
+                    <div>
+                      <span className="font-bold block">
+                        ¡Conflicto de Horario detectado!
+                      </span>
+                      <span>
+                        El especialista ya tiene una cita agendada de{' '}
+                        <strong>{conflictoHorario.hora_inicio} a {conflictoHorario.hora_fin}</strong> con{' '}
+                        <strong>{conflictoHorario.paciente_nombre}</strong>. Seleccione un hueco libre o active la opción <strong>⚡ Cita de Sobreturno</strong> si es una urgencia.
+                      </span>
+                    </div>
+                  </div>
+                )
               ) : (
                 <div className="p-2 rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-800 dark:text-teal-300 text-[11px] flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -694,7 +870,151 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
             </div>
           </div>
 
-          {/* ── 4. MOTIVO Y NOTAS ──────────────────────────────────── */}
+          {/* ── 4. CONTROL DE RECEPCIÓN Y PAGO ───────────────────────── */}
+          <div className="p-3.5 rounded-xl border border-border/80 bg-card space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <CreditCard className="size-3.5 text-teal-600" />
+                <span>Control de Recepción & Estado de Pago</span>
+              </span>
+              {precioEstimado !== '' && (
+                <span className="text-xs font-mono font-bold text-teal-700 dark:text-teal-300">
+                  Total: ${Number(precioEstimado).toFixed(2)}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Precio Estimado */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
+                  <DollarSign className="size-3 text-muted-foreground" />
+                  <span>Honorarios / Precio Estimado ($)</span>
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">$</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={precioEstimado}
+                    onChange={(e) => setPrecioEstimado(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0.00"
+                    className="pl-7 text-xs h-8 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Estado de Pago */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Estado de Pago en Caja</Label>
+                <Select
+                  value={estadoPago}
+                  onValueChange={(val) => setEstadoPago(val as CitaEstadoPago)}
+                >
+                  <SelectTrigger className="text-xs h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pendiente">
+                      <span className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-amber-500" />
+                        <span>⏳ Pendiente de Pago</span>
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="pagado">
+                      <span className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-emerald-500" />
+                        <span>✅ Pagado en Recepción</span>
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="aseguradora">
+                      <span className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-blue-500" />
+                        <span>🛡️ Cobertura Aseguradora / Póliza</span>
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="exonerado">
+                      <span className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-purple-500" />
+                        <span>🎁 Exonerado / Cortesía</span>
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Método de pago si ya pagó */}
+            {estadoPago === 'pagado' && (
+              <div className="pt-2 border-t border-border/60">
+                <Label className="text-[11px] font-semibold text-muted-foreground block mb-1.5">
+                  Método de Pago Utilizado:
+                </Label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'efectivo', label: 'Efectivo' },
+                    { id: 'tarjeta', label: 'Tarjeta' },
+                    { id: 'transferencia', label: 'Transferencia' },
+                    { id: 'pago_movil', label: 'Pago Móvil' },
+                  ].map((met) => (
+                    <button
+                      key={met.id}
+                      type="button"
+                      onClick={() => setMetodoPago(metodoPago === met.id ? '' : met.id)}
+                      className={`px-2.5 py-1.5 rounded-lg border text-[11px] cursor-pointer transition-all ${
+                        metodoPago === met.id
+                          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 font-bold'
+                          : 'border-border/70 hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      {met.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── 5. SOBRETURNO / EXCEPCIÓN MÉDICA ─────────────────────── */}
+          <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-7 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+                  <Zap className="size-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-foreground text-xs block">
+                    ⚡ Cita de Sobreturno / Cupo Extraordinario
+                  </span>
+                  <span className="text-[10px] text-muted-foreground block">
+                    Permite agendar aún con solapamiento horario para pacientes de urgencia o prioridad médica.
+                  </span>
+                </div>
+              </div>
+              <Switch
+                checked={esSobreturno}
+                onCheckedChange={setEsSobreturno}
+                className="cursor-pointer data-[state=checked]:bg-amber-600"
+              />
+            </div>
+
+            {esSobreturno && (
+              <div className="pt-2 border-t border-amber-500/20 space-y-1">
+                <Label className="text-[11px] font-semibold text-amber-900 dark:text-amber-200">
+                  Justificación Médica del Sobreturno (Opcional):
+                </Label>
+                <Input
+                  value={motivoSobreturno}
+                  onChange={(e) => setMotivoSobreturno(e.target.value)}
+                  placeholder="Ej. Paciente derivado de urgencia, dolor agudo, revisión prioritaria post-quirúrgica..."
+                  className="text-xs h-8 bg-background border-amber-500/30"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* ── 6. MOTIVO Y NOTAS ──────────────────────────────────── */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-foreground">
               Motivo de la Cita *
@@ -721,7 +1041,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
             />
           </div>
 
-          {/* ── 5. NOTIFICACIÓN POR WHATSAPP ───────────────────────── */}
+          {/* ── 7. NOTIFICACIÓN POR WHATSAPP ───────────────────────── */}
           {!citaToEdit && (
             <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-950/15 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">

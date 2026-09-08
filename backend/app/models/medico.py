@@ -28,6 +28,9 @@ class Medico(Base, TimestampMixin):
     # Sucursales asignadas donde atiende
     sucursales_ids = Column(JSON, default=list, nullable=False)
 
+    # Configuración de turnos y disponibilidad horaria del médico
+    horario_atencion = Column(JSON, default=dict, nullable=False)
+
     activo = Column(Boolean, default=True, nullable=False)
 
     # Relaciones

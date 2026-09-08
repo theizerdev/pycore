@@ -11,7 +11,17 @@ import { medicosApi } from '../../api/medicos';
 import { especialidadesApi } from '../../api/especialidades';
 import { sucursalesApi } from '../../api/sucursales';
 import { pacientesApi } from '../../api/pacientes';
-import type { CitaMedica, Medico, Especialidad, Sucursal, Paciente, CitaEstado } from '../../types';
+import type {
+  CitaMedica,
+  Medico,
+  Especialidad,
+  Sucursal,
+  Paciente,
+  CitaEstado,
+  BloqueoAgenda,
+  BloqueoTipo,
+  BloqueoAgendaCreateInput,
+} from '../../types';
 
 import { CitaFormModal } from './CitaFormModal';
 import { CitaQuickActionDialog } from './CitaQuickActionDialog';
@@ -19,6 +29,17 @@ import { PatientRecordDrawer } from './PatientRecordDrawer';
 import { CitaStatusModal } from './CitaStatusModal';
 import { toast } from 'sonner';
 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../../components/ui/dialog';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Textarea } from '../../components/ui/textarea';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Card, CardContent } from '../../components/ui/card';
@@ -46,6 +67,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
+  Lock,
+  Unlock,
+  Ban,
+  Trash2,
+  Zap,
+  DollarSign,
+  MessageCircle,
 } from 'lucide-react';
 
 export const AgendaCalendarioPage: React.FC = () => {
@@ -53,6 +81,7 @@ export const AgendaCalendarioPage: React.FC = () => {
   const calendarRef = useRef<any>(null);
 
   const [citas, setCitas] = useState<CitaMedica[]>([]);
+  const [bloqueos, setBloqueos] = useState<BloqueoAgenda[]>([]);
   const [medicos, setMedicos] = useState<Medico[]>([]);
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
@@ -80,6 +109,7 @@ export const AgendaCalendarioPage: React.FC = () => {
     if (currentDoctor) {
       setSelectedMedico(String(currentDoctor.id));
       setNewCitaInitialMedicoId(currentDoctor.id);
+      setBloqueoMedicoId(currentDoctor.id);
     }
   }, [currentDoctor]);
 
@@ -90,7 +120,6 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [newCitaInitialTime, setNewCitaInitialTime] = useState<string | undefined>(undefined);
   const [newCitaInitialMedicoId, setNewCitaInitialMedicoId] = useState<number | undefined>(undefined);
 
-  
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [selectedCitaForAction, setSelectedCitaForAction] = useState<CitaMedica | null>(null);
 
@@ -101,14 +130,39 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [selectedCitaForStatus, setSelectedCitaForStatus] = useState<CitaMedica | null>(null);
 
-  // Cargar Citas
+  // Modales y estados para Bloqueos de Agenda
+  const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
+  const [bloqueoMedicoId, setBloqueoMedicoId] = useState<number | null>(null);
+  const [bloqueoSucursalId, setBloqueoSucursalId] = useState<number | null>(null);
+  const [bloqueoFecha, setBloqueoFecha] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [bloqueoHoraInicio, setBloqueoHoraInicio] = useState<string>('12:00');
+  const [bloqueoHoraFin, setBloqueoHoraFin] = useState<string>('14:00');
+  const [bloqueoTipo, setBloqueoTipo] = useState<BloqueoTipo>('almuerzo');
+  const [bloqueoMotivo, setBloqueoMotivo] = useState<string>('');
+  const [guardandoBloqueo, setGuardandoBloqueo] = useState(false);
+
+  const [deleteBloqueoModalOpen, setDeleteBloqueoModalOpen] = useState(false);
+  const [selectedBloqueoToDelete, setSelectedBloqueoToDelete] = useState<BloqueoAgenda | null>(null);
+  const [eliminandoBloqueo, setEliminandoBloqueo] = useState(false);
+
+  // Modal para Recordatorios WhatsApp Automáticos (Día Siguiente)
+  const [recordatorioConfirmOpen, setRecordatorioConfirmOpen] = useState(false);
+  const [enviandoRecordatorios, setEnviandoRecordatorios] = useState(false);
+
+  // Cargar Citas y Bloqueos
   const fetchCitas = async () => {
     try {
       setLoading(true);
-      const data = await citasApi.list();
-      setCitas(data);
+      const [dataCitas, dataBloqueos] = await Promise.all([
+        citasApi.list(),
+        citasApi.listarBloqueos(),
+      ]);
+      setCitas(dataCitas);
+      setBloqueos(dataBloqueos);
     } catch (err) {
-      console.error('Error cargando citas:', err);
+      console.error('Error cargando citas y bloqueos:', err);
       toast.error('Error al sincronizar la agenda médica');
     } finally {
       setLoading(false);
@@ -127,6 +181,12 @@ export const AgendaCalendarioPage: React.FC = () => {
         setMedicos(meds);
         setEspecialidades(esps);
         setSucursales(sucs);
+        if (sucs.length > 0 && !bloqueoSucursalId) {
+          setBloqueoSucursalId(sucs[0].id);
+        }
+        if (meds.length > 0 && !bloqueoMedicoId) {
+          setBloqueoMedicoId(meds[0].id);
+        }
       } catch (err) {
         console.error('Error cargando catálogos:', err);
       }
@@ -135,6 +195,80 @@ export const AgendaCalendarioPage: React.FC = () => {
     fetchCitas();
     loadCatalogs();
   }, []);
+
+  // Crear Bloqueo de Agenda
+  const handleCrearBloqueo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bloqueoMedicoId) {
+      toast.error('Debe seleccionar el especialista');
+      return;
+    }
+    if (!bloqueoMotivo.trim()) {
+      toast.error('Debe ingresar el motivo del bloqueo');
+      return;
+    }
+    setGuardandoBloqueo(true);
+    try {
+      await citasApi.crearBloqueo({
+        medico_id: bloqueoMedicoId,
+        sucursal_id: bloqueoSucursalId,
+        fecha: bloqueoFecha,
+        hora_inicio: bloqueoHoraInicio,
+        hora_fin: bloqueoHoraFin,
+        tipo: bloqueoTipo,
+        motivo: bloqueoMotivo.trim(),
+      });
+      toast.success('Horario bloqueado exitosamente en la agenda');
+      setBloqueoModalOpen(false);
+      setBloqueoMotivo('');
+      fetchCitas();
+    } catch (err: any) {
+      console.error('Error creando bloqueo:', err);
+      toast.error('No se pudo bloquear el horario', {
+        description: err.response?.data?.detail || 'Revise que no existan conflictos previos.',
+      });
+    } finally {
+      setGuardandoBloqueo(false);
+    }
+  };
+
+  // Eliminar Bloqueo de Agenda
+  const handleEliminarBloqueo = async () => {
+    if (!selectedBloqueoToDelete) return;
+    setEliminandoBloqueo(true);
+    try {
+      await citasApi.eliminarBloqueo(selectedBloqueoToDelete.id);
+      toast.success('Bloqueo de horario eliminado. Agenda liberada.');
+      setDeleteBloqueoModalOpen(false);
+      setSelectedBloqueoToDelete(null);
+      fetchCitas();
+    } catch (err: any) {
+      console.error('Error eliminando bloqueo:', err);
+      toast.error('No se pudo eliminar el bloqueo');
+    } finally {
+      setEliminandoBloqueo(false);
+    }
+  };
+
+  // Despachar Recordatorios WhatsApp para mañana
+  const handleEnviarRecordatorios = async () => {
+    setEnviandoRecordatorios(true);
+    try {
+      const res = await citasApi.enviarRecordatoriosProximas();
+      toast.success(res.message, {
+        description: `${res.enviados} de ${res.total_citas} recordatorios enviados a los pacientes.`,
+      });
+      setRecordatorioConfirmOpen(false);
+      fetchCitas();
+    } catch (err: any) {
+      console.error('Error enviando recordatorios:', err);
+      toast.error('Error al enviar recordatorios', {
+        description: err.response?.data?.detail || 'No se pudo completar el despacho',
+      });
+    } finally {
+      setEnviandoRecordatorios(false);
+    }
+  };
 
   // Filtrado reactivo en memoria
   const filteredCitas = useMemo(() => {
@@ -173,6 +307,19 @@ export const AgendaCalendarioPage: React.FC = () => {
     return citas.filter((c) => c.fecha === todayStr && c.estado === 'atendida');
   }, [citas, todayStr]);
 
+  // Filtrado reactivo de bloqueos de agenda
+  const filteredBloqueos = useMemo(() => {
+    return bloqueos.filter((b) => {
+      if (selectedSucursal !== 'all' && b.sucursal_id && b.sucursal_id !== Number(selectedSucursal)) {
+        return false;
+      }
+      if (selectedMedico !== 'all' && b.medico_id !== Number(selectedMedico)) {
+        return false;
+      }
+      return true;
+    });
+  }, [bloqueos, selectedSucursal, selectedMedico]);
+
   // Formateador a formato de 12 Horas con AM/PM (Ej: 08:00 AM - 08:20 AM)
   const format12Hour = (time24: string): string => {
     if (!time24) return '';
@@ -184,13 +331,13 @@ export const AgendaCalendarioPage: React.FC = () => {
     return `${String(h).padStart(2, '0')}:${mStr || '00'} ${ampm}`;
   };
 
-  // Mapear eventos a FullCalendar con color de Especialidad
+  // Mapear eventos a FullCalendar con color de Especialidad y Bloqueos de Agenda
   const events = useMemo(() => {
-    return filteredCitas.map((c) => {
+    const citaEvents = filteredCitas.map((c) => {
       // El fondo del bloque representa la especialidad clínica
       const color = c.especialidad_color || '#8b5cf6';
       return {
-        id: String(c.id),
+        id: `cita_${c.id}`,
         title: `${c.paciente_nombre} - ${c.medico_nombre}`,
         start: `${c.fecha}T${c.hora_inicio}:00`,
         end: `${c.fecha}T${c.hora_fin}:00`,
@@ -202,10 +349,36 @@ export const AgendaCalendarioPage: React.FC = () => {
         },
       };
     });
-  }, [filteredCitas]);
+
+    const bloqueoEvents = filteredBloqueos.map((b) => ({
+      id: `bloqueo_${b.id}`,
+      title: `🔒 ${b.tipo.toUpperCase()}: ${b.motivo}`,
+      start: `${b.fecha}T${b.hora_inicio}:00`,
+      end: `${b.fecha}T${b.hora_fin}:00`,
+      backgroundColor: '#334155',
+      borderColor: '#475569',
+      textColor: '#ffffff',
+      classNames: ['fc-event-bloqueo'],
+      editable: false,
+      startEditable: false,
+      durationEditable: false,
+      extendedProps: {
+        bloqueo: b,
+      },
+    }));
+
+    return [...citaEvents, ...bloqueoEvents];
+  }, [filteredCitas, filteredBloqueos]);
 
   // Click en un evento del calendario
   const handleEventClick = (info: any) => {
+    const bloqueo = info.event.extendedProps.bloqueo as BloqueoAgenda;
+    if (bloqueo) {
+      setSelectedBloqueoToDelete(bloqueo);
+      setDeleteBloqueoModalOpen(true);
+      return;
+    }
+
     const cita = info.event.extendedProps.cita as CitaMedica;
     if (cita) {
       setSelectedCitaForAction(cita);
@@ -271,6 +444,10 @@ export const AgendaCalendarioPage: React.FC = () => {
 
   // ── REPROGRAMACIÓN POR ARRASTRE (Drag & Drop a una hora o día específico) ──
   const handleEventDrop = async (info: any) => {
+    if (info.event.extendedProps.bloqueo) {
+      info.revert();
+      return;
+    }
     const cita = info.event.extendedProps.cita as CitaMedica;
     if (!cita) return;
 
@@ -334,6 +511,10 @@ export const AgendaCalendarioPage: React.FC = () => {
 
   // ── AJUSTE DE DURACIÓN ESTIRANDO EL BORDE INFERIOR DEL EVENTO ──────────
   const handleEventResize = async (info: any) => {
+    if (info.event.extendedProps.bloqueo) {
+      info.revert();
+      return;
+    }
     const cita = info.event.extendedProps.cita as CitaMedica;
     if (!cita) return;
 
@@ -375,7 +556,7 @@ export const AgendaCalendarioPage: React.FC = () => {
             <span>Agenda Médica y Turnos de Citas</span>
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Calendario asistencial interactivo.
+            Calendario asistencial interactivo con control de sobreturnos, bloqueos y estados de pago.
           </p>
         </div>
 
@@ -436,11 +617,44 @@ export const AgendaCalendarioPage: React.FC = () => {
             onClick={fetchCitas}
             disabled={loading}
             className="h-9 cursor-pointer gap-1.5"
+            title="Sincronizar calendario"
           >
             <RefreshCw className={`size-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Actualizar</span>
           </Button>
 
+          {/* Botón Enviar Recordatorios WhatsApp Mañana */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setRecordatorioConfirmOpen(true)}
+            className="h-9 cursor-pointer gap-1.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
+            title="Enviar recordatorios de asistencia por WhatsApp a citas de mañana"
+          >
+            <Send className="size-3.5 text-emerald-600" />
+            <span className="hidden xl:inline">Recordatorios WhatsApp</span>
+          </Button>
+
+          {/* Botón Bloquear Horario */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (selectedMedico !== 'all') {
+                setBloqueoMedicoId(Number(selectedMedico));
+              }
+              setBloqueoModalOpen(true);
+            }}
+            className="h-9 cursor-pointer gap-1.5 border-slate-500/30 text-slate-700 dark:text-slate-300 hover:bg-slate-500/10"
+            title="Bloquear horario por almuerzo, reunión, cirugía u otros"
+          >
+            <Lock className="size-3.5 text-slate-600 dark:text-slate-400" />
+            <span className="hidden sm:inline">Bloquear Horario</span>
+          </Button>
+
+          {/* Botón Agendar Cita */}
           <Button
             type="button"
             size="sm"
@@ -469,6 +683,17 @@ export const AgendaCalendarioPage: React.FC = () => {
           }
           .dark .fc {
             --fc-border-color: #334155;
+          }
+          .fc-event-bloqueo {
+            background: repeating-linear-gradient(
+              -45deg,
+              #1e293b,
+              #1e293b 8px,
+              #334155 8px,
+              #334155 16px
+            ) !important;
+            border: 1px dashed #94a3b8 !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
           }
           .fc .fc-toolbar-title {
             font-size: 1.15rem;
@@ -608,7 +833,68 @@ export const AgendaCalendarioPage: React.FC = () => {
           eventDrop={handleEventDrop}
           eventResize={handleEventResize}
           eventContent={(eventInfo) => {
+            const bloqueo = eventInfo.event.extendedProps.bloqueo as BloqueoAgenda;
             const cita = eventInfo.event.extendedProps.cita as CitaMedica;
+
+            // ── RENDERIZADO DE BLOQUEO DE AGENDA ───────────────────────────
+            if (bloqueo) {
+              const isListView = eventInfo.view.type.startsWith('list');
+              const isMonthView = eventInfo.view.type === 'dayGridMonth';
+
+              if (isListView) {
+                return (
+                  <div className="flex items-center justify-between gap-3 py-1 px-2 w-full text-foreground">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">🔒</span>
+                      <div>
+                        <span className="font-bold text-xs capitalize text-foreground block">
+                          Bloqueo ({bloqueo.tipo}): {bloqueo.motivo}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {bloqueo.medico_nombre || 'Especialista'}
+                        </span>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-mono border-slate-500/40 text-slate-700 dark:text-slate-300">
+                      {bloqueo.hora_inicio} - {bloqueo.hora_fin}
+                    </Badge>
+                  </div>
+                );
+              }
+
+              if (isMonthView) {
+                return (
+                  <div className="flex items-center gap-1 w-full px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 text-[10px] truncate">
+                    <span>🔒</span>
+                    <span className="truncate">{bloqueo.motivo}</span>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="relative w-full h-full p-2 flex flex-col justify-between text-white select-none overflow-hidden rounded-md border border-slate-500/50">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs">🔒</span>
+                      <span className="font-bold text-xs text-white truncate capitalize">
+                        {bloqueo.tipo}: {bloqueo.motivo}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-300 block truncate">
+                      {bloqueo.medico_nombre || 'Agenda bloqueada'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] text-slate-200 font-mono mt-1">
+                    <span>{format12Hour(bloqueo.hora_inicio)} - {format12Hour(bloqueo.hora_fin)}</span>
+                    <span className="text-[9px] bg-slate-900/80 px-1.5 py-0.5 rounded text-amber-300 font-sans font-bold">
+                      Bloqueado
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
             if (!cita) return <div>{eventInfo.event.title}</div>;
 
             const timeRange = `${format12Hour(cita.hora_inicio)} - ${format12Hour(cita.hora_fin)}`;
@@ -640,11 +926,33 @@ export const AgendaCalendarioPage: React.FC = () => {
                       {cita.especialidad_nombre}
                     </span>
 
-                    {/* Paciente y Doctor con texto visible y legible */}
+                    {/* Paciente y Doctor con badges informativos */}
                     <div className="min-w-0">
-                      <span className="font-bold text-xs text-foreground block truncate">
-                        {cita.paciente_nombre}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-xs text-foreground block truncate">
+                          {cita.paciente_nombre}
+                        </span>
+                        {cita.es_sobreturno && (
+                          <Badge className="bg-amber-600 text-white text-[9px] px-1 py-0 h-4">
+                            ⚡ Sobreturno
+                          </Badge>
+                        )}
+                        {cita.estado_pago === 'pagado' && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 font-bold">
+                            ✅ Pagado
+                          </span>
+                        )}
+                        {cita.estado_pago === 'pendiente' && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 font-bold">
+                            ⏳ Cobro Pendiente
+                          </span>
+                        )}
+                        {cita.recordatorio_enviado && (
+                          <span title="Recordatorio WhatsApp Enviado" className="text-[11px]">
+                            📲
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[11px] text-muted-foreground block truncate">
                         {cita.medico_nombre.startsWith('Dr') ? cita.medico_nombre : `Dr(a). ${cita.medico_nombre}`}
                       </span>
@@ -690,6 +998,9 @@ export const AgendaCalendarioPage: React.FC = () => {
                     <span className="font-semibold truncate">
                       {cita.paciente_nombre}
                     </span>
+                    {cita.es_sobreturno && (
+                      <span className="text-[9px] text-amber-200">⚡</span>
+                    )}
                   </div>
 
                   <button
@@ -725,20 +1036,54 @@ export const AgendaCalendarioPage: React.FC = () => {
 
                 {/* ── DATOS: Paciente y Especialista ──────────────────── */}
                 <div className="space-y-0.5 pr-8">
-                  <span className="font-bold text-xs leading-tight block truncate text-white drop-shadow-xs">
-                    {cita.paciente_nombre}
-                  </span>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="font-bold text-xs leading-tight block truncate text-white drop-shadow-xs">
+                      {cita.paciente_nombre}
+                    </span>
+                    {cita.es_sobreturno && (
+                      <span className="bg-amber-500 text-black text-[9px] font-extrabold px-1 rounded shadow-xs shrink-0">
+                        ⚡ Sobreturno
+                      </span>
+                    )}
+                    {cita.recordatorio_enviado && (
+                      <span title="Recordatorio WhatsApp Enviado" className="text-[10px] shrink-0">
+                        📲
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[10.5px] text-white/90 leading-tight block truncate font-medium">
                     {cita.medico_nombre.startsWith('Dr') ? cita.medico_nombre : `Dr(a). ${cita.medico_nombre}`}
                   </span>
                 </div>
 
-                {/* ── FILA INFERIOR: Pastilla de Estado + Rango de Hora ── */}
+                {/* ── FILA INFERIOR: Pastilla de Estado + Pago + Rango de Hora ── */}
                 <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                   <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold px-2 py-0.5 rounded-full bg-black/35 backdrop-blur-xs border border-white/20 text-white shrink-0">
                     <span className={`size-1.5 rounded-full ${cfg.dot}`} />
                     <span>{cfg.label}</span>
                   </span>
+
+                  {cita.estado_pago === 'pagado' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/40 text-emerald-100 border border-emerald-400/40 font-bold shrink-0">
+                      ✅ Pagado
+                    </span>
+                  )}
+                  {cita.estado_pago === 'pendiente' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/30 text-amber-100 border border-amber-400/40 shrink-0">
+                      ⏳ Cobro
+                    </span>
+                  )}
+                  {cita.estado_pago === 'aseguradora' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/35 text-blue-100 border border-blue-400/40 shrink-0">
+                      🛡️ Póliza
+                    </span>
+                  )}
+                  {cita.estado_pago === 'exonerado' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/35 text-purple-100 border border-purple-400/40 shrink-0">
+                      🎁 Cortesía
+                    </span>
+                  )}
+
                   <span className="text-[10px] font-mono text-white/95 font-medium shrink-0">
                     {timeRange}
                   </span>
@@ -788,6 +1133,245 @@ export const AgendaCalendarioPage: React.FC = () => {
         onOpenChange={setRecordDrawerOpen}
         paciente={patientForRecord}
       />
+
+      {/* ── MODAL DE BLOQUEO DE AGENDA ─────────────────────────────── */}
+      <Dialog open={bloqueoModalOpen} onOpenChange={setBloqueoModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <Lock className="size-4 text-slate-700 dark:text-slate-300" />
+              <span>Bloquear Horario en Agenda</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Inhabilita una franja de la agenda para cirugías, reuniones, almuerzo o descansos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCrearBloqueo} className="space-y-3.5 text-xs">
+            {/* Especialista */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Médico Especialista *</Label>
+              <Select
+                value={bloqueoMedicoId ? String(bloqueoMedicoId) : ''}
+                onValueChange={(val) => setBloqueoMedicoId(Number(val))}
+              >
+                <SelectTrigger className="text-xs h-9">
+                  <SelectValue placeholder="Seleccionar especialista..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {medicos.map((m) => (
+                    <SelectItem key={m.id} value={String(m.id)}>
+                      {m.nombres} {m.apellidos} ({m.especialidad_nombre})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Fecha, Hora Inicio, Hora Fin */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold">Fecha *</Label>
+                <Input
+                  type="date"
+                  value={bloqueoFecha}
+                  onChange={(e) => setBloqueoFecha(e.target.value)}
+                  className="text-xs h-8"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold">Inicio *</Label>
+                <Input
+                  type="time"
+                  value={bloqueoHoraInicio}
+                  onChange={(e) => setBloqueoHoraInicio(e.target.value)}
+                  className="text-xs h-8 font-mono font-semibold"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold">Fin *</Label>
+                <Input
+                  type="time"
+                  value={bloqueoHoraFin}
+                  onChange={(e) => setBloqueoHoraFin(e.target.value)}
+                  className="text-xs h-8 font-mono font-semibold"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Tipo de Bloqueo */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Tipo de Bloqueo *</Label>
+              <Select
+                value={bloqueoTipo}
+                onValueChange={(val) => setBloqueoTipo(val as BloqueoTipo)}
+              >
+                <SelectTrigger className="text-xs h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="almuerzo">🍱 Almuerzo / Descanso</SelectItem>
+                  <SelectItem value="cirugia">🏥 Cirugía / Quirófano</SelectItem>
+                  <SelectItem value="reunion">👥 Reunión / Comité Clínico</SelectItem>
+                  <SelectItem value="personal">👤 Motivo Personal</SelectItem>
+                  <SelectItem value="vacaciones">🏖️ Vacaciones / Permiso</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Motivo Detallado */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Motivo / Descripción *</Label>
+              <Input
+                value={bloqueoMotivo}
+                onChange={(e) => setBloqueoMotivo(e.target.value)}
+                placeholder="Ej. Intervención quirúrgica programada en Quirófano 2"
+                className="text-xs h-8"
+                required
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setBloqueoModalOpen(false)}
+                disabled={guardandoBloqueo}
+                className="h-8 text-xs cursor-pointer"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={guardandoBloqueo}
+                className="h-8 text-xs bg-slate-800 hover:bg-slate-900 text-white font-semibold cursor-pointer gap-1.5"
+              >
+                <Lock className="size-3.5" />
+                <span>{guardandoBloqueo ? 'Bloqueando...' : 'Confirmar Bloqueo'}</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── MODAL ELIMINAR / DESBLOQUEAR AGENDA ─────────────────────── */}
+      <Dialog open={deleteBloqueoModalOpen} onOpenChange={setDeleteBloqueoModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+              <Unlock className="size-4 text-amber-600" />
+              <span>Detalles del Bloqueo de Horario</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Esta franja horaria se encuentra actualmente reservada y bloqueada para citas.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedBloqueoToDelete && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="p-3 rounded-xl border border-border/80 bg-muted/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="text-[10px] capitalize border-amber-500/40 text-amber-700 dark:text-amber-300">
+                    Tipo: {selectedBloqueoToDelete.tipo}
+                  </Badge>
+                  <span className="font-mono text-xs font-bold text-foreground">
+                    {selectedBloqueoToDelete.hora_inicio} - {selectedBloqueoToDelete.hora_fin}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-bold text-xs text-foreground block">
+                    {selectedBloqueoToDelete.motivo}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground block mt-0.5">
+                    Fecha: {selectedBloqueoToDelete.fecha} • {selectedBloqueoToDelete.medico_nombre || 'Especialista'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteBloqueoModalOpen(false)}
+              disabled={eliminandoBloqueo}
+              className="h-8 text-xs cursor-pointer"
+            >
+              Cerrar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={handleEliminarBloqueo}
+              disabled={eliminandoBloqueo}
+              className="h-8 text-xs cursor-pointer gap-1.5"
+            >
+              <Trash2 className="size-3.5" />
+              <span>{eliminandoBloqueo ? 'Liberando...' : 'Eliminar Bloqueo y Liberar'}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── MODAL CONFIRMACIÓN ENVÍO DE RECORDATORIOS WHATSAPP ──────── */}
+      <Dialog open={recordatorioConfirmOpen} onOpenChange={setRecordatorioConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-emerald-700 dark:text-emerald-300">
+              <MessageCircle className="size-5 text-emerald-600" />
+              <span>Enviar Recordatorios WhatsApp</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Despacho automatizado de recordatorios para las citas programadas de mañana.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs text-emerald-900 dark:text-emerald-200 space-y-2">
+            <p className="font-medium">
+              Esta acción buscará todas las citas confirmadas o programadas para el día de mañana y enviará un mensaje recordatorio con:
+            </p>
+            <ul className="list-disc list-inside space-y-0.5 text-[11px] opacity-90">
+              <li>Nombre del paciente y del médico tratante</li>
+              <li>Hora de la cita y sede asistencial</li>
+              <li>Instrucciones y recordatorio de puntualidad</li>
+            </ul>
+            <p className="text-[10.5px] opacity-75 pt-1">
+              Las citas que ya fueron notificadas no recibirán duplicados.
+            </p>
+          </div>
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setRecordatorioConfirmOpen(false)}
+              disabled={enviandoRecordatorios}
+              className="h-8 text-xs cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleEnviarRecordatorios}
+              disabled={enviandoRecordatorios}
+              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer gap-1.5 shadow-xs"
+            >
+              <Send className="size-3.5" />
+              <span>{enviandoRecordatorios ? 'Despachando...' : 'Confirmar y Enviar Recordatorios'}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

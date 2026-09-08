@@ -23,6 +23,7 @@ class MedicoBase(BaseModel):
     color: str = "#0d9488"
     sucursal_defecto_id: Optional[int] = None
     sucursales_ids: List[int] = []
+    horario_atencion: Optional[Dict[str, Any]] = None
     biografia: Optional[str] = None
     activo: bool = True
 
@@ -46,6 +47,7 @@ class MedicoUpdate(BaseModel):
     color: Optional[str] = None
     sucursal_defecto_id: Optional[int] = None
     sucursales_ids: Optional[List[int]] = None
+    horario_atencion: Optional[Dict[str, Any]] = None
     biografia: Optional[str] = None
     activo: Optional[bool] = None
     password: Optional[str] = None  # Para actualizar contraseña del usuario vinculado

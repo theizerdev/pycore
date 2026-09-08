@@ -21,6 +21,13 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
+    # 1.1 Ejecutar migraciones automáticas para citas y médicos
+    try:
+        from app.core.migrations_citas import run_citas_migrations
+        await run_citas_migrations()
+    except Exception as e:
+        print(f"Aviso migración citas: {e}")
+    
     # 2. Ejecutar Seeder de Seguridad y Multi-tenant
     async with AsyncSessionLocal() as session:
         await seed_initial_data(session)

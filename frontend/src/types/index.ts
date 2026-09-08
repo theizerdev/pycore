@@ -473,6 +473,7 @@ export interface Medico {
   color: string;
   sucursal_defecto_id?: number | null;
   sucursales_ids: number[];
+  horario_atencion?: Record<string, any> | null;
   biografia?: string | null;
   activo: boolean;
   created_at?: string;
@@ -504,6 +505,7 @@ export interface MedicoCreateInput {
   color?: string;
   sucursal_defecto_id?: number | null;
   sucursales_ids?: number[];
+  horario_atencion?: Record<string, any> | null;
   biografia?: string | null;
   activo?: boolean;
   crear_usuario?: boolean;
@@ -526,6 +528,7 @@ export interface MedicoUpdateInput {
   color?: string;
   sucursal_defecto_id?: number | null;
   sucursales_ids?: number[];
+  horario_atencion?: Record<string, any> | null;
   biografia?: string | null;
   activo?: boolean;
   password?: string | null;
@@ -677,12 +680,15 @@ export type CitaEstado =
   | 'cancelada'
   | 'no_asistio';
 
+export type CitaEstadoPago = 'pendiente' | 'pagado' | 'aseguradora' | 'exonerado';
+
 export interface CitaMedica {
   id: number;
   empresa_id: number;
   sucursal_id: number;
   medico_id: number;
   especialidad_id: number;
+  servicio_id?: number | null;
   paciente_id: number;
   fecha: string; // YYYY-MM-DD
   hora_inicio: string; // HH:MM
@@ -692,8 +698,23 @@ export interface CitaMedica {
   notas?: string | null;
   estado: CitaEstado;
   motivo_cancelacion?: string | null;
+
+  // Aspectos comerciales y de pago
+  servicio_nombre?: string | null;
+  precio_estimado?: number | null;
+  estado_pago?: CitaEstadoPago;
+  metodo_pago?: string | null;
+
+  // Sobreturnos
+  es_sobreturno?: boolean;
+  motivo_sobreturno?: string | null;
+
+  // Notificaciones WhatsApp
   whatsapp_notificado: boolean;
   whatsapp_notificado_at?: string | null;
+  recordatorio_enviado?: boolean;
+  recordatorio_enviado_at?: string | null;
+
   paciente_nombre: string;
   paciente_documento: string;
   paciente_telefono?: string | null;
@@ -710,6 +731,7 @@ export interface CitaCreateInput {
   sucursal_id: number;
   medico_id: number;
   especialidad_id: number;
+  servicio_id?: number | null;
   paciente_id: number;
   fecha: string;
   hora_inicio: string;
@@ -717,6 +739,11 @@ export interface CitaCreateInput {
   duracion_minutos: number;
   motivo: string;
   notas?: string;
+  precio_estimado?: number;
+  estado_pago?: CitaEstadoPago;
+  metodo_pago?: string | null;
+  es_sobreturno?: boolean;
+  motivo_sobreturno?: string;
   notificar_whatsapp?: boolean;
 }
 
@@ -724,6 +751,7 @@ export interface CitaUpdateInput {
   sucursal_id?: number;
   medico_id?: number;
   especialidad_id?: number;
+  servicio_id?: number | null;
   paciente_id?: number;
   fecha?: string;
   hora_inicio?: string;
@@ -731,6 +759,11 @@ export interface CitaUpdateInput {
   duracion_minutos?: number;
   motivo?: string;
   notas?: string;
+  precio_estimado?: number;
+  estado_pago?: CitaEstadoPago;
+  metodo_pago?: string | null;
+  es_sobreturno?: boolean;
+  motivo_sobreturno?: string;
 }
 
 export interface CitaNotificarWhatsAppResponse {
@@ -739,6 +772,34 @@ export interface CitaNotificarWhatsAppResponse {
   destinatario: string;
   whatsapp_direct_url?: string;
   detalle: string;
+}
+
+// ── BLOQUEOS DE AGENDA ─────────────────────────────────────────────────
+export type BloqueoTipo = 'almuerzo' | 'cirugia' | 'reunion' | 'personal' | 'vacaciones';
+
+export interface BloqueoAgenda {
+  id: number;
+  empresa_id: number;
+  sucursal_id?: number | null;
+  medico_id: number;
+  fecha: string;
+  hora_inicio: string;
+  hora_fin: string;
+  tipo: BloqueoTipo;
+  motivo: string;
+  medico_nombre?: string | null;
+  sucursal_nombre?: string | null;
+  created_at: string;
+}
+
+export interface BloqueoAgendaCreateInput {
+  medico_id: number;
+  sucursal_id?: number | null;
+  fecha: string;
+  hora_inicio: string;
+  hora_fin: string;
+  tipo: BloqueoTipo;
+  motivo: string;
 }
 
 // ── SERVICIOS MÉDICOS POR ESPECIALIDAD ──────────────────────────────────

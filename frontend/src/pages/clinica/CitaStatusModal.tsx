@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { citasApi } from '../../api/citas';
-import type { CitaMedica, CitaEstado } from '../../types';
+import type { CitaMedica, CitaEstado, CitaEstadoPago } from '../../types';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -23,6 +23,8 @@ import {
   AlertTriangle,
   XCircle,
   Sparkles,
+  CreditCard,
+  DollarSign,
 } from 'lucide-react';
 
 interface CitaStatusModalProps {
@@ -116,6 +118,8 @@ export const CitaStatusModal: React.FC<CitaStatusModalProps> = ({
 }) => {
   const [selectedEstado, setSelectedEstado] = useState<CitaEstado | null>(null);
   const [motivoCancelacion, setMotivoCancelacion] = useState('');
+  const [selectedEstadoPago, setSelectedEstadoPago] = useState<CitaEstadoPago>('pendiente');
+  const [selectedMetodoPago, setSelectedMetodoPago] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   // Inicializar estado cuando se abre el modal
@@ -123,6 +127,8 @@ export const CitaStatusModal: React.FC<CitaStatusModalProps> = ({
     if (cita) {
       setSelectedEstado(cita.estado);
       setMotivoCancelacion(cita.motivo_cancelacion || '');
+      setSelectedEstadoPago(cita.estado_pago || 'pendiente');
+      setSelectedMetodoPago(cita.metodo_pago || '');
     }
   }, [cita, open]);
 
@@ -132,18 +138,36 @@ export const CitaStatusModal: React.FC<CitaStatusModalProps> = ({
     if (!selectedEstado) return;
     setLoading(true);
     try {
-      await citasApi.cambiarEstado(
-        cita.id,
-        selectedEstado,
-        selectedEstado === 'cancelada' ? motivoCancelacion : undefined
-      );
+      // 1. Si cambió el estado de pago, llamar a cambiarPago
+      const pagoCambio =
+        selectedEstadoPago !== (cita.estado_pago || 'pendiente') ||
+        selectedMetodoPago !== (cita.metodo_pago || '');
+
+      if (pagoCambio) {
+        await citasApi.cambiarPago(cita.id, {
+          estado_pago: selectedEstadoPago,
+          metodo_pago: selectedMetodoPago.trim() ? selectedMetodoPago : undefined,
+        });
+      }
+
+      // 2. Si cambió el estado asistencial de la cita
+      if (selectedEstado !== cita.estado) {
+        await citasApi.cambiarEstado(
+          cita.id,
+          selectedEstado,
+          selectedEstado === 'cancelada' ? motivoCancelacion : undefined
+        );
+      }
+
       const opt = STATUS_OPTIONS.find((s) => s.value === selectedEstado);
-      toast.success(`Estado actualizado a: ${opt?.label || selectedEstado}`);
+      toast.success('Cita actualizada correctamente', {
+        description: `Estado: ${opt?.label || selectedEstado} • Pago: ${selectedEstadoPago}`,
+      });
       onUpdated();
       onOpenChange(false);
     } catch (err: any) {
       console.error('Error actualizando estado de la cita:', err);
-      toast.error('No se pudo actualizar el estado');
+      toast.error('No se pudo actualizar el estado de la cita');
     } finally {
       setLoading(false);
     }
@@ -161,12 +185,19 @@ export const CitaStatusModal: React.FC<CitaStatusModalProps> = ({
         <DialogHeader className="p-5 pb-3 border-b border-border/70">
           <DialogTitle className="text-base font-bold text-foreground flex items-center justify-between">
             <span>Cambiar Estado de la Cita</span>
-            <Badge
-              variant="outline"
-              className="text-[10px] font-mono border-border/80"
-            >
-              #{cita.id}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              {cita.es_sobreturno && (
+                <Badge className="bg-amber-600 text-white text-[9px] px-1.5 py-0 h-4">
+                  ⚡ Sobreturno
+                </Badge>
+              )}
+              <Badge
+                variant="outline"
+                className="text-[10px] font-mono border-border/80"
+              >
+                #{cita.id}
+              </Badge>
+            </div>
           </DialogTitle>
 
           <DialogDescription className="text-xs text-muted-foreground mt-1 space-y-0.5">
@@ -179,9 +210,75 @@ export const CitaStatusModal: React.FC<CitaStatusModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="p-5 space-y-2.5 max-h-[60vh] overflow-y-auto">
+        <div className="p-5 space-y-3.5 max-h-[65vh] overflow-y-auto">
+          {/* ── COBRO EN RECEPCIÓN ────────────────────────────────── */}
+          <div className="p-3 rounded-xl border border-border/80 bg-muted/20 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                <CreditCard className="size-3.5 text-teal-600" />
+                <span>Estado de Pago en Caja</span>
+              </div>
+              {cita.precio_estimado !== undefined && cita.precio_estimado !== null && (
+                <span className="text-xs font-mono font-bold text-teal-700 dark:text-teal-300">
+                  Total: ${Number(cita.precio_estimado).toFixed(2)}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { id: 'pendiente', label: '⏳ Pendiente', activeColor: 'border-amber-500 bg-amber-500/15 text-amber-800 dark:text-amber-300 font-bold' },
+                { id: 'pagado', label: '✅ Pagado', activeColor: 'border-emerald-500 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 font-bold' },
+                { id: 'aseguradora', label: '🛡️ Aseguradora', activeColor: 'border-blue-500 bg-blue-500/15 text-blue-800 dark:text-blue-300 font-bold' },
+                { id: 'exonerado', label: '🎁 Exonerado', activeColor: 'border-purple-500 bg-purple-500/15 text-purple-800 dark:text-purple-300 font-bold' },
+              ].map((ep) => (
+                <button
+                  key={ep.id}
+                  type="button"
+                  onClick={() => setSelectedEstadoPago(ep.id as CitaEstadoPago)}
+                  className={`px-2 py-1.5 rounded-lg border text-xs cursor-pointer transition-all text-left ${
+                    selectedEstadoPago === ep.id
+                      ? ep.activeColor
+                      : 'border-border/70 hover:bg-muted/40 text-muted-foreground'
+                  }`}
+                >
+                  {ep.label}
+                </button>
+              ))}
+            </div>
+
+            {selectedEstadoPago === 'pagado' && (
+              <div className="pt-2 border-t border-border/50">
+                <span className="text-[10px] text-muted-foreground font-semibold block mb-1">
+                  Método de Pago:
+                </span>
+                <div className="grid grid-cols-4 gap-1">
+                  {[
+                    { id: 'efectivo', label: 'Efectivo' },
+                    { id: 'tarjeta', label: 'Tarjeta' },
+                    { id: 'transferencia', label: 'Transf.' },
+                    { id: 'pago_movil', label: 'P. Móvil' },
+                  ].map((met) => (
+                    <button
+                      key={met.id}
+                      type="button"
+                      onClick={() => setSelectedMetodoPago(selectedMetodoPago === met.id ? '' : met.id)}
+                      className={`px-1 py-1 rounded text-[10px] cursor-pointer border text-center transition-all ${
+                        selectedMetodoPago === met.id
+                          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 font-bold'
+                          : 'border-border/60 hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {met.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-            Seleccione el nuevo estado
+            Seleccione el nuevo estado asistencial
           </Label>
 
           <div className="space-y-1.5">

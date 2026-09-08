@@ -64,6 +64,24 @@ interface DoctorFormModalProps {
   onSaved: () => void;
 }
 
+export interface HorarioDiaConfig {
+  dia: number;
+  nombre: string;
+  activo: boolean;
+  inicio: string;
+  fin: string;
+}
+
+const DIAS_SEMANA_DEFAULT: HorarioDiaConfig[] = [
+  { dia: 1, nombre: 'Lunes', activo: true, inicio: '08:00', fin: '16:00' },
+  { dia: 2, nombre: 'Martes', activo: true, inicio: '08:00', fin: '16:00' },
+  { dia: 3, nombre: 'Miércoles', activo: true, inicio: '08:00', fin: '16:00' },
+  { dia: 4, nombre: 'Jueves', activo: true, inicio: '08:00', fin: '16:00' },
+  { dia: 5, nombre: 'Viernes', activo: true, inicio: '08:00', fin: '16:00' },
+  { dia: 6, nombre: 'Sábado', activo: false, inicio: '08:00', fin: '13:00' },
+  { dia: 0, nombre: 'Domingo', activo: false, inicio: '08:00', fin: '12:00' },
+];
+
 const NIVELES_EXPERIENCIA = [
   { id: 'Residente / Becario', label: 'Residente / Becario en Formación', color: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30' },
   { id: 'Especialista Junior (1-3 años)', label: 'Especialista Junior (1 a 3 años)', color: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' },
@@ -100,7 +118,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
   const [saving, setSaving] = useState(false);
 
   // Pestaña activa
-  const [activeTab, setActiveTab] = useState<'personal' | 'especialidad' | 'subespecialidades' | 'acceso'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'especialidad' | 'subespecialidades' | 'horario' | 'acceso'>('personal');
 
   // Formulario principal
   const [nombres, setNombres] = useState('');
@@ -117,6 +135,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
   const [sucursalesIds, setSucursalesIds] = useState<number[]>([]);
   const [biografia, setBiografia] = useState('');
   const [activo, setActivo] = useState(true);
+  const [horarioAtencion, setHorarioAtencion] = useState<HorarioDiaConfig[]>(DIAS_SEMANA_DEFAULT);
 
   // Carrito de Subespecialidades
   const [subespecialidadesCarrito, setSubespecialidadesCarrito] = useState<SubespecialidadItem[]>([]);
@@ -181,6 +200,16 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       setBiografia(medicoToEdit.biografia || '');
       setActivo(medicoToEdit.activo ?? true);
       setSubespecialidadesCarrito(medicoToEdit.subespecialidades || []);
+      if (medicoToEdit.horario_atencion && Array.isArray(medicoToEdit.horario_atencion)) {
+        setHorarioAtencion(
+          DIAS_SEMANA_DEFAULT.map((def) => {
+            const found = (medicoToEdit.horario_atencion as HorarioDiaConfig[]).find((h) => h.dia === def.dia);
+            return found ? { ...def, ...found } : def;
+          })
+        );
+      } else {
+        setHorarioAtencion(DIAS_SEMANA_DEFAULT);
+      }
       setCrearUsuario(Boolean(medicoToEdit.usuario_id));
       setPassword('');
     } else {
@@ -197,6 +226,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       setBiografia('');
       setActivo(true);
       setSubespecialidadesCarrito([]);
+      setHorarioAtencion(DIAS_SEMANA_DEFAULT);
       setCrearUsuario(true);
       generateRandomPassword();
     }
@@ -248,48 +278,97 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
     setSubCertificado('');
     setSubAnos(3);
     toast.success(`Subespecialidad "${item.nombre}" añadida al carrito`, {
-      description: `${item.nivel_experiencia} • ${item.anos_servicio} años de servicio`,
+      description: `${item.nivel_experiencia} • ${item.anos_servicio} años`,
     });
   };
 
-  const handleRemoveSubespecialidad = (indexToRemove: number) => {
-    const removed = subespecialidadesCarrito[indexToRemove];
-    setSubespecialidadesCarrito(subespecialidadesCarrito.filter((_, i) => i !== indexToRemove));
-    if (removed) {
-      toast.info(`Subespecialidad "${removed.nombre}" eliminada del carrito`);
+  const handleRemoveSubespecialidad = (index: number) => {
+    const item = subespecialidadesCarrito[index];
+    setSubespecialidadesCarrito(subespecialidadesCarrito.filter((_, i) => i !== index));
+    toast.info(`Subespecialidad "${item.nombre}" removida`);
+  };
+
+  const handleClearSubespecialidades = () => {
+    if (subespecialidadesCarrito.length === 0) return;
+    setSubespecialidadesCarrito([]);
+    toast.info('Se han removido todas las subespecialidades del carrito');
+  };
+
+  // ── GESTIÓN DEL HORARIO SEMANAL DE ATENCIÓN ──
+  const handleUpdateDiaHorario = (diaIndex: number, patch: Partial<HorarioDiaConfig>) => {
+    setHorarioAtencion((prev) =>
+      prev.map((item, idx) => (idx === diaIndex ? { ...item, ...patch } : item))
+    );
+  };
+
+  const aplicarPlantillaHorario = (tipo: 'oficina' | 'manana' | 'todos' | 'laborables') => {
+    if (tipo === 'oficina') {
+      setHorarioAtencion((prev) =>
+        prev.map((item) => ({
+          ...item,
+          activo: item.dia >= 1 && item.dia <= 5,
+          inicio: '08:00',
+          fin: '16:00',
+        }))
+      );
+      toast.success('Plantilla aplicada: Lun-Vie de 08:00 a 16:00');
+    } else if (tipo === 'manana') {
+      setHorarioAtencion((prev) =>
+        prev.map((item) => ({
+          ...item,
+          activo: item.dia >= 1 && item.dia <= 6,
+          inicio: '08:00',
+          fin: '13:00',
+        }))
+      );
+      toast.success('Plantilla aplicada: Lun-Sáb de 08:00 a 13:00');
+    } else if (tipo === 'todos') {
+      setHorarioAtencion((prev) => prev.map((item) => ({ ...item, activo: true })));
+      toast.success('Atención habilitada todos los días');
+    } else if (tipo === 'laborables') {
+      setHorarioAtencion((prev) =>
+        prev.map((item) => ({ ...item, activo: item.dia >= 1 && item.dia <= 5 }))
+      );
+      toast.success('Fines de semana desactivados');
     }
   };
 
-  // Sucursales toggle
-  const handleToggleSucursal = (sucId: number) => {
-    if (sucursalesIds.includes(sucId)) {
+  // Toggle para las sucursales donde presta servicio
+  const handleToggleSucursal = (sucursalId: number) => {
+    if (sucursalesIds.includes(sucursalId)) {
       if (sucursalesIds.length === 1) {
-        toast.warning('El médico debe tener al menos una sucursal asignada');
+        toast.error('El médico debe estar adscrito al menos a una sucursal');
         return;
       }
-      setSucursalesIds(sucursalesIds.filter((id) => id !== sucId));
+      setSucursalesIds(sucursalesIds.filter((id) => id !== sucursalId));
+      if (sucursalDefectoId === sucursalId) {
+        const remaining = sucursalesIds.filter((id) => id !== sucursalId);
+        setSucursalDefectoId(remaining[0] || null);
+      }
     } else {
-      setSucursalesIds([...sucursalesIds, sucId]);
+      setSucursalesIds([...sucursalesIds, sucursalId]);
+      if (!sucursalDefectoId) {
+        setSucursalDefectoId(sucursalId);
+      }
     }
   };
 
-  // Guardar Médico
+  // Validaciones y Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validaciones básicas
     if (!nombres.trim() || !apellidos.trim()) {
-      toast.error('Nombres y apellidos son obligatorios');
+      toast.error('Nombres y apellidos son requeridos');
       setActiveTab('personal');
       return;
     }
     if (!documentoIdentidad.trim()) {
-      toast.error('El documento de identidad es obligatorio');
+      toast.error('Documento de identidad es requerido');
       setActiveTab('personal');
       return;
     }
-    if (!email.trim() || !email.includes('@')) {
-      toast.error('Por favor ingresa un correo electrónico válido');
+    if (!email.trim()) {
+      toast.error('El correo electrónico profesional es requerido');
       setActiveTab('personal');
       return;
     }
@@ -316,6 +395,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
           color,
           sucursal_defecto_id: sucursalDefectoId,
           sucursales_ids: sucursalesIds,
+          horario_atencion: horarioAtencion,
           biografia: biografia.trim() || null,
           activo,
           password: password ? password : undefined,
@@ -337,6 +417,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
           color,
           sucursal_defecto_id: sucursalDefectoId,
           sucursales_ids: sucursalesIds,
+          horario_atencion: horarioAtencion,
           biografia: biografia.trim() || null,
           activo,
           crear_usuario: crearUsuario,
@@ -423,11 +504,19 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                 </TabsTrigger>
 
                 <TabsTrigger
+                  value="horario"
+                  className="data-[state=active]:bg-teal-500/10 data-[state=active]:text-teal-700 dark:data-[state=active]:text-teal-300 data-[state=active]:border-teal-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5 cursor-pointer"
+                >
+                  <Clock className="size-3.5" />
+                  <span>4. Horario de Atención</span>
+                </TabsTrigger>
+
+                <TabsTrigger
                   value="acceso"
                   className="data-[state=active]:bg-teal-500/10 data-[state=active]:text-teal-700 dark:data-[state=active]:text-teal-300 data-[state=active]:border-teal-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5 cursor-pointer"
                 >
                   <Key className="size-3.5" />
-                  <span>4. Acceso al Sistema</span>
+                  <span>5. Acceso al Sistema</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -914,6 +1003,140 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                     type="button"
                     variant="outline"
                     size="sm"
+                    onClick={() => setActiveTab('horario')}
+                    className="text-xs h-8 cursor-pointer"
+                  >
+                    <span>Siguiente: Horario de Atención</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* ── PESTAÑA 4: HORARIO DE ATENCIÓN SEMANAL ──────────────────────── */}
+            {activeTab === 'horario' && (
+              <div className="space-y-4 max-w-3xl">
+                <div className="p-4 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <Clock className="size-4 text-teal-600" />
+                        <span>Jornada y Horario de Atención Semanal</span>
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Configura los días y franjas habituales en que este especialista atiende citas.
+                      </p>
+                    </div>
+
+                    {/* Botones de plantillas rápidas */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => aplicarPlantillaHorario('oficina')}
+                        className="h-7 text-[10px] cursor-pointer"
+                      >
+                        Lun-Vie (08-16)
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => aplicarPlantillaHorario('manana')}
+                        className="h-7 text-[10px] cursor-pointer"
+                      >
+                        Mañanas (08-13)
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => aplicarPlantillaHorario('laborables')}
+                        className="h-7 text-[10px] cursor-pointer"
+                      >
+                        Solo Laborables
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    {horarioAtencion.map((diaItem, idx) => (
+                      <div
+                        key={diaItem.dia}
+                        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-xl border transition-all gap-3 ${
+                          diaItem.activo
+                            ? 'border-border/80 bg-card shadow-2xs'
+                            : 'border-border/40 bg-muted/20 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Switch
+                            checked={diaItem.activo}
+                            onCheckedChange={(checked) =>
+                              handleUpdateDiaHorario(idx, { activo: checked })
+                            }
+                            className="cursor-pointer"
+                          />
+                          <div>
+                            <span className="font-bold text-xs text-foreground block">
+                              {diaItem.nombre}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground block">
+                              {diaItem.activo ? 'Atención habilitada' : 'No atiende en este día'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {diaItem.activo ? (
+                          <div className="flex items-center gap-2 self-end sm:self-auto">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-muted-foreground">Desde:</span>
+                              <Input
+                                type="time"
+                                value={diaItem.inicio}
+                                onChange={(e) =>
+                                  handleUpdateDiaHorario(idx, { inicio: e.target.value })
+                                }
+                                className="h-8 w-24 text-xs font-mono"
+                              />
+                            </div>
+                            <span className="text-muted-foreground text-xs">—</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-muted-foreground">Hasta:</span>
+                              <Input
+                                type="time"
+                                value={diaItem.fin}
+                                onChange={(e) =>
+                                  handleUpdateDiaHorario(idx, { fin: e.target.value })
+                                }
+                                className="h-8 w-24 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/60">
+                            Descanso / Inactivo
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-border/60 flex items-center justify-between">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setActiveTab('subespecialidades')}
+                    className="text-xs h-8 cursor-pointer"
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => setActiveTab('acceso')}
                     className="text-xs h-8 cursor-pointer"
                   >
@@ -923,7 +1146,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
               </div>
             )}
 
-            {/* ── PESTAÑA 4: ACCESO AL SISTEMA / USUARIO ─────────────────────── */}
+            {/* ── PESTAÑA 5: ACCESO AL SISTEMA / USUARIO ─────────────────────── */}
             {activeTab === 'acceso' && (
               <div className="space-y-4 max-w-3xl">
                 <div className="p-4 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3">
@@ -1016,7 +1239,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setActiveTab('subespecialidades')}
+                    onClick={() => setActiveTab('horario')}
                     className="text-xs h-8 cursor-pointer"
                   >
                     Anterior

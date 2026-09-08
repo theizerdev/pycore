@@ -106,6 +106,7 @@ def _format_medico_response(m: Medico) -> MedicoResponse:
         color=m.color,
         sucursal_defecto_id=m.sucursal_defecto_id,
         sucursales_ids=sucursales_ids_data,
+        horario_atencion=m.horario_atencion or {},
         biografia=m.biografia,
         activo=m.activo,
         created_at=m.created_at,
@@ -299,6 +300,7 @@ async def create_medico(
         biografia=req.biografia.strip() if req.biografia else None,
         subespecialidades=subesp_dicts,
         sucursales_ids=req.sucursales_ids,
+        horario_atencion=req.horario_atencion or {},
         activo=req.activo
     )
     db.add(nuevo_medico)
@@ -437,6 +439,8 @@ async def update_medico(
         medico.activo = req.activo
     if req.subespecialidades is not None:
         medico.subespecialidades = [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in req.subespecialidades]
+    if req.horario_atencion is not None:
+        medico.horario_atencion = req.horario_atencion
 
     # Sincronizar con Usuario vinculado si existe
     if medico.usuario:
