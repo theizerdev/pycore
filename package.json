@@ -8,7 +8,15 @@
     "dev:backend": "cd backend && .\\venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000",
     "dev:frontend": "cd frontend && npm.cmd run dev",
     "build": "cd frontend && npm.cmd run build",
-    "test:api": "cd backend && .\\venv\\Scripts\\python.exe test_api.py"
+    "test": "python artisan.py test",
+    "test:api": "cd backend && .\\venv\\Scripts\\python.exe test_api.py",
+    "migrate": "python artisan.py migrate",
+    "migrate:status": "python artisan.py migrate:status",
+    "migrate:rollback": "python artisan.py migrate:rollback",
+    "db:seed": "python artisan.py db:seed",
+    "db:migrate:fresh": "python artisan.py migrate:fresh",
+    "db:migrate:refresh": "python artisan.py db:migrate:refresh",
+    "db:migrate:reset": "python artisan.py db:migrate:reset"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
