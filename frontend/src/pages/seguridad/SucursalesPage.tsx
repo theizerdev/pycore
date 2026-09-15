@@ -27,7 +27,8 @@ import { StatCard } from '../../components/common/StatCard';
 import { FilterBar, FilterField } from '../../components/common/FilterBar';
 import { DataTable, type ColumnDef } from '../../components/common/DataTable';
 import { DeleteConfirmationDialog } from '../../components/common/DeleteConfirmationDialog';
-import { MapLocationPicker } from '../../components/common/MapLocationPicker';
+
+const MapLocationPicker = React.lazy(() => import('../../components/common/MapLocationPicker'));
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -781,16 +782,24 @@ export const SucursalesPage: React.FC = () => {
                     )}
                   </div>
 
-                  <MapLocationPicker
-                    lat={formData.latitud}
-                    lng={formData.longitud}
-                    onChange={handleCoordinatesChange}
-                    onAddressFound={handleAddressFound}
-                    countryLat={selectedPais?.latitud}
-                    countryLng={selectedPais?.longitud}
-                    countryName={selectedPais?.nombre}
-                    height="280px"
-                  />
+                  <React.Suspense
+                    fallback={
+                      <div className="h-[280px] w-full rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-500 font-medium">
+                        Cargando mapa interactivo...
+                      </div>
+                    }
+                  >
+                    <MapLocationPicker
+                      lat={formData.latitud}
+                      lng={formData.longitud}
+                      onChange={handleCoordinatesChange}
+                      onAddressFound={handleAddressFound}
+                      countryLat={selectedPais?.latitud}
+                      countryLng={selectedPais?.longitud}
+                      countryName={selectedPais?.nombre}
+                      height="280px"
+                    />
+                  </React.Suspense>
 
                   {/* Campos manuales de latitud y longitud */}
                   <div className="grid grid-cols-2 gap-3 pt-1">

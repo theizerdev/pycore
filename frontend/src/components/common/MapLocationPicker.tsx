@@ -374,3 +374,6 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
     </div>
   );
 };
+
+export default MapLocationPicker;
+

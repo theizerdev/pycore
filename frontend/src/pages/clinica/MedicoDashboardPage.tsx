@@ -7,7 +7,7 @@ import { consultasApi, type ConsultaMedica } from '../../api/consultas';
 import { medicosApi } from '../../api/medicos';
 import { especialidadesApi } from '../../api/especialidades';
 import type { CitaMedica, Medico, Especialidad } from '../../types';
-import { ApexChart } from '../../components/charts/ApexChart';
+const ApexChart = React.lazy(() => import('../../components/charts/ApexChart'));
 import type { ApexOptions } from 'apexcharts';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -850,15 +850,17 @@ export const MedicoDashboardPage: React.FC = () => {
             </Badge>
           </CardHeader>
           <CardContent className="p-5 pt-3">
-            <ApexChart
-              type="area"
-              options={timelineChartOptions}
-              series={[
-                { name: 'Consultas Atendidas', data: chartTimelineData.seriesConsultas },
-                { name: 'Citas Agendadas', data: chartTimelineData.seriesCitas },
-              ]}
-              height={290}
-            />
+            <React.Suspense fallback={<div className="h-[290px] flex items-center justify-center text-xs text-muted-foreground animate-pulse">Cargando gráfico temporal...</div>}>
+              <ApexChart
+                type="area"
+                options={timelineChartOptions}
+                series={[
+                  { name: 'Consultas Atendidas', data: chartTimelineData.seriesConsultas },
+                  { name: 'Citas Agendadas', data: chartTimelineData.seriesCitas },
+                ]}
+                height={290}
+              />
+            </React.Suspense>
           </CardContent>
         </Card>
 
@@ -874,12 +876,14 @@ export const MedicoDashboardPage: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-3">
-            <ApexChart
-              type="donut"
-              options={donutChartOptions}
-              series={chartCategoriasData.series}
-              height={290}
-            />
+            <React.Suspense fallback={<div className="h-[290px] flex items-center justify-center text-xs text-muted-foreground animate-pulse">Cargando gráfico de categorías...</div>}>
+              <ApexChart
+                type="donut"
+                options={donutChartOptions}
+                series={chartCategoriasData.series}
+                height={290}
+              />
+            </React.Suspense>
           </CardContent>
         </Card>
       </div>
@@ -904,12 +908,14 @@ export const MedicoDashboardPage: React.FC = () => {
             </span>
           </CardHeader>
           <CardContent className="p-5 pt-3">
-            <ApexChart
-              type="bar"
-              options={barHorariosOptions}
-              series={[{ name: 'Pacientes', data: chartHorariosData.series }]}
-              height={290}
-            />
+            <React.Suspense fallback={<div className="h-[290px] flex items-center justify-center text-xs text-muted-foreground animate-pulse">Cargando gráfico de horarios...</div>}>
+              <ApexChart
+                type="bar"
+                options={barHorariosOptions}
+                series={[{ name: 'Pacientes', data: chartHorariosData.series }]}
+                height={290}
+              />
+            </React.Suspense>
           </CardContent>
         </Card>
 
@@ -925,12 +931,14 @@ export const MedicoDashboardPage: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-3 flex flex-col items-center justify-center">
-            <ApexChart
-              type="radialBar"
-              options={radialChartOptions}
-              series={[kpisPeriodo.tasaAsistencia]}
-              height={260}
-            />
+            <React.Suspense fallback={<div className="h-[260px] flex items-center justify-center text-xs text-muted-foreground animate-pulse">Cargando efectividad asistencial...</div>}>
+              <ApexChart
+                type="radialBar"
+                options={radialChartOptions}
+                series={[kpisPeriodo.tasaAsistencia]}
+                height={260}
+              />
+            </React.Suspense>
             <p className="text-xs text-muted-foreground text-center font-medium mt-1">
               {kpisPeriodo.citasCompletadas} de {kpisPeriodo.citasTotal} citas completadas
             </p>

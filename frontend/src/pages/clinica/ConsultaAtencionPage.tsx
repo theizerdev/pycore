@@ -10,6 +10,9 @@ import {
 import { especialidadesApi } from '../../api/especialidades';
 import type { PlantillaEfectiva, SeccionClinica, CampoClinico } from '../../types';
 import OdontogramaWidget, { type OdontogramaData } from '../../components/clinica/OdontogramaWidget';
+import SignosVitalesWidget from '../../components/clinica/SignosVitalesWidget';
+import PrescripcionRecetaWidget from '../../components/clinica/PrescripcionRecetaWidget';
+import EstudiosSolicitadosWidget from '../../components/clinica/EstudiosSolicitadosWidget';
 import { toast } from 'sonner';
 import { cn, getInitials } from '../../lib/utils';
 
@@ -47,8 +50,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  Trash2,
-  Plus,
   ArrowRight,
   ArrowLeft,
   Save,
@@ -56,87 +57,17 @@ import {
   Calendar,
   Sparkles,
   Info,
-  Thermometer,
-  Activity,
-  Droplets,
-  Scale,
-  Ruler,
   FileCheck,
-  Building2,
   FileText,
-  User,
   ChevronLeft,
   ChevronDown,
   BedDouble,
   FileCheck2,
-  Check,
-  ExternalLink,
 } from 'lucide-react';
 
 interface ConsultaAtencionPageProps {
   readOnly?: boolean;
 }
-
-// Catálogo de categorías de estudios
-const CATEGORIAS_ESTUDIOS = [
-  'Laboratorio',
-  'Rayos X',
-  'Ecografía',
-  'Tomografía',
-  'Resonancia Magnética',
-  'Endoscopía',
-  'Anatomía Patológica',
-  'Cardiología / ECG',
-  'Otro',
-];
-
-// Estudios rápidos sugeridos
-const ESTUDIOS_RAPIDOS = [
-  { nombre: 'Hemograma Completo', categoria: 'Laboratorio' },
-  { nombre: 'Perfil Lipídico (Colesterol/Triglicéridos)', categoria: 'Laboratorio' },
-  { nombre: 'Glucosa en Ayunas', categoria: 'Laboratorio' },
-  { nombre: 'Urea y Creatinina', categoria: 'Laboratorio' },
-  { nombre: 'Examen General de Orina', categoria: 'Laboratorio' },
-  { nombre: 'Rayos X de Tórax (PA)', categoria: 'Rayos X' },
-  { nombre: 'Ecografía Abdominal Completa', categoria: 'Ecografía' },
-  { nombre: 'Electrocardiograma (ECG)', categoria: 'Cardiología / ECG' },
-];
-
-// Vías de administración
-const VIAS_ADMINISTRACION = [
-  'Oral',
-  'Intravenosa (IV)',
-  'Intramuscular (IM)',
-  'Subcutánea',
-  'Tópica / Cutánea',
-  'Oftálmica',
-  'Ótica',
-  'Inhalatoria / Nebulizada',
-  'Sublingual',
-  'Rectal',
-];
-
-// Frecuencias comunes
-const FRECUENCIAS_COMUNES = [
-  'Cada 6 horas (4 veces al día)',
-  'Cada 8 horas (3 veces al día)',
-  'Cada 12 horas (2 veces al día)',
-  'Cada 24 horas (1 vez al día)',
-  'En la noche antes de dormir',
-  'En ayunas por la mañana',
-  'SOS / Según dolor o síntoma',
-];
-
-// Duraciones sugeridas
-const DURACIONES_SUGERIDAS = [
-  '3 días',
-  '5 días',
-  '7 días',
-  '10 días',
-  '14 días',
-  '30 días',
-  'Tratamiento continuo',
-];
 
 // CIE-10 Sugerencias frecuentes
 const CIE10_FRECUENTES = [
@@ -264,25 +195,9 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
 
   // Carrito de Estudios
   const [estudios, setEstudios] = useState<EstudioSolicitado[]>([]);
-  const [nuevoEstudio, setNuevoEstudio] = useState<EstudioSolicitado>({
-    nombre: '',
-    categoria: 'Laboratorio',
-    justificacion_clinica: '',
-    urgente: false,
-    indicaciones_preparacion: '',
-  });
 
   // Carrito de Medicamentos (Receta)
   const [medicamentos, setMedicamentos] = useState<MedicamentoPrescrito[]>([]);
-  const [nuevoMed, setNuevoMed] = useState<MedicamentoPrescrito>({
-    medicamento: '',
-    presentacion: '',
-    dosis: '',
-    via_administracion: 'Oral',
-    frecuencia: 'Cada 8 horas (3 veces al día)',
-    duracion: '7 días',
-    instrucciones: '',
-  });
 
   // Reposo Médico
   const [reposo, setReposo] = useState<ReposoMedico>({
@@ -381,53 +296,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     fetchConsulta();
   }, [id]);
 
-  // ── CÁLCULO DINÁMICO DE IMC ──
-  const imcInfo = useMemo(() => {
-    const p = parseFloat(String(signosVitales.peso));
-    const t = parseFloat(String(signosVitales.talla));
-    if (!p || !t || p <= 0 || t <= 0) return null;
 
-    const tallaM = t > 3 ? t / 100 : t;
-    const imc = p / (tallaM * tallaM);
-    const imcFormatted = imc.toFixed(1);
-
-    if (imc < 18.5) {
-      return { imc: imcFormatted, label: 'Bajo Peso', color: 'text-sky-600 bg-sky-500/10 border-sky-500/20' };
-    }
-    if (imc >= 18.5 && imc <= 24.9) {
-      return {
-        imc: imcFormatted,
-        label: 'Peso Saludable / Normal',
-        color: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20',
-      };
-    }
-    if (imc >= 25.0 && imc <= 29.9) {
-      return {
-        imc: imcFormatted,
-        label: 'Sobrepeso (Pre-obesidad)',
-        color: 'text-amber-600 bg-amber-500/10 border-amber-500/20',
-      };
-    }
-    if (imc >= 30.0 && imc <= 34.9) {
-      return {
-        imc: imcFormatted,
-        label: 'Obesidad Grado I',
-        color: 'text-orange-600 bg-orange-500/10 border-orange-500/20',
-      };
-    }
-    if (imc >= 35.0 && imc <= 39.9) {
-      return {
-        imc: imcFormatted,
-        label: 'Obesidad Grado II (Severa)',
-        color: 'text-rose-600 bg-rose-500/10 border-rose-500/20',
-      };
-    }
-    return {
-      imc: imcFormatted,
-      label: 'Obesidad Grado III (Mórbida)',
-      color: 'text-red-700 bg-red-500/10 border-red-500/20',
-    };
-  }, [signosVitales.peso, signosVitales.talla]);
 
   // ── CÁLCULO DE DÍAS DE REPOSO ──
   useEffect(() => {
@@ -440,66 +309,6 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       setReposo((prev) => (prev.dias_reposo !== finalDays ? { ...prev, dias_reposo: finalDays } : prev));
     }
   }, [reposo.fecha_inicio, reposo.fecha_fin]);
-
-  // ── MANEJO DEL CARRITO DE ESTUDIOS ──
-  const handleAgregarEstudio = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!nuevoEstudio.nombre.trim()) {
-      toast.error('Ingrese el nombre del estudio médico o examen');
-      return;
-    }
-    setEstudios((prev) => [
-      ...prev,
-      {
-        ...nuevoEstudio,
-        id: `est_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      },
-    ]);
-    setNuevoEstudio({
-      nombre: '',
-      categoria: 'Laboratorio',
-      justificacion_clinica: '',
-      urgente: false,
-      indicaciones_preparacion: '',
-    });
-    toast.success('Estudio agregado a la orden médica');
-  };
-
-  const handleEliminarEstudio = (idx: number) => {
-    setEstudios((prev) => prev.filter((_, i) => i !== idx));
-    toast.info('Estudio eliminado de la orden');
-  };
-
-  // ── MANEJO DEL CARRITO DE MEDICAMENTOS ──
-  const handleAgregarMedicamento = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!nuevoMed.medicamento.trim()) {
-      toast.error('Ingrese el nombre o principio activo del medicamento');
-      return;
-    }
-    setMedicamentos((prev) => [
-      ...prev,
-      {
-        ...nuevoMed,
-        id: `med_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      },
-    ]);
-    setNuevoMed({
-      medicamento: '',
-      presentacion: '',
-      dosis: '',
-      via_administracion: 'Oral',
-      frecuencia: 'Cada 8 horas (3 veces al día)',
-      duracion: '7 días',
-      instrucciones: '',
-    });
-    toast.success('Medicamento prescrito agregado');
-  };
-
-  const handleEliminarMedicamento = (idx: number) => {
-    setMedicamentos((prev) => prev.filter((_, i) => i !== idx));
-    toast.info('Medicamento retirado de la receta');
-  };
 
   // ── DIAGNÓSTICOS SECUNDARIOS ──
   const handleAgregarDiagSecundario = () => {
@@ -1298,304 +1107,24 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         {/* ======================================================== */}
         {currentStep === 2 && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <HeartPulse className="h-5 w-5 text-primary" />
-                  Paso 2: Signos Vitales y Parámetros Basales
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Registro de constantes biológicas durante la consulta. El Índice de Masa Corporal (IMC) se calculará automáticamente.
-                </p>
-              </div>
-
-              {imcInfo && (
-                <Badge variant="outline" className={cn('text-xs font-bold py-1 px-3', imcInfo.color)}>
-                  IMC: {imcInfo.imc} kg/m² ({imcInfo.label})
-                </Badge>
-              )}
+            <div>
+              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                <HeartPulse className="h-5 w-5 text-primary" />
+                Paso 2: Signos Vitales y Parámetros Basales
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Registro de constantes biológicas durante la consulta. El Índice de Masa Corporal (IMC) se calcula automáticamente.
+              </p>
             </div>
 
-            {/* Banner de IMC en tiempo real */}
-            {imcInfo && (
-              <div
-                className={cn(
-                  'p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 transition-all shadow-xs',
-                  imcInfo.color
-                )}
-              >
-                <div className="flex items-center gap-3.5">
-                  <Scale className="h-7 w-7 shrink-0" />
-                  <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wider">
-                      Índice de Masa Corporal Calculado
-                    </div>
-                    <div className="text-xl sm:text-2xl font-black">
-                      {imcInfo.imc} kg/m² — <span className="font-bold">{imcInfo.label}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="text-xs font-semibold opacity-90">
-                  Peso: {signosVitales.peso || '--'} kg &nbsp;|&nbsp; Altura: {signosVitales.talla || '--'} cm
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-              {/* Peso */}
-              <Card className="border-border/80 bg-card shadow-xs">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <Scale className="h-4 w-4 text-primary" />
-                      Peso Corporal <span className="text-destructive">*</span>
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(kg)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    min="1"
-                    max="350"
-                    value={signosVitales.peso}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, peso: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, peso: val }));
-                    }}
-                    placeholder="Ej: 70.5"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Altura / Talla */}
-              <Card className="border-border/80 bg-card shadow-xs">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <Ruler className="h-4 w-4 text-primary" />
-                      Talla / Altura <span className="text-destructive">*</span>
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(cm)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    step="1"
-                    min="30"
-                    max="250"
-                    value={signosVitales.talla}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, talla: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, talla: val }));
-                    }}
-                    placeholder="Ej: 172"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Presión Sistólica */}
-              <Card className="border-border/80 bg-card shadow-xs">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <Activity className="h-4 w-4 text-rose-500" />
-                      Tensión Sistólica <span className="text-destructive">*</span>
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(mmHg)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    value={signosVitales.presion_sistolica}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, presion_sistolica: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, ta_sistolica: val, presion_sistolica: val }));
-                    }}
-                    placeholder="Ej: 120"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Presión Diastólica */}
-              <Card className="border-border/80 bg-card shadow-xs">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <Activity className="h-4 w-4 text-rose-500" />
-                      Tensión Diastólica <span className="text-destructive">*</span>
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(mmHg)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    value={signosVitales.presion_diastolica}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, presion_diastolica: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, ta_diastolica: val, presion_diastolica: val }));
-                    }}
-                    placeholder="Ej: 80"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Frecuencia Cardíaca */}
-              <Card className="border-border/80 bg-card shadow-xs">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <HeartPulse className="h-4 w-4 text-red-500" />
-                      Frecuencia Cardíaca <span className="text-destructive">*</span>
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(lpm)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    value={signosVitales.frecuencia_cardiaca}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, frecuencia_cardiaca: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, frecuencia_cardiaca: val }));
-                    }}
-                    placeholder="Ej: 75"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Frecuencia Respiratoria */}
-              <Card className="border-border/80 bg-card shadow-xs">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <Activity className="h-4 w-4 text-sky-500" />
-                      Frecuencia Resp.
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(rpm)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    value={signosVitales.frecuencia_respiratoria}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, frecuencia_respiratoria: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, frecuencia_respiratoria: val }));
-                    }}
-                    placeholder="Ej: 16"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Temperatura */}
-              <Card className="border-border/80 bg-card shadow-xs">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <Thermometer className="h-4 w-4 text-amber-500" />
-                      Temperatura <span className="text-destructive">*</span>
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(°C)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    value={signosVitales.temperatura}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, temperatura: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, temperatura: val }));
-                    }}
-                    placeholder="Ej: 36.5"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Saturación O2 */}
-              <Card className="border-border/80 bg-card shadow-xs">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <Droplets className="h-4 w-4 text-emerald-500" />
-                      Saturación O2 (SpO2)
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(%)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    value={signosVitales.saturacion_oxigeno}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, saturacion_oxigeno: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, saturacion_o2: val, saturacion_oxigeno: val }));
-                    }}
-                    placeholder="Ej: 98"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Glucosa Capilar */}
-              <Card className="border-border/80 bg-card shadow-xs sm:col-span-2 lg:col-span-4">
-                <CardContent className="p-3.5 space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                      <Droplets className="h-4 w-4 text-purple-500" />
-                      Glucosa Capilar / HGT
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">(mg/dL)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    value={signosVitales.glucosa_capilar}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSignosVitales((prev) => ({ ...prev, glucosa_capilar: val }));
-                      setDatosPlantilla((prev) => ({ ...prev, glucosa_capilar: val }));
-                    }}
-                    placeholder="Ej: 95 (Opcional si se realizó glicemia capilar)"
-                    disabled={readOnly}
-                    className="text-sm font-semibold h-10 font-mono"
-                  />
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Observaciones de triaje */}
-            <Card className="border-border/80 shadow-xs">
-              <CardContent className="p-4 sm:p-5 space-y-2">
-                <Label htmlFor="observaciones_triaje" className="text-xs font-semibold flex items-center gap-1.5">
-                  <FileText className="h-4 w-4 text-primary" />
-                  Observaciones de Triaje / Estado General del Paciente
-                </Label>
-                <Textarea
-                  id="observaciones_triaje"
-                  value={signosVitales.observaciones_triaje}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSignosVitales((prev) => ({ ...prev, observaciones_triaje: val }));
-                    setDatosPlantilla((prev) => ({ ...prev, observaciones_triaje: val }));
-                  }}
-                  placeholder="Paciente lúcido, orientado en tiempo y espacio, afebril, ventilando espontáneamente sin dificultad aparente..."
-                  disabled={readOnly}
-                  rows={3}
-                />
-              </CardContent>
-            </Card>
+            <SignosVitalesWidget
+              signos={signosVitales}
+              onChange={(key, val) => {
+                setSignosVitales((prev) => ({ ...prev, [key]: val }));
+                setDatosPlantilla((prev) => ({ ...prev, [key]: val }));
+              }}
+              readOnly={readOnly}
+            />
           </div>
         )}
 
@@ -1949,219 +1478,22 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       {/* ======================================================== */}
       {currentStep === 4 && (
         <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                <FlaskConical className="h-5 w-5 text-primary" />
-                Solicitud de Estudios y Exámenes Complementarios
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Añada los exámenes de laboratorio, imágenes diagnósticas o procedimientos requeridos.
-              </p>
-            </div>
-            <Badge variant="secondary" className="text-xs font-bold self-start sm:self-auto">
-              {estudios.length} {estudios.length === 1 ? 'Estudio solicitado' : 'Estudios solicitados'}
-            </Badge>
+          <div>
+            <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+              <FlaskConical className="h-5 w-5 text-primary" />
+              Paso 4: Solicitud de Estudios y Exámenes Complementarios
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Añada los exámenes de laboratorio, imágenes diagnósticas o procedimientos requeridos.
+            </p>
           </div>
 
-          {/* Formulario de Agregar Estudio */}
-          {!readOnly && (
-            <Card className="border-primary/30 bg-primary/5 shadow-xs">
-              <CardContent className="p-5 space-y-4">
-                <div className="font-bold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
-                  <Plus className="h-4 w-4" />
-                  Agregar Estudio a la Orden
-                </div>
-
-                {/* Chips de selección rápida */}
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-semibold text-muted-foreground">
-                    Sugerencias Rápidas:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ESTUDIOS_RAPIDOS.map((est) => (
-                      <button
-                        key={est.nombre}
-                        type="button"
-                        onClick={() =>
-                          setNuevoEstudio((prev) => ({
-                            ...prev,
-                            nombre: est.nombre,
-                            categoria: est.categoria,
-                          }))
-                        }
-                        className="text-xs px-2.5 py-1 rounded-lg bg-background/80 hover:bg-background border border-border/70 hover:border-primary/40 text-foreground transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <span>+ {est.nombre}</span>
-                        <span className="text-[10px] text-muted-foreground">({est.categoria})</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-                  <div className="md:col-span-5 space-y-1">
-                    <Label className="text-xs font-semibold">Nombre del Estudio / Examen *</Label>
-                    <Input
-                      value={nuevoEstudio.nombre}
-                      onChange={(e) =>
-                        setNuevoEstudio((prev) => ({ ...prev, nombre: e.target.value }))
-                      }
-                      placeholder="Ej: Ecografía Renal Bilateral"
-                      className="h-10 bg-background"
-                    />
-                  </div>
-
-                  <div className="md:col-span-3 space-y-1">
-                    <Label className="text-xs font-semibold">Categoría</Label>
-                    <Select
-                      value={nuevoEstudio.categoria}
-                      onValueChange={(val) =>
-                        setNuevoEstudio((prev) => ({ ...prev, categoria: val }))
-                      }
-                    >
-                      <SelectTrigger className="h-10 bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CATEGORIAS_ESTUDIOS.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="md:col-span-4 space-y-1">
-                    <Label className="text-xs font-semibold">Justificación Clínica / Sospecha</Label>
-                    <Input
-                      value={nuevoEstudio.justificacion_clinica || ''}
-                      onChange={(e) =>
-                        setNuevoEstudio((prev) => ({
-                          ...prev,
-                          justificacion_clinica: e.target.value,
-                        }))
-                      }
-                      placeholder="Ej: Descartar litiasis renal"
-                      className="h-10 bg-background"
-                    />
-                  </div>
-
-                  <div className="md:col-span-8 space-y-1">
-                    <Label className="text-xs font-semibold">Indicaciones / Preparación previa</Label>
-                    <Input
-                      value={nuevoEstudio.indicaciones_preparacion || ''}
-                      onChange={(e) =>
-                        setNuevoEstudio((prev) => ({
-                          ...prev,
-                          indicaciones_preparacion: e.target.value,
-                        }))
-                      }
-                      placeholder="Ej: En ayunas de 8 horas, vejiga llena (tomar 4 vasos de agua 1 hora antes)..."
-                      className="h-10 bg-background"
-                    />
-                  </div>
-
-                  <div className="md:col-span-4 flex items-center justify-between gap-3 pt-5">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={nuevoEstudio.urgente}
-                        onCheckedChange={(checked) =>
-                          setNuevoEstudio((prev) => ({ ...prev, urgente: checked }))
-                        }
-                      />
-                      <Label className="text-xs font-semibold cursor-pointer">
-                        ¿Estudio Urgente?
-                      </Label>
-                    </div>
-
-                    <Button
-                      type="button"
-                      onClick={() => handleAgregarEstudio()}
-                      className="h-10 gap-1.5 px-4 font-semibold"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>Agregar</span>
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Lista / Carrito de Estudios */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Orden de Estudios Médicos Solicitados ({estudios.length})
-            </h4>
-
-            {estudios.length === 0 ? (
-              <Card className="border-2 border-dashed border-border/70 p-8 text-center text-muted-foreground bg-muted/10">
-                <CardContent className="space-y-1.5 p-0">
-                  <FlaskConical className="h-8 w-8 mx-auto opacity-50" />
-                  <p className="text-sm font-semibold text-foreground">
-                    No se han solicitado estudios para esta consulta
-                  </p>
-                  <p className="text-xs">
-                    Si el paciente no amerita exámenes complementarios, puede continuar al siguiente paso.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 gap-2.5">
-                {estudios.map((est, idx) => (
-                  <Card
-                    key={est.id || idx}
-                    className="border-border/80 bg-card hover:border-primary/30 transition-all shadow-2xs"
-                  >
-                    <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-sm text-foreground">
-                            {idx + 1}. {est.nombre}
-                          </span>
-                          <Badge variant="outline" className="text-xs font-medium">
-                            {est.categoria || 'General'}
-                          </Badge>
-                          {est.urgente && (
-                            <Badge className="bg-red-500 text-white text-[10px] font-bold">
-                              URGENTE
-                            </Badge>
-                          )}
-                        </div>
-
-                        {est.justificacion_clinica && (
-                          <p className="text-xs text-muted-foreground">
-                            <strong className="text-foreground/80">Justificación:</strong>{' '}
-                            {est.justificacion_clinica}
-                          </p>
-                        )}
-
-                        {est.indicaciones_preparacion && (
-                          <p className="text-xs text-primary font-medium">
-                            <strong>Preparación:</strong> {est.indicaciones_preparacion}
-                          </p>
-                        )}
-                      </div>
-
-                      {!readOnly && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEliminarEstudio(idx)}
-                          className="text-muted-foreground hover:text-destructive shrink-0 self-end sm:self-center h-8 w-8"
-                          title="Eliminar estudio"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
+          <EstudiosSolicitadosWidget
+            estudios={estudios}
+            onAdd={(est) => setEstudios((prev) => [...prev, est])}
+            onRemove={(idx) => setEstudios((prev) => prev.filter((_, i) => i !== idx))}
+            readOnly={readOnly}
+          />
         </div>
       )}
 
@@ -2172,212 +1504,12 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         <div className="space-y-6">
           {/* SECCIÓN 1: CARRITO DE MEDICAMENTOS */}
           <div className="space-y-4">
-            <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <Pill className="h-4 w-4 text-primary" />
-              Receta Médica Farmacológica ({medicamentos.length})
-            </h4>
-
-            {!readOnly && (
-              <Card className="border-primary/30 bg-primary/5 shadow-xs">
-                <CardContent className="p-5 space-y-4">
-                  <div className="font-bold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
-                    <Plus className="h-4 w-4" />
-                    Añadir Medicamento a la Receta
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-                    <div className="md:col-span-5 space-y-1">
-                      <Label className="text-xs font-semibold">
-                        Medicamento / Principio Activo *
-                      </Label>
-                      <Input
-                        value={nuevoMed.medicamento}
-                        onChange={(e) =>
-                          setNuevoMed((prev) => ({ ...prev, medicamento: e.target.value }))
-                        }
-                        placeholder="Ej: Amoxicilina + Ácido Clavulánico"
-                        className="h-10 bg-background font-medium"
-                      />
-                    </div>
-
-                    <div className="md:col-span-3 space-y-1">
-                      <Label className="text-xs font-semibold">Presentación</Label>
-                      <Input
-                        value={nuevoMed.presentacion || ''}
-                        onChange={(e) =>
-                          setNuevoMed((prev) => ({ ...prev, presentacion: e.target.value }))
-                        }
-                        placeholder="Ej: Comp. 875/125 mg"
-                        className="h-10 bg-background"
-                      />
-                    </div>
-
-                    <div className="md:col-span-4 space-y-1">
-                      <Label className="text-xs font-semibold">Dosis</Label>
-                      <Input
-                        value={nuevoMed.dosis || ''}
-                        onChange={(e) =>
-                          setNuevoMed((prev) => ({ ...prev, dosis: e.target.value }))
-                        }
-                        placeholder="Ej: 1 comprimido"
-                        className="h-10 bg-background"
-                      />
-                    </div>
-
-                    <div className="md:col-span-3 space-y-1">
-                      <Label className="text-xs font-semibold">Vía de Administración</Label>
-                      <Select
-                        value={nuevoMed.via_administracion}
-                        onValueChange={(val) =>
-                          setNuevoMed((prev) => ({ ...prev, via_administracion: val }))
-                        }
-                      >
-                        <SelectTrigger className="h-10 bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {VIAS_ADMINISTRACION.map((via) => (
-                            <SelectItem key={via} value={via}>
-                              {via}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="md:col-span-4 space-y-1">
-                      <Label className="text-xs font-semibold">Frecuencia</Label>
-                      <Select
-                        value={nuevoMed.frecuencia}
-                        onValueChange={(val) =>
-                          setNuevoMed((prev) => ({ ...prev, frecuencia: val }))
-                        }
-                      >
-                        <SelectTrigger className="h-10 bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {FRECUENCIAS_COMUNES.map((frec) => (
-                            <SelectItem key={frec} value={frec}>
-                              {frec}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="md:col-span-3 space-y-1">
-                      <Label className="text-xs font-semibold">Duración</Label>
-                      <Select
-                        value={nuevoMed.duracion}
-                        onValueChange={(val) =>
-                          setNuevoMed((prev) => ({ ...prev, duracion: val }))
-                        }
-                      >
-                        <SelectTrigger className="h-10 bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DURACIONES_SUGERIDAS.map((dur) => (
-                            <SelectItem key={dur} value={dur}>
-                              {dur}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="md:col-span-2 flex items-end">
-                      <Button
-                        type="button"
-                        onClick={() => handleAgregarMedicamento()}
-                        className="h-10 w-full font-semibold gap-1.5"
-                      >
-                        <Plus className="h-4 w-4" />
-                        <span>Añadir</span>
-                      </Button>
-                    </div>
-
-                    <div className="md:col-span-12 space-y-1">
-                      <Label className="text-xs font-semibold">
-                        Instrucciones Especiales / Advertencias para el Paciente
-                      </Label>
-                      <Input
-                        value={nuevoMed.instrucciones || ''}
-                        onChange={(e) =>
-                          setNuevoMed((prev) => ({ ...prev, instrucciones: e.target.value }))
-                        }
-                        placeholder="Ej: Tomar con alimentos. No suspender antes de los 7 días aunque desaparezcan los síntomas."
-                        className="h-10 bg-background"
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Lista de Medicamentos Prescritos */}
-            {medicamentos.length === 0 ? (
-              <Card className="border-2 border-dashed border-border/70 p-6 text-center text-muted-foreground bg-muted/10">
-                <CardContent className="space-y-1 p-0">
-                  <Pill className="h-6 w-6 mx-auto opacity-50" />
-                  <p className="text-xs font-semibold text-foreground">
-                    No se han añadido medicamentos a la receta
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {medicamentos.map((med, idx) => (
-                  <Card
-                    key={med.id || idx}
-                    className="border-border/80 bg-card hover:border-primary/30 transition-all shadow-2xs"
-                  >
-                    <CardContent className="p-4 flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-foreground">
-                            {idx + 1}. {med.medicamento}
-                          </span>
-                          {med.presentacion && (
-                            <Badge variant="outline" className="text-[11px]">
-                              {med.presentacion}
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="text-xs text-muted-foreground space-y-0.5">
-                          <div>
-                            <strong className="text-foreground/80">Posología:</strong> {med.dosis} •{' '}
-                            {med.frecuencia} • {med.via_administracion}
-                          </div>
-                          <div>
-                            <strong className="text-foreground/80">Durante:</strong> {med.duracion}
-                          </div>
-                          {med.instrucciones && (
-                            <div className="text-primary italic mt-1 font-medium">
-                              💡 {med.instrucciones}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {!readOnly && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEliminarMedicamento(idx)}
-                          className="text-muted-foreground hover:text-destructive shrink-0 h-8 w-8"
-                          title="Eliminar medicamento"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+            <PrescripcionRecetaWidget
+              medicamentos={medicamentos}
+              onAdd={(med) => setMedicamentos((prev) => [...prev, med])}
+              onRemove={(idx) => setMedicamentos((prev) => prev.filter((_, i) => i !== idx))}
+              readOnly={readOnly}
+            />
           </div>
 
           {/* SECCIÓN 2: REPOSO MÉDICO (LICENCIA) */}
