@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   consultasApi,
@@ -368,7 +368,8 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const handleGuardarYFinalizar = async () => {
     if (!consulta) return;
     if (!diagnosticoPrincipal.trim()) {
-      setCurrentStep(6);
+      const diagStep = pasosHabilitados.includes(6) ? 6 : stepsList[stepsList.length - 1]?.num || 1;
+      setCurrentStep(diagStep);
       toast.error('Por favor indique el Diagnóstico Principal antes de finalizar la consulta');
       return;
     }
@@ -392,14 +393,72 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     window.print();
   };
 
-  const stepsList = [
-    { num: 1, label: 'Preconsulta y Motivo', icon: ClipboardList },
-    { num: 2, label: 'Signos Vitales', icon: HeartPulse },
-    { num: 3, label: 'Evaluación y Hallazgos', icon: Stethoscope },
-    { num: 4, label: 'Estudios Médicos', icon: FlaskConical },
-    { num: 5, label: 'Receta y Reposo', icon: Pill },
-    { num: 6, label: 'Diagnóstico y Cierre', icon: CheckCircle2 },
-  ];
+  const hasInitializedStepRef = useRef(false);
+
+  // Pasos habilitados configurados para la especialidad
+  const pasosHabilitados: number[] = useMemo(() => {
+    const raw =
+      consulta?.especialidad?.pasos_activos ||
+      plantillaEfectiva?.pasos_activos;
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw;
+    }
+    return [1, 2, 3, 4, 5, 6];
+  }, [consulta?.especialidad?.pasos_activos, plantillaEfectiva?.pasos_activos]);
+
+  const pasoInicialConfigurado = useMemo(() => {
+    return (
+      consulta?.especialidad?.paso_inicial ||
+      plantillaEfectiva?.paso_inicial ||
+      pasosHabilitados[0] ||
+      1
+    );
+  }, [consulta?.especialidad?.paso_inicial, plantillaEfectiva?.paso_inicial, pasosHabilitados]);
+
+  const ALL_WIZARD_STEPS = useMemo(
+    () => [
+      { num: 1, label: 'Preconsulta y Motivo', icon: ClipboardList },
+      { num: 2, label: 'Signos Vitales', icon: HeartPulse },
+      { num: 3, label: 'Evaluación y Hallazgos', icon: Stethoscope },
+      { num: 4, label: 'Estudios Médicos', icon: FlaskConical },
+      { num: 5, label: 'Receta y Reposo', icon: Pill },
+      { num: 6, label: 'Diagnóstico y Cierre', icon: CheckCircle2 },
+    ],
+    []
+  );
+
+  const stepsList = useMemo(() => {
+    return ALL_WIZARD_STEPS.filter((s) => pasosHabilitados.includes(s.num));
+  }, [ALL_WIZARD_STEPS, pasosHabilitados]);
+
+  // Inicializar paso al configurado por la especialidad al cargar la consulta
+  useEffect(() => {
+    if (!hasInitializedStepRef.current && (consulta || plantillaEfectiva)) {
+      if (pasosHabilitados.includes(pasoInicialConfigurado)) {
+        setCurrentStep(pasoInicialConfigurado);
+      } else if (stepsList[0]) {
+        setCurrentStep(stepsList[0].num);
+      }
+      hasInitializedStepRef.current = true;
+    }
+  }, [consulta, plantillaEfectiva, pasoInicialConfigurado, pasosHabilitados, stepsList]);
+
+  // Asegurar que currentStep sea siempre uno de los pasos activos
+  useEffect(() => {
+    if (stepsList.length > 0 && !pasosHabilitados.includes(currentStep)) {
+      setCurrentStep(stepsList[0].num);
+    }
+  }, [stepsList, pasosHabilitados, currentStep]);
+
+  const currentStepIndex = useMemo(() => {
+    const idx = stepsList.findIndex((s) => s.num === currentStep);
+    return idx >= 0 ? idx : 0;
+  }, [stepsList, currentStep]);
+
+  const isFirstStep = currentStepIndex <= 0;
+  const isLastStep = currentStepIndex >= stepsList.length - 1;
+  const prevStep = !isFirstStep ? stepsList[currentStepIndex - 1]?.num : null;
+  const nextStep = !isLastStep ? stepsList[currentStepIndex + 1]?.num : null;
 
   if (loading) {
     return (
@@ -690,14 +749,14 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         </Card>
       </div>
 
-      {/* ── BARRA DE PROGRESO DE LOS 6 PASOS ── */}
+      {/* ── BARRA DE PROGRESO DE LOS PASOS CONFIGURADOS ── */}
       <Card className="border-border/80 shadow-xs overflow-hidden">
         <CardContent className="p-3">
           <div className="flex items-center justify-between overflow-x-auto gap-2">
-            {stepsList.map((step) => {
+            {stepsList.map((step, idx) => {
               const Icon = step.icon;
               const isActive = currentStep === step.num;
-              const isPast = currentStep > step.num;
+              const isPast = currentStepIndex > idx;
 
               return (
                 <button
@@ -1940,20 +1999,20 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border/80 py-3.5 px-6 shadow-lg">
         <div className="max-w-7xl mx-auto flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {currentStep > 1 && (
+            {!isFirstStep && prevStep !== null && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setCurrentStep((prev) => prev - 1)}
-                className="gap-1.5 h-10"
+                onClick={() => setCurrentStep(prevStep)}
+                className="gap-1.5 h-10 cursor-pointer"
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span>Paso Anterior</span>
               </Button>
             )}
             <span className="text-xs text-muted-foreground font-medium hidden sm:inline ml-2">
-              Paso {currentStep} de 6 — {stepsList[currentStep - 1]?.label}
+              Paso {currentStepIndex + 1} de {stepsList.length} — {stepsList[currentStepIndex]?.label}
             </span>
           </div>
 
@@ -1965,19 +2024,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 size="sm"
                 onClick={handleGuardarBorrador}
                 disabled={saving || finalizing}
-                className="gap-1.5 h-10"
+                className="gap-1.5 h-10 cursor-pointer"
               >
                 <Save className="h-4 w-4" />
                 <span>{saving ? 'Guardando...' : 'Guardar Borrador'}</span>
               </Button>
             )}
 
-            {currentStep < 6 ? (
+            {!isLastStep && nextStep !== null ? (
               <Button
                 type="button"
                 size="sm"
-                onClick={() => setCurrentStep((prev) => prev + 1)}
-                className="gap-1.5 h-10 px-5 font-semibold"
+                onClick={() => setCurrentStep(nextStep)}
+                className="gap-1.5 h-10 px-5 font-semibold cursor-pointer"
               >
                 <span>Siguiente Paso</span>
                 <ArrowRight className="h-4 w-4" />
@@ -1988,7 +2047,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 size="sm"
                 onClick={handleGuardarYFinalizar}
                 disabled={saving || finalizing}
-                className="gap-2 h-10 px-6 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
+                className="gap-2 h-10 px-6 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 cursor-pointer"
               >
                 <CheckCircle2 className="h-5 w-5" />
                 <span>{finalizing ? 'Finalizando...' : 'Guardar y Finalizar Consulta'}</span>
@@ -1998,7 +2057,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 type="button"
                 size="sm"
                 onClick={() => navigate('/clinica/consultas/atendidas')}
-                className="h-10 px-6 font-semibold"
+                className="h-10 px-6 font-semibold cursor-pointer"
               >
                 Volver a Consultas
               </Button>

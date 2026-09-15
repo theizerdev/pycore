@@ -36,6 +36,8 @@ export interface EspecialidadMini {
   codigo?: string;
   color?: string;
   icono?: string;
+  pasos_activos?: number[];
+  paso_inicial?: number;
 }
 
 export interface PreconsultaMini {
