@@ -73,6 +73,7 @@ import {
   Scale,
 } from 'lucide-react';
 import OdontogramaWidget from '../../components/clinica/OdontogramaWidget';
+import { PASOS_WIZARD_INFO } from './EspecialidadesPage';
 
 interface EspecialidadPlantillaModalProps {
   open: boolean;
@@ -117,9 +118,14 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
   const { user, hasPermission } = useAuth();
   const canEdit = hasPermission('especialidades.editar');
 
-  const [activeTab, setActiveTab] = useState<'preconsulta' | 'consulta' | 'medico' | 'preview'>('preconsulta');
+  const [activeTab, setActiveTab] = useState<'preconsulta' | 'consulta' | 'flujo' | 'medico' | 'preview'>('preconsulta');
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
+  const [savingFlujo, setSavingFlujo] = useState<boolean>(false);
+
+  // Estado Flujo Wizard
+  const [pasosActivos, setPasosActivos] = useState<number[]>([1, 2, 3, 4, 5, 6]);
+  const [pasoInicial, setPasoInicial] = useState<number>(1);
 
   // Estado Plantilla Base
   const [plantillaBase, setPlantillaBase] = useState<EspecialidadPlantilla | null>(null);
@@ -203,6 +209,14 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
   };
 
   useEffect(() => {
+    if (especialidad) {
+      const pasos = especialidad.pasos_activos && especialidad.pasos_activos.length > 0 ? especialidad.pasos_activos : [1, 2, 3, 4, 5, 6];
+      setPasosActivos(pasos);
+      setPasoInicial(especialidad.paso_inicial || pasos[0] || 1);
+    }
+  }, [especialidad]);
+
+  useEffect(() => {
     if (open && especialidad) {
       fetchData();
     }
@@ -267,6 +281,30 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Guardar Flujo del Wizard de Atención
+  const handleSaveFlujo = async () => {
+    if (!especialidad) return;
+    if (!pasosActivos || pasosActivos.length === 0) {
+      toast.error('Debe haber al menos 1 paso habilitado en el wizard');
+      return;
+    }
+    setSavingFlujo(true);
+    try {
+      await especialidadesApi.update(especialidad.id, {
+        pasos_activos: pasosActivos,
+        paso_inicial: pasoInicial,
+      });
+      toast.success('Flujo del wizard de atención actualizado exitosamente');
+      onSaved?.();
+    } catch (err: any) {
+      toast.error('Error al guardar el flujo del wizard', {
+        description: err.response?.data?.detail || 'No se pudo guardar la configuración',
+      });
+    } finally {
+      setSavingFlujo(false);
     }
   };
 
@@ -758,7 +796,17 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                 <span>Cargar Sugeridas</span>
               </Button>
 
-              {activeTab === 'medico' ? (
+              {activeTab === 'flujo' ? (
+                <Button
+                  size="sm"
+                  onClick={handleSaveFlujo}
+                  disabled={savingFlujo || !canEdit}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold cursor-pointer h-8 text-xs"
+                >
+                  <Save className="size-3.5 mr-1" />
+                  <span>{savingFlujo ? 'Guardando...' : 'Guardar Flujo del Wizard'}</span>
+                </Button>
+              ) : activeTab === 'medico' ? (
                 <Button
                   size="sm"
                   onClick={handleSavePlantillaMedico}
@@ -813,11 +861,22 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                 </TabsTrigger>
 
                 <TabsTrigger
+                  value="flujo"
+                  className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-700 dark:data-[state=active]:text-cyan-300 data-[state=active]:border-cyan-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5"
+                >
+                  <Sliders className="size-3.5" />
+                  <span>3. Flujo del Wizard</span>
+                  <Badge variant="secondary" className="text-[10px] px-1 py-0 ml-1">
+                    {pasosActivos.length}/6
+                  </Badge>
+                </TabsTrigger>
+
+                <TabsTrigger
                   value="medico"
                   className="data-[state=active]:bg-indigo-500/10 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-indigo-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5"
                 >
                   <UserCheck className="size-3.5" />
-                  <span>3. Mis Campos como Médico</span>
+                  <span>4. Mis Campos como Médico</span>
                   <Badge variant="secondary" className="text-[10px] px-1 py-0 ml-1">
                     {medicoPreCampos.length + medicoConCampos.length}
                   </Badge>
@@ -1380,6 +1439,166 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* ── PESTAÑA: FLUJO DEL WIZARD DE ATENCIÓN MÉDICA ── */}
+                {activeTab === 'flujo' && (
+                  <div className="space-y-5 max-w-4xl mx-auto py-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border/80 bg-muted/20">
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                          <Sliders className="size-4 text-primary" />
+                          Configuración de Pasos del Wizard de Atención Médica
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Define cuáles de los 6 pasos estándar de la consulta médica estarán visibles y cuál se abrirá primero al ingresar a atender a un paciente.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPasosActivos([1, 2, 3, 4, 5, 6]);
+                            setPasoInicial((prev) => prev || 1);
+                          }}
+                          className="h-7 text-xs px-2.5 cursor-pointer font-medium"
+                        >
+                          Activar Todos (6)
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPasosActivos([1, 3, 4, 5, 6]);
+                            setPasoInicial(3);
+                          }}
+                          className="h-7 text-xs px-2.5 border-cyan-500/30 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/10 cursor-pointer font-medium"
+                        >
+                          🦷 Preset Odontología
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {PASOS_WIZARD_INFO.map((step) => {
+                        const isEnabled = pasosActivos.includes(step.num);
+                        const isInitial = pasoInicial === step.num;
+                        const StepIcon = step.icon;
+
+                        const handleToggle = (checked: boolean) => {
+                          let updated: number[];
+                          if (checked) {
+                            updated = Array.from(new Set([...pasosActivos, step.num])).sort((a, b) => a - b);
+                          } else {
+                            if (pasosActivos.length <= 1) {
+                              toast.warning('Debe haber al menos 1 paso habilitado en la atención');
+                              return;
+                            }
+                            updated = pasosActivos.filter((n) => n !== step.num);
+                          }
+
+                          let newInitial = pasoInicial;
+                          if (!updated.includes(newInitial)) {
+                            newInitial = updated[0];
+                          }
+
+                          setPasosActivos(updated);
+                          setPasoInicial(newInitial);
+                        };
+
+                        return (
+                          <div
+                            key={step.num}
+                            className={`p-4 rounded-xl border transition-all ${
+                              isEnabled
+                                ? 'border-border/80 bg-card shadow-xs'
+                                : 'border-dashed border-border/40 bg-muted/10 opacity-50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3">
+                                <div className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${step.bg}`}>
+                                  <StepIcon className={`size-4.5 ${step.color}`} />
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-foreground">{step.label}</span>
+                                    {isInitial && (
+                                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-primary/40 text-primary bg-primary/10">
+                                        Paso de Inicio
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground">{step.desc}</p>
+                                  {step.subdesc && (
+                                    <p className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">
+                                      💡 {step.subdesc}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <Switch
+                                checked={isEnabled}
+                                onCheckedChange={handleToggle}
+                                disabled={!canEdit}
+                                className="cursor-pointer shrink-0 mt-1"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Selector de Paso Inicial */}
+                    <div className="p-4 rounded-xl border border-border/80 bg-card shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <Label htmlFor="plantilla-paso-inicial" className="text-xs font-bold text-foreground">
+                          Paso Inicial Predeterminado al ingresar a la consulta:
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Cuando el profesional médico o especialista abra la atención, se mostrará esta pestaña automáticamente.
+                        </p>
+                      </div>
+
+                      <Select
+                        value={String(pasoInicial)}
+                        onValueChange={(val) => setPasoInicial(Number(val))}
+                        disabled={!canEdit}
+                      >
+                        <SelectTrigger id="plantilla-paso-inicial" className="h-9 text-xs w-full sm:w-64">
+                          <SelectValue placeholder="Seleccionar paso de inicio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {pasosActivos.map((num) => {
+                            const stepInfo = PASOS_WIZARD_INFO.find((p) => p.num === num);
+                            return (
+                              <SelectItem key={num} value={String(num)} className="text-xs">
+                                Paso {num}: {stepInfo?.shortLabel || `Paso ${num}`}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {canEdit && (
+                      <div className="flex justify-end pt-2">
+                        <Button
+                          onClick={handleSaveFlujo}
+                          disabled={savingFlujo}
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold cursor-pointer h-9 text-xs"
+                        >
+                          <Save className="size-3.5 mr-1.5" />
+                          <span>{savingFlujo ? 'Guardando...' : 'Guardar Flujo del Wizard'}</span>
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
 
