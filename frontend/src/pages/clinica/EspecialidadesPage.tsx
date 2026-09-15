@@ -32,8 +32,12 @@ import {
   List as ListIcon,
   RefreshCw,
   AlertCircle,
-  Sliders
+  Sliders,
+  ClipboardList,
+  FlaskConical,
+  ArrowRight,
 } from 'lucide-react';
+import { cn } from '../../lib/utils';
 import { EspecialidadPlantillaModal } from './EspecialidadPlantillaModal';
 import {
   Dialog,
@@ -43,6 +47,65 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
+
+export const PASOS_WIZARD_INFO = [
+  {
+    num: 1,
+    label: 'Paso 1: Preconsulta y Motivo',
+    shortLabel: 'Preconsulta & Motivo',
+    desc: 'Interrogatorio de WhatsApp y motivo principal de consulta.',
+    icon: ClipboardList,
+    color: 'text-sky-500',
+    bg: 'bg-sky-500/10 border-sky-500/20',
+  },
+  {
+    num: 2,
+    label: 'Paso 2: Signos Vitales y Triaje',
+    shortLabel: 'Signos Vitales',
+    desc: 'Presión, peso, talla, FC, glucosa e IMC automático.',
+    subdesc: 'En Odontología o especialidades quirúrgicas puede desactivarse.',
+    icon: HeartPulse,
+    color: 'text-rose-500',
+    bg: 'bg-rose-500/10 border-rose-500/20',
+  },
+  {
+    num: 3,
+    label: 'Paso 3: Evaluación y Hallazgos',
+    shortLabel: 'Evaluación Clínica',
+    desc: 'Anamnesis, campos personalizados y Odontograma interactivo.',
+    subdesc: 'Recomendado como paso inicial para Odontología.',
+    icon: Stethoscope,
+    color: 'text-teal-500',
+    bg: 'bg-teal-500/10 border-teal-500/20',
+  },
+  {
+    num: 4,
+    label: 'Paso 4: Estudios Médicos',
+    shortLabel: 'Estudios Médicos',
+    desc: 'Órdenes de laboratorio, rayos X e imágenes diagnósticas.',
+    icon: FlaskConical,
+    color: 'text-violet-500',
+    bg: 'bg-violet-500/10 border-violet-500/20',
+  },
+  {
+    num: 5,
+    label: 'Paso 5: Receta y Reposo',
+    shortLabel: 'Receta & Reposo',
+    desc: 'Prescripción de medicamentos e incapacidad temporal.',
+    icon: Pill,
+    color: 'text-emerald-500',
+    bg: 'bg-emerald-500/10 border-emerald-500/20',
+  },
+  {
+    num: 6,
+    label: 'Paso 6: Diagnóstico y Cierre',
+    shortLabel: 'Diagnóstico & Cierre',
+    desc: 'CIE-10 principal, plan de tratamiento y finalización de consulta.',
+    icon: CheckCircle2,
+    color: 'text-amber-500',
+    bg: 'bg-amber-500/10 border-amber-500/20',
+  },
+];
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -135,6 +198,8 @@ export const EspecialidadesPage: React.FC = () => {
     icono: string;
     activo: boolean;
     sucursal_id: string; // "global" o id string
+    pasos_activos: number[];
+    paso_inicial: number;
   }>({
     nombre: '',
     codigo: '',
@@ -142,7 +207,9 @@ export const EspecialidadesPage: React.FC = () => {
     color: '#0d9488',
     icono: 'Stethoscope',
     activo: true,
-    sucursal_id: 'global'
+    sucursal_id: 'global',
+    pasos_activos: [1, 2, 3, 4, 5, 6],
+    paso_inicial: 1,
   });
 
   const canCreate = hasPermission('especialidades.crear');
@@ -229,7 +296,9 @@ export const EspecialidadesPage: React.FC = () => {
       color: '#0d9488',
       icono: 'Stethoscope',
       activo: true,
-      sucursal_id: sucursalActiva?.id ? String(sucursalActiva.id) : 'global'
+      sucursal_id: sucursalActiva?.id ? String(sucursalActiva.id) : 'global',
+      pasos_activos: [1, 2, 3, 4, 5, 6],
+      paso_inicial: 1,
     });
     setIsModalOpen(true);
   };
@@ -237,6 +306,8 @@ export const EspecialidadesPage: React.FC = () => {
   // Abrir Modal Editar
   const handleOpenEdit = (esp: Especialidad) => {
     setEditingEspecialidad(esp);
+    const pasos = esp.pasos_activos && esp.pasos_activos.length > 0 ? esp.pasos_activos : [1, 2, 3, 4, 5, 6];
+    const inicial = esp.paso_inicial || pasos[0] || 1;
     setFormData({
       nombre: esp.nombre,
       codigo: esp.codigo || '',
@@ -244,7 +315,9 @@ export const EspecialidadesPage: React.FC = () => {
       color: esp.color || '#0d9488',
       icono: esp.icono || 'Stethoscope',
       activo: esp.activo,
-      sucursal_id: esp.sucursal_id ? String(esp.sucursal_id) : 'global'
+      sucursal_id: esp.sucursal_id ? String(esp.sucursal_id) : 'global',
+      pasos_activos: pasos,
+      paso_inicial: inicial,
     });
     setIsModalOpen(true);
   };
@@ -254,6 +327,11 @@ export const EspecialidadesPage: React.FC = () => {
     e.preventDefault();
     if (!formData.nombre.trim()) {
       toast.error('El nombre de la especialidad es obligatorio');
+      return;
+    }
+
+    if (!formData.pasos_activos || formData.pasos_activos.length === 0) {
+      toast.error('Debe haber al menos un paso activo en el wizard de atención');
       return;
     }
 
@@ -270,7 +348,9 @@ export const EspecialidadesPage: React.FC = () => {
           color: formData.color,
           icono: formData.icono,
           activo: formData.activo,
-          sucursal_id: payloadSucursalId
+          sucursal_id: payloadSucursalId,
+          pasos_activos: formData.pasos_activos,
+          paso_inicial: formData.paso_inicial,
         };
         const updated = await especialidadesApi.update(editingEspecialidad.id, updatePayload);
         setEspecialidades((prev) =>
@@ -285,7 +365,9 @@ export const EspecialidadesPage: React.FC = () => {
           color: formData.color,
           icono: formData.icono,
           activo: formData.activo,
-          sucursal_id: payloadSucursalId
+          sucursal_id: payloadSucursalId,
+          pasos_activos: formData.pasos_activos,
+          paso_inicial: formData.paso_inicial,
         };
         const created = await especialidadesApi.create(createPayload);
         setEspecialidades((prev) => [created, ...prev]);
@@ -293,8 +375,14 @@ export const EspecialidadesPage: React.FC = () => {
       }
       setIsModalOpen(false);
     } catch (err: any) {
+      const rawDetail = err.response?.data?.detail;
+      const errorMsg = typeof rawDetail === 'string'
+        ? rawDetail
+        : Array.isArray(rawDetail)
+        ? rawDetail.map((d: any) => (typeof d === 'string' ? d : d.msg || JSON.stringify(d))).join(' • ')
+        : 'Ocurrió un error inesperado al guardar';
       toast.error('Error al guardar especialidad', {
-        description: err.response?.data?.detail || 'Ocurrió un error inesperado'
+        description: errorMsg,
       });
     } finally {
       setSaving(false);
@@ -631,6 +719,16 @@ export const EspecialidadesPage: React.FC = () => {
                     <CardDescription className="text-xs text-muted-foreground line-clamp-2 mt-1 min-h-[2rem]">
                       {esp.descripcion || 'Sin descripción adicional registrada.'}
                     </CardDescription>
+                    <div className="flex items-center gap-1.5 flex-wrap pt-2">
+                      <Badge variant="outline" className="text-[10px] font-medium border-primary/25 bg-primary/5 text-primary">
+                        {esp.pasos_activos?.length ?? 6}/6 pasos wizard
+                      </Badge>
+                      {esp.paso_inicial && esp.paso_inicial > 1 && (
+                        <Badge variant="secondary" className="text-[10px] font-medium bg-muted text-muted-foreground">
+                          Inicia en Paso {esp.paso_inicial}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
 
@@ -719,7 +817,15 @@ export const EspecialidadesPage: React.FC = () => {
                           >
                             {renderIcon(esp.icono, cardColor)}
                           </div>
-                          <span>{esp.nombre}</span>
+                          <div className="min-w-0">
+                            <span className="font-medium text-foreground block truncate">{esp.nombre}</span>
+                            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                              <span>{esp.pasos_activos?.length ?? 6}/6 pasos</span>
+                              {esp.paso_inicial && esp.paso_inicial > 1 && (
+                                <span className="text-primary font-semibold">• Inicia en P{esp.paso_inicial}</span>
+                              )}
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3 font-mono text-muted-foreground">
@@ -791,7 +897,7 @@ export const EspecialidadesPage: React.FC = () => {
 
       {/* ── MODAL: CREAR / EDITAR ESPECIALIDAD ───────────────────────── */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg font-bold">
               <div
@@ -939,6 +1045,152 @@ export const EspecialidadesPage: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                 className="text-xs resize-none"
               />
+            </div>
+
+            {/* Configuración del Flujo del Wizard de Atención Médica */}
+            <div className="rounded-xl border border-border/80 p-4 bg-muted/20 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/60 pb-2.5">
+                <div>
+                  <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-primary" />
+                    Pasos del Wizard de Atención Médica
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Personaliza qué pestañas se muestran en la atención clínica y en cuál inicia el profesional.
+                  </p>
+                </div>
+                {/* Presets rápidos */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        pasos_activos: [1, 2, 3, 4, 5, 6],
+                        paso_inicial: prev.paso_inicial || 1,
+                      }));
+                    }}
+                    className="h-6 text-[10px] px-2 cursor-pointer font-medium hover:bg-muted"
+                    title="Activar todos los 6 pasos estándar"
+                  >
+                    Todos (6)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        pasos_activos: [1, 3, 4, 5, 6],
+                        paso_inicial: 3,
+                      }));
+                    }}
+                    className="h-6 text-[10px] px-2 border-cyan-500/30 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/10 cursor-pointer font-medium"
+                    title="Ajuste recomendado para Odontología: Sin signos vitales y arrancando en Paso 3"
+                  >
+                    🦷 Odontología
+                  </Button>
+                </div>
+              </div>
+
+              {/* Lista de pasos con interruptor */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {PASOS_WIZARD_INFO.map((step) => {
+                  const isEnabled = formData.pasos_activos.includes(step.num);
+                  const isInitial = formData.paso_inicial === step.num;
+                  const StepIcon = step.icon;
+
+                  const handleToggleStep = (checked: boolean) => {
+                    let updated: number[];
+                    if (checked) {
+                      updated = Array.from(new Set([...formData.pasos_activos, step.num])).sort((a, b) => a - b);
+                    } else {
+                      if (formData.pasos_activos.length <= 1) {
+                        toast.warning('Debe haber al menos 1 paso habilitado en la atención');
+                        return;
+                      }
+                      updated = formData.pasos_activos.filter((n) => n !== step.num);
+                    }
+
+                    let newInitial = formData.paso_inicial;
+                    if (!updated.includes(newInitial)) {
+                      newInitial = updated[0];
+                    }
+
+                    setFormData((prev) => ({
+                      ...prev,
+                      pasos_activos: updated,
+                      paso_inicial: newInitial,
+                    }));
+                  };
+
+                  return (
+                    <div
+                      key={step.num}
+                      className={`flex items-start justify-between gap-2 p-2.5 rounded-lg border transition-all ${
+                        isEnabled
+                          ? 'border-border/80 bg-background/80 shadow-2xs'
+                          : 'border-dashed border-border/40 bg-muted/10 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2 min-w-0">
+                        <div className={`size-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${step.bg}`}>
+                          <StepIcon className={`size-3.5 ${step.color}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-semibold truncate">{step.shortLabel}</span>
+                            {isInitial && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/40 text-primary bg-primary/10">
+                                Inicial
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground line-clamp-1">{step.desc}</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={isEnabled}
+                        onCheckedChange={handleToggleStep}
+                        className="scale-90 shrink-0 mt-0.5 cursor-pointer"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Selector de Paso Inicial */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-2 border-t border-border/60">
+                <div>
+                  <Label htmlFor="esp-paso-inicial" className="text-xs font-semibold text-foreground">
+                    Paso Inicial al ingresar a la consulta:
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Pestaña que se abrirá por defecto al cargar la consulta médica.
+                  </p>
+                </div>
+                <Select
+                  value={String(formData.paso_inicial)}
+                  onValueChange={(val) => setFormData((prev) => ({ ...prev, paso_inicial: Number(val) }))}
+                >
+                  <SelectTrigger id="esp-paso-inicial" className="h-8 text-xs w-full sm:w-56">
+                    <SelectValue placeholder="Seleccionar paso de inicio" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formData.pasos_activos.map((num) => {
+                      const stepInfo = PASOS_WIZARD_INFO.find((p) => p.num === num);
+                      return (
+                        <SelectItem key={num} value={String(num)} className="text-xs">
+                          Paso {num}: {stepInfo?.shortLabel || `Paso ${num}`}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Switch de Estado Activo */}
