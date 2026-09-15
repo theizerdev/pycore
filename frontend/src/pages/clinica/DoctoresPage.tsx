@@ -125,12 +125,13 @@ export const DoctoresPage: React.FC = () => {
       // Búsqueda
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase().trim();
-        const matchName = `${m.nombres} ${m.apellidos}`.toLowerCase().includes(q);
+        const matchName = `${m.nombres || ''} ${m.apellidos || ''}`.toLowerCase().includes(q);
         const matchDoc = m.documento_identidad?.toLowerCase().includes(q);
         const matchEmail = m.email?.toLowerCase().includes(q);
         const matchLic = m.licencia_medica?.toLowerCase().includes(q);
         const matchEsp = m.especialidad_nombre?.toLowerCase().includes(q);
-        const matchSub = (m.subespecialidades || []).some((s) => s.nombre.toLowerCase().includes(q));
+        const rawSubs = Array.isArray(m.subespecialidades) ? m.subespecialidades : [];
+        const matchSub = rawSubs.some((s: any) => ((typeof s === 'string' ? s : s?.nombre) || '').toLowerCase().includes(q));
         if (!matchName && !matchDoc && !matchEmail && !matchLic && !matchEsp && !matchSub) {
           return false;
         }
@@ -163,7 +164,7 @@ export const DoctoresPage: React.FC = () => {
   const stats = useMemo(() => {
     const total = medicos.length;
     const active = medicos.filter((m) => m.activo).length;
-    const withSubesp = medicos.filter((m) => (m.subespecialidades || []).length > 0).length;
+    const withSubesp = medicos.filter((m) => (Array.isArray(m.subespecialidades) ? m.subespecialidades : []).length > 0).length;
     const specialtiesCovered = new Set(medicos.map((m) => m.especialidad_id)).size;
     return { total, active, withSubesp, specialtiesCovered };
   }, [medicos]);
@@ -192,8 +193,14 @@ export const DoctoresPage: React.FC = () => {
       fetchMedicos();
       setDeleteConfirmOpen(false);
     } catch (err: any) {
+      const rawDetail = err.response?.data?.detail;
+      const errorMsg = typeof rawDetail === 'string'
+        ? rawDetail
+        : Array.isArray(rawDetail)
+        ? rawDetail.map((d: any) => (typeof d === 'string' ? d : d.msg || JSON.stringify(d))).join(' • ')
+        : 'No se pudo completar la acción';
       toast.error('Error al inactivar médico', {
-        description: err.response?.data?.detail || 'No se pudo completar la acción',
+        description: errorMsg,
       });
     } finally {
       setDeleting(false);
@@ -387,8 +394,9 @@ export const DoctoresPage: React.FC = () => {
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredMedicos.map((med) => {
-            const initials = `${med.nombres.charAt(0)}${med.apellidos.charAt(0)}`.toUpperCase();
-            const subCount = (med.subespecialidades || []).length;
+            const initials = `${med.nombres?.charAt(0) || ''}${med.apellidos?.charAt(0) || ''}`.toUpperCase() || 'DR';
+            const rawSubs = Array.isArray(med.subespecialidades) ? med.subespecialidades : [];
+            const subCount = rawSubs.length;
 
             return (
               <Card
@@ -519,19 +527,26 @@ export const DoctoresPage: React.FC = () => {
 
                     {subCount > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {med.subespecialidades.map((s, idx) => (
-                          <Badge
-                            key={idx}
-                            variant="outline"
-                            className="text-[10px] bg-muted/40 font-medium border-border/70 text-foreground py-0.5"
-                            title={`${s.nivel_experiencia} • ${s.anos_servicio} años de servicio`}
-                          >
-                            <span>{s.nombre}</span>
-                            <span className="ml-1 text-[9px] text-teal-600 dark:text-teal-400 font-bold">
-                              ({s.anos_servicio}a)
-                            </span>
-                          </Badge>
-                        ))}
+                        {rawSubs.map((s: any, idx: number) => {
+                          const sNombre = typeof s === 'string' ? s : s?.nombre || '';
+                          const sAnos = typeof s === 'object' && s?.anos_servicio ? s.anos_servicio : null;
+                          const sNivel = typeof s === 'object' && s?.nivel_experiencia ? s.nivel_experiencia : '';
+                          return (
+                            <Badge
+                              key={idx}
+                              variant="outline"
+                              className="text-[10px] bg-muted/40 font-medium border-border/70 text-foreground py-0.5"
+                              title={sNivel ? `${sNivel}${sAnos ? ` • ${sAnos} años de servicio` : ''}` : sNombre}
+                            >
+                              <span>{sNombre}</span>
+                              {sAnos && (
+                                <span className="ml-1 text-[9px] text-teal-600 dark:text-teal-400 font-bold">
+                                  ({sAnos}a)
+                                </span>
+                              )}
+                            </Badge>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="text-[10px] text-muted-foreground italic">
@@ -595,7 +610,8 @@ export const DoctoresPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-border/60">
                 {filteredMedicos.map((med) => {
-                  const subCount = (med.subespecialidades || []).length;
+                  const rawSubs = Array.isArray(med.subespecialidades) ? med.subespecialidades : [];
+                  const subCount = rawSubs.length;
                   return (
                     <tr key={med.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-3 pl-4">
@@ -639,11 +655,15 @@ export const DoctoresPage: React.FC = () => {
                       <td className="p-3 max-w-xs">
                         {subCount > 0 ? (
                           <div className="flex flex-wrap gap-1">
-                            {med.subespecialidades.map((s, idx) => (
-                              <Badge key={idx} variant="outline" className="text-[9px] bg-muted/30">
-                                {s.nombre} ({s.anos_servicio}a)
-                              </Badge>
-                            ))}
+                            {rawSubs.map((s: any, idx: number) => {
+                              const sNombre = typeof s === 'string' ? s : s?.nombre || '';
+                              const sAnos = typeof s === 'object' && s?.anos_servicio ? s.anos_servicio : null;
+                              return (
+                                <Badge key={idx} variant="outline" className="text-[9px] bg-muted/30">
+                                  {sNombre}{sAnos ? ` (${sAnos}a)` : ''}
+                                </Badge>
+                              );
+                            })}
                           </div>
                         ) : (
                           <span className="text-[10px] text-muted-foreground italic">—</span>

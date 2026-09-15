@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Union
 from pydantic import BaseModel, EmailStr, Field
 
 class SubespecialidadItem(BaseModel):
@@ -19,11 +19,11 @@ class MedicoBase(BaseModel):
     telefono: Optional[str] = None
     licencia_medica: Optional[str] = None
     especialidad_id: int
-    subespecialidades: List[SubespecialidadItem] = []
+    subespecialidades: List[Union[SubespecialidadItem, Dict[str, Any], str]] = []
     color: str = "#0d9488"
     sucursal_defecto_id: Optional[int] = None
     sucursales_ids: List[int] = []
-    horario_atencion: Optional[Dict[str, Any]] = None
+    horario_atencion: Optional[Union[List[Dict[str, Any]], Dict[str, Any], List[Any]]] = None
     biografia: Optional[str] = None
     activo: bool = True
 
@@ -43,11 +43,11 @@ class MedicoUpdate(BaseModel):
     telefono: Optional[str] = None
     licencia_medica: Optional[str] = None
     especialidad_id: Optional[int] = None
-    subespecialidades: Optional[List[SubespecialidadItem]] = None
+    subespecialidades: Optional[List[Union[SubespecialidadItem, Dict[str, Any], str]]] = None
     color: Optional[str] = None
     sucursal_defecto_id: Optional[int] = None
     sucursales_ids: Optional[List[int]] = None
-    horario_atencion: Optional[Dict[str, Any]] = None
+    horario_atencion: Optional[Union[List[Dict[str, Any]], Dict[str, Any], List[Any]]] = None
     biografia: Optional[str] = None
     activo: Optional[bool] = None
     password: Optional[str] = None  # Para actualizar contraseña del usuario vinculado

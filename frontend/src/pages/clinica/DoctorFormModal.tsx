@@ -199,7 +199,25 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       setSucursalesIds(medicoToEdit.sucursales_ids || []);
       setBiografia(medicoToEdit.biografia || '');
       setActivo(medicoToEdit.activo ?? true);
-      setSubespecialidadesCarrito(medicoToEdit.subespecialidades || []);
+      const rawSubs = Array.isArray(medicoToEdit.subespecialidades) ? medicoToEdit.subespecialidades : [];
+      const normalizedSubs: SubespecialidadItem[] = rawSubs.map((s: any, idx: number) => {
+        if (typeof s === 'string') {
+          return {
+            id: `sub-${idx}-${s.toLowerCase().replace(/\s+/g, '-')}`,
+            nombre: s,
+            nivel_experiencia: 'Especialista Titular (4-8 años)',
+            anos_servicio: 1,
+          };
+        }
+        return {
+          id: s?.id || `sub-${idx}`,
+          nombre: s?.nombre || '',
+          nivel_experiencia: s?.nivel_experiencia || 'Especialista Titular (4-8 años)',
+          anos_servicio: Number(s?.anos_servicio) || 1,
+          certificado_folio: s?.certificado_folio || undefined,
+        };
+      });
+      setSubespecialidadesCarrito(normalizedSubs);
       if (medicoToEdit.horario_atencion && Array.isArray(medicoToEdit.horario_atencion)) {
         setHorarioAtencion(
           DIAS_SEMANA_DEFAULT.map((def) => {
@@ -433,8 +451,21 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
+      const rawDetail = err.response?.data?.detail;
+      let errorMsg = 'Ocurrió un error inesperado al procesar la solicitud';
+      if (typeof rawDetail === 'string') {
+        errorMsg = rawDetail;
+      } else if (Array.isArray(rawDetail)) {
+        errorMsg = rawDetail
+          .map((d: any) => (typeof d === 'string' ? d : d.msg || JSON.stringify(d)))
+          .join(' • ');
+      } else if (rawDetail && typeof rawDetail === 'object') {
+        errorMsg = rawDetail.msg || rawDetail.message || JSON.stringify(rawDetail);
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
       toast.error('Error al guardar médico', {
-        description: err.response?.data?.detail || 'Ocurrió un error inesperado',
+        description: errorMsg,
       });
     } finally {
       setSaving(false);

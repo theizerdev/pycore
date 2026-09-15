@@ -474,7 +474,7 @@ export interface Medico {
   color: string;
   sucursal_defecto_id?: number | null;
   sucursales_ids: number[];
-  horario_atencion?: Record<string, any> | null;
+  horario_atencion?: Record<string, any> | any[] | null;
   biografia?: string | null;
   activo: boolean;
   created_at?: string;
@@ -506,7 +506,7 @@ export interface MedicoCreateInput {
   color?: string;
   sucursal_defecto_id?: number | null;
   sucursales_ids?: number[];
-  horario_atencion?: Record<string, any> | null;
+  horario_atencion?: Record<string, any> | any[] | null;
   biografia?: string | null;
   activo?: boolean;
   crear_usuario?: boolean;
@@ -529,7 +529,7 @@ export interface MedicoUpdateInput {
   color?: string;
   sucursal_defecto_id?: number | null;
   sucursales_ids?: number[];
-  horario_atencion?: Record<string, any> | null;
+  horario_atencion?: Record<string, any> | any[] | null;
   biografia?: string | null;
   activo?: boolean;
   password?: string | null;

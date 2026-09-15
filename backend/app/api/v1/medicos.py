@@ -106,7 +106,7 @@ def _format_medico_response(m: Medico) -> MedicoResponse:
         color=m.color,
         sucursal_defecto_id=m.sucursal_defecto_id,
         sucursales_ids=sucursales_ids_data,
-        horario_atencion=m.horario_atencion or {},
+        horario_atencion=m.horario_atencion if m.horario_atencion is not None else {},
         biografia=m.biografia,
         activo=m.activo,
         created_at=m.created_at,
@@ -281,7 +281,12 @@ async def create_medico(
                 db.add(UsuarioSucursal(usuario_id=nuevo_usuario.id, sucursal_id=suc_id))
 
     # 5. Crear el Médico
-    subesp_dicts = [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in req.subespecialidades]
+    subesp_dicts = [
+        s.model_dump() if hasattr(s, "model_dump")
+        else (dict(s) if isinstance(s, dict)
+        else {"id": f"sub_{idx}", "nombre": str(s), "nivel_experiencia": "Especialista Titular (4-8 años)", "anos_servicio": 1})
+        for idx, s in enumerate(req.subespecialidades)
+    ]
 
     nuevo_medico = Medico(
         empresa_id=target_empresa_id,
@@ -300,7 +305,7 @@ async def create_medico(
         biografia=req.biografia.strip() if req.biografia else None,
         subespecialidades=subesp_dicts,
         sucursales_ids=req.sucursales_ids,
-        horario_atencion=req.horario_atencion or {},
+        horario_atencion=req.horario_atencion if req.horario_atencion is not None else {},
         activo=req.activo
     )
     db.add(nuevo_medico)
@@ -438,7 +443,12 @@ async def update_medico(
     if req.activo is not None:
         medico.activo = req.activo
     if req.subespecialidades is not None:
-        medico.subespecialidades = [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in req.subespecialidades]
+        medico.subespecialidades = [
+            s.model_dump() if hasattr(s, "model_dump")
+            else (dict(s) if isinstance(s, dict)
+            else {"id": f"sub_{idx}", "nombre": str(s), "nivel_experiencia": "Especialista Titular (4-8 años)", "anos_servicio": 1})
+            for idx, s in enumerate(req.subespecialidades)
+        ]
     if req.horario_atencion is not None:
         medico.horario_atencion = req.horario_atencion
 
