@@ -6,7 +6,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from app.core.database import AsyncSessionLocal, ensure_tables_exist
 from app.models.especialidad import Especialidad
 from app.models.plantilla_especialidad import EspecialidadPlantilla
@@ -42,7 +42,10 @@ async def seed_especialidades_all():
             nombre = esp_def["nombre"]
             stmt = select(Especialidad).where(
                 Especialidad.empresa_id == empresa_id,
-                func.lower(Especialidad.nombre) == nombre.lower()
+                or_(
+                    Especialidad.codigo == esp_def["codigo"],
+                    func.lower(Especialidad.nombre) == nombre.lower()
+                )
             )
             res = await db.execute(stmt)
             esp = res.scalar_one_or_none()

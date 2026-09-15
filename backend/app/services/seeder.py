@@ -584,7 +584,10 @@ async def seed_initial_data(db: AsyncSession):
     for esp_def in CATALOGO_ESPECIALIDADES_OFICIALES:
         stmt_esp = select(Especialidad).where(
             Especialidad.empresa_id == empresa.id,
-            func.lower(Especialidad.nombre) == esp_def["nombre"].lower()
+            or_(
+                Especialidad.codigo == esp_def["codigo"],
+                func.lower(Especialidad.nombre) == esp_def["nombre"].lower()
+            )
         )
         res_esp = await db.execute(stmt_esp)
         esp = res_esp.scalar_one_or_none()

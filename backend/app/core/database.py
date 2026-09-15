@@ -28,7 +28,7 @@ async def ensure_database_exists():
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False, "timeout": 30} if "sqlite" in settings.DATABASE_URL else {},
+    connect_args={"check_same_thread": False, "timeout": 30} if "sqlite" in settings.DATABASE_URL else {"charset": "utf8mb4"},
     pool_pre_ping=True
 )
 
