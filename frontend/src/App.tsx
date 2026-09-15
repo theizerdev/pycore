@@ -1,43 +1,71 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TemplateSettingsProvider } from './context/TemplateSettingsContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout } from './components/layout/AdminLayout';
-
-// Páginas
-import { Login } from './pages/auth/Login';
-import { ForgotPassword } from './pages/auth/ForgotPassword';
-import { Perfil } from './pages/auth/Perfil';
-import { Dashboard } from './pages/dashboard/Dashboard';
-import { MedicoDashboardPage } from './pages/clinica/MedicoDashboardPage';
-import { EmpresasPage } from './pages/seguridad/EmpresasPage';
-import { SucursalesPage } from './pages/seguridad/SucursalesPage';
-import { PaisesPage } from './pages/seguridad/PaisesPage';
-import { RolesPermisosPage } from './pages/seguridad/RolesPermisosPage';
-import { UsuariosPage } from './pages/seguridad/UsuariosPage';
-import { AuditoriaPage } from './pages/seguridad/AuditoriaPage';
-import { SesionesActivasPage } from './pages/monitoreo/SesionesActivasPage';
-import { SeguridadAccesosPage } from './pages/monitoreo/SeguridadAccesosPage';
-import { SaludSistemaPage } from './pages/monitoreo/SaludSistemaPage';
-import { IntegracionesHub } from './pages/integraciones/IntegracionesHub';
-import { WhatsAppCenter } from './pages/integraciones/WhatsAppCenter';
-import { MapasPagosConfig } from './pages/integraciones/MapasPagosConfig';
-import { TasasCambioPage } from './pages/integraciones/TasasCambioPage';
-import { PlanesBillingPage } from './pages/saas/PlanesBillingPage';
-import { SuscripcionesGlobalesPage } from './pages/saas/SuscripcionesGlobalesPage';
-import { PlanesAdminPage } from './pages/saas/PlanesAdminPage';
-import { SubscriptionExpiredPage } from './pages/saas/SubscriptionExpiredPage';
-import { EspecialidadesPage } from './pages/clinica/EspecialidadesPage';
-import { DoctoresPage } from './pages/clinica/DoctoresPage';
-import { PacientesPage } from './pages/clinica/PacientesPage';
-import { AgendaCalendarioPage } from './pages/clinica/AgendaCalendarioPage';
-import { PreconsultaPublicPage } from './pages/clinica/PreconsultaPublicPage';
-import { ConsultasPage } from './pages/clinica/ConsultasPage';
-import { ConsultaAtencionPage } from './pages/clinica/ConsultaAtencionPage';
-import { ServiciosPage } from './pages/administracion/ServiciosPage';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
+
+// Helper de lazy-loading tipo-seguro compatible con exportaciones por defecto y nombradas
+const lazyComponent = <P = Record<string, any>>(
+  importer: () => Promise<any>,
+  name?: string
+): React.LazyExoticComponent<React.ComponentType<P>> =>
+  React.lazy(async () => {
+    const mod = await importer();
+    return { default: (name ? mod[name] : mod.default) || mod.default || Object.values(mod)[0] };
+  });
+
+// Spinner visual moderno de carga clínica
+const PageLoadingFallback: React.FC = () => (
+  <div className="flex h-[60vh] w-full flex-col items-center justify-center gap-3">
+    <div className="relative flex items-center justify-center">
+      <div className="size-12 animate-spin rounded-full border-4 border-teal-500/20 border-t-teal-600 dark:border-teal-400/20 dark:border-t-teal-400" />
+      <div className="absolute size-3.5 rounded-full bg-teal-500 animate-pulse" />
+    </div>
+    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tracking-wide">
+      Cargando módulo...
+    </span>
+  </div>
+);
+
+// Páginas (Code-Splitting dinámico)
+const Login = lazyComponent<{ initialView?: string }>(() => import('./pages/auth/Login'), 'Login');
+const ForgotPassword = lazyComponent(() => import('./pages/auth/ForgotPassword'), 'ForgotPassword');
+const Perfil = lazyComponent(() => import('./pages/auth/Perfil'), 'Perfil');
+const Dashboard = lazyComponent(() => import('./pages/dashboard/Dashboard'), 'Dashboard');
+const MedicoDashboardPage = lazyComponent(() => import('./pages/clinica/MedicoDashboardPage'), 'MedicoDashboardPage');
+
+const EmpresasPage = lazyComponent(() => import('./pages/seguridad/EmpresasPage'), 'EmpresasPage');
+const SucursalesPage = lazyComponent(() => import('./pages/seguridad/SucursalesPage'), 'SucursalesPage');
+const PaisesPage = lazyComponent(() => import('./pages/seguridad/PaisesPage'), 'PaisesPage');
+const RolesPermisosPage = lazyComponent(() => import('./pages/seguridad/RolesPermisosPage'), 'RolesPermisosPage');
+const UsuariosPage = lazyComponent(() => import('./pages/seguridad/UsuariosPage'), 'UsuariosPage');
+const AuditoriaPage = lazyComponent(() => import('./pages/seguridad/AuditoriaPage'), 'AuditoriaPage');
+
+const SesionesActivasPage = lazyComponent(() => import('./pages/monitoreo/SesionesActivasPage'), 'SesionesActivasPage');
+const SeguridadAccesosPage = lazyComponent(() => import('./pages/monitoreo/SeguridadAccesosPage'), 'SeguridadAccesosPage');
+const SaludSistemaPage = lazyComponent(() => import('./pages/monitoreo/SaludSistemaPage'), 'SaludSistemaPage');
+
+const IntegracionesHub = lazyComponent(() => import('./pages/integraciones/IntegracionesHub'), 'IntegracionesHub');
+const WhatsAppCenter = lazyComponent(() => import('./pages/integraciones/WhatsAppCenter'), 'WhatsAppCenter');
+const MapasPagosConfig = lazyComponent(() => import('./pages/integraciones/MapasPagosConfig'), 'MapasPagosConfig');
+const TasasCambioPage = lazyComponent(() => import('./pages/integraciones/TasasCambioPage'), 'TasasCambioPage');
+
+const PlanesBillingPage = lazyComponent(() => import('./pages/saas/PlanesBillingPage'), 'PlanesBillingPage');
+const SuscripcionesGlobalesPage = lazyComponent(() => import('./pages/saas/SuscripcionesGlobalesPage'), 'SuscripcionesGlobalesPage');
+const PlanesAdminPage = lazyComponent(() => import('./pages/saas/PlanesAdminPage'), 'PlanesAdminPage');
+const SubscriptionExpiredPage = lazyComponent(() => import('./pages/saas/SubscriptionExpiredPage'), 'SubscriptionExpiredPage');
+
+const EspecialidadesPage = lazyComponent(() => import('./pages/clinica/EspecialidadesPage'), 'EspecialidadesPage');
+const DoctoresPage = lazyComponent(() => import('./pages/clinica/DoctoresPage'), 'DoctoresPage');
+const PacientesPage = lazyComponent(() => import('./pages/clinica/PacientesPage'), 'PacientesPage');
+const AgendaCalendarioPage = lazyComponent(() => import('./pages/clinica/AgendaCalendarioPage'), 'AgendaCalendarioPage');
+const PreconsultaPublicPage = lazyComponent(() => import('./pages/clinica/PreconsultaPublicPage'), 'PreconsultaPublicPage');
+const ConsultasPage = lazyComponent(() => import('./pages/clinica/ConsultasPage'), 'ConsultasPage');
+const ConsultaAtencionPage = lazyComponent<{ readOnly?: boolean }>(() => import('./pages/clinica/ConsultaAtencionPage'), 'ConsultaAtencionPage');
+const ServiciosPage = lazyComponent(() => import('./pages/administracion/ServiciosPage'), 'ServiciosPage');
 
 const HomeRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -53,8 +81,9 @@ export const App: React.FC = () => {
       <AuthProvider>
         <RegionalProvider>
           <BrowserRouter>
-          <Routes>
-            {/* Rutas Públicas */}
+            <Suspense fallback={<PageLoadingFallback />}>
+              <Routes>
+                {/* Rutas Públicas */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Login initialView="register" />} />
             <Route path="/verify-whatsapp" element={<Login initialView="verify-whatsapp" />} />
@@ -328,6 +357,7 @@ export const App: React.FC = () => {
             {/* Redirección por defecto */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          </Suspense>
           <Toaster />
         </BrowserRouter>
       </RegionalProvider>
