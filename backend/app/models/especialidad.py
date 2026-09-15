@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Text, Integer, ForeignKey
+from sqlalchemy import Column, String, Boolean, Text, Integer, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.models.base import TimestampMixin
@@ -15,6 +15,10 @@ class Especialidad(Base, TimestampMixin):
     color = Column(String(30), nullable=True, default="#0ea5e9")
     icono = Column(String(50), nullable=True, default="Stethoscope")
     activo = Column(Boolean, default=True, nullable=False)
+
+    # Configuración de pasos del wizard de atención clínica
+    pasos_activos = Column(JSON, default=lambda: [1, 2, 3, 4, 5, 6], nullable=True)
+    paso_inicial = Column(Integer, default=1, nullable=True)
 
     # Relaciones
     empresa = relationship("Empresa", lazy="selectin")

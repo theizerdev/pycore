@@ -42,6 +42,8 @@ class EspecialidadMini(BaseModel):
     codigo: Optional[str] = None
     color: Optional[str] = None
     icono: Optional[str] = None
+    pasos_activos: Optional[List[int]] = None
+    paso_inicial: Optional[int] = 1
 
     class Config:
         from_attributes = True

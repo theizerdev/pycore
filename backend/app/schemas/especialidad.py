@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,8 @@ class EspecialidadBase(BaseModel):
     icono: Optional[str] = Field("Stethoscope", max_length=50)
     activo: bool = True
     sucursal_id: Optional[int] = None
+    pasos_activos: Optional[List[int]] = Field(default_factory=lambda: [1, 2, 3, 4, 5, 6])
+    paso_inicial: Optional[int] = 1
 
 class EspecialidadCreate(EspecialidadBase):
     empresa_id: Optional[int] = None
@@ -30,6 +32,8 @@ class EspecialidadUpdate(BaseModel):
     icono: Optional[str] = Field(None, max_length=50)
     activo: Optional[bool] = None
     sucursal_id: Optional[int] = None
+    pasos_activos: Optional[List[int]] = None
+    paso_inicial: Optional[int] = None
 
 class EspecialidadResponse(EspecialidadBase):
     id: int

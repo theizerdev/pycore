@@ -332,6 +332,8 @@ export interface Especialidad {
   color?: string | null;
   icono?: string | null;
   activo: boolean;
+  pasos_activos?: number[];
+  paso_inicial?: number;
   created_at: string;
   updated_at: string;
   sucursal?: {
@@ -350,6 +352,8 @@ export interface EspecialidadCreateInput {
   activo?: boolean;
   sucursal_id?: number | null;
   empresa_id?: number | null;
+  pasos_activos?: number[];
+  paso_inicial?: number;
 }
 
 export interface EspecialidadUpdateInput {
@@ -360,6 +364,8 @@ export interface EspecialidadUpdateInput {
   icono?: string | null;
   activo?: boolean;
   sucursal_id?: number | null;
+  pasos_activos?: number[];
+  paso_inicial?: number;
 }
 
 // ── PLANTILLAS CLÍNICAS DINÁMICAS (PRECONSULTA, CONSULTA Y MÉDICOS) ────
@@ -439,6 +445,8 @@ export interface PlantillaEfectiva {
   especialidad_nombre: string;
   especialidad_color?: string | null;
   especialidad_icono?: string | null;
+  pasos_activos?: number[];
+  paso_inicial?: number;
   tiene_plantilla_base: boolean;
   widgets_activos: string[];
   preconsulta_secciones: SeccionClinica[];

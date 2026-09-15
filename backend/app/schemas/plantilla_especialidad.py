@@ -106,6 +106,8 @@ class PlantillaEfectivaResponse(BaseModel):
     especialidad_nombre: str
     especialidad_color: Optional[str] = None
     especialidad_icono: Optional[str] = None
+    pasos_activos: Optional[List[int]] = Field(default_factory=lambda: [1, 2, 3, 4, 5, 6])
+    paso_inicial: Optional[int] = 1
     tiene_plantilla_base: bool
     widgets_activos: List[str]
     

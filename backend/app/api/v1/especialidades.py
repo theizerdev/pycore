@@ -115,7 +115,9 @@ async def create_especialidad(
         descripcion=req.descripcion.strip() if req.descripcion else None,
         color=req.color or "#0ea5e9",
         icono=req.icono or "Stethoscope",
-        activo=req.activo
+        activo=req.activo,
+        pasos_activos=req.pasos_activos if req.pasos_activos else [1, 2, 3, 4, 5, 6],
+        paso_inicial=req.paso_inicial if req.paso_inicial else 1
     )
 
     db.add(nueva_esp)
@@ -276,6 +278,10 @@ async def update_especialidad(
         esp.icono = req.icono
     if req.activo is not None:
         esp.activo = req.activo
+    if req.pasos_activos is not None:
+        esp.pasos_activos = req.pasos_activos
+    if req.paso_inicial is not None:
+        esp.paso_inicial = req.paso_inicial
 
     await db.commit()
     await db.refresh(esp)
@@ -881,6 +887,8 @@ async def get_plantilla_efectiva(
         especialidad_nombre=esp.nombre,
         especialidad_color=esp.color,
         especialidad_icono=esp.icono,
+        pasos_activos=esp.pasos_activos if esp.pasos_activos else [1, 2, 3, 4, 5, 6],
+        paso_inicial=esp.paso_inicial if esp.paso_inicial else 1,
         tiene_plantilla_base=tiene_base,
         widgets_activos=widgets,
         preconsulta_secciones=merged_pre,
