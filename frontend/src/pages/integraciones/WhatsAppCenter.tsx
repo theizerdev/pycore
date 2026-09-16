@@ -6,10 +6,12 @@ import {
   type BroadcastRecipient,
   type MessagesResponse
 } from '../../api/integraciones';
-import type { WhatsAppStatus, WhatsAppTemplate, IntegracionesConfig } from '../../types';
+import { sucursalesApi } from '../../api/sucursales';
+import type { WhatsAppStatus, WhatsAppTemplate, IntegracionesConfig, Sucursal } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import {
+  Building2,
   MessageSquare,
   QrCode,
   Power,
@@ -89,6 +91,10 @@ export const WhatsAppCenter: React.FC = () => {
   const [messagesData, setMessagesData] = useState<MessagesResponse | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
 
+  // Sucursales & Sucursal Seleccionada
+  const [sucursales, setSucursales] = useState<Sucursal[]>([]);
+  const [selectedSucursalId, setSelectedSucursalId] = useState<number | null>(null);
+
   // Modal de Diagnóstico de Salud
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
@@ -158,20 +164,18 @@ export const WhatsAppCenter: React.FC = () => {
     ? `${window.location.origin}/api/v1/webhooks/whatsapp`
     : '/api/v1/webhooks/whatsapp';
 
-  // Carga inicial
-  const loadInitialData = async () => {
+  // Carga de estado para la sucursal seleccionada o empresa
+  const loadWhatsAppContext = async (sucId: number | null) => {
     try {
       setLoadingStatus(true);
-      const [cfg, wa, qStats, tpls] = await Promise.all([
-        integracionesApi.getConfig(),
-        integracionesApi.getWhatsAppStatus(),
-        integracionesApi.getQueueStats(),
-        integracionesApi.getTemplates(),
+      const [cfg, wa, qStats] = await Promise.all([
+        integracionesApi.getConfig(sucId),
+        integracionesApi.getWhatsAppStatus(sucId),
+        integracionesApi.getQueueStats(sucId),
       ]);
       setConfig(cfg);
       setStatus(wa);
       setQueueStats(qStats);
-      setTemplates(tpls);
 
       // Pre-llenar configuraciones
       setDailyLimit(cfg.whatsapp_rate_limit || 300);
@@ -182,7 +186,7 @@ export const WhatsAppCenter: React.FC = () => {
       setProxyUrl(cfg.whatsapp_proxy_url || '');
 
       setServerUrl(cfg.whatsapp_api_url || 'https://whatsapp.theizerdev.com');
-      setServerInstance(cfg.whatsapp_instance || 'empresa_1');
+      setServerInstance(cfg.whatsapp_instance || (sucId ? `sucursal_${user?.empresa_id || 1}_${sucId}` : `empresa_${user?.empresa_id || 1}`));
       setServerApiKey(cfg.whatsapp_api_key || '');
       setServerActive(cfg.whatsapp_active);
     } catch (err) {
@@ -192,17 +196,44 @@ export const WhatsAppCenter: React.FC = () => {
     }
   };
 
+  // Carga inicial (Sucursales + Plantillas + WhatsApp)
+  const loadInitialData = async () => {
+    try {
+      setLoadingStatus(true);
+      const [sucs, tpls] = await Promise.all([
+        sucursalesApi.list(),
+        integracionesApi.getTemplates(),
+      ]);
+      setSucursales(sucs);
+      setTemplates(tpls);
+
+      await loadWhatsAppContext(selectedSucursalId);
+    } catch (err) {
+      console.error('Error cargando datos iniciales:', err);
+    } finally {
+      setLoadingStatus(false);
+    }
+  };
+
   useEffect(() => {
     loadInitialData();
   }, []);
 
-  // Polling dinámico cada 4 segundos si la pestaña o WhatsApp está activa
+  // Recargar al cambiar de sucursal seleccionada
+  useEffect(() => {
+    loadWhatsAppContext(selectedSucursalId);
+    if (activeTab === 'history') {
+      fetchMessages(1, historySearch, historyStatus, selectedSucursalId);
+    }
+  }, [selectedSucursalId]);
+
+  // Polling dinámico cada 4 segundos
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
         const [wa, qStats] = await Promise.all([
-          integracionesApi.getWhatsAppStatus(),
-          integracionesApi.getQueueStats(),
+          integracionesApi.getWhatsAppStatus(selectedSucursalId),
+          integracionesApi.getQueueStats(selectedSucursalId),
         ]);
         setStatus(wa);
         setQueueStats(qStats);
@@ -211,13 +242,13 @@ export const WhatsAppCenter: React.FC = () => {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedSucursalId]);
 
   // Cargar historial
-  const fetchMessages = async (page = 1, search = historySearch, statusFilter = historyStatus) => {
+  const fetchMessages = async (page = 1, search = historySearch, statusFilter = historyStatus, sucId = selectedSucursalId) => {
     setHistoryLoading(true);
     try {
-      const data = await integracionesApi.getMessages(page, search, statusFilter, 15);
+      const data = await integracionesApi.getMessages(page, search, statusFilter, 15, sucId);
       setMessagesData(data);
     } catch (err) {
       console.error('Error cargando mensajes:', err);
@@ -228,7 +259,7 @@ export const WhatsAppCenter: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'history') {
-      fetchMessages(historyPage, historySearch, historyStatus);
+      fetchMessages(historyPage, historySearch, historyStatus, selectedSucursalId);
     }
   }, [activeTab, historyPage, historyStatus]);
 
@@ -278,7 +309,7 @@ export const WhatsAppCenter: React.FC = () => {
   const handleConnect = async () => {
     try {
       setLoadingStatus(true);
-      const res = await integracionesApi.connectWhatsApp();
+      const res = await integracionesApi.connectWhatsApp(selectedSucursalId);
       setStatus(res);
     } catch (err) {
       console.error('Error conectando WhatsApp:', err);
@@ -290,7 +321,7 @@ export const WhatsAppCenter: React.FC = () => {
   const handleSimulateScan = async () => {
     try {
       setLoadingStatus(true);
-      const res = await integracionesApi.simulateScan();
+      const res = await integracionesApi.simulateScan(selectedSucursalId);
       setStatus(res);
     } catch (err) {
       console.error('Error simulando escaneo de WhatsApp:', err);
@@ -302,7 +333,7 @@ export const WhatsAppCenter: React.FC = () => {
   const handleReconnect = async () => {
     try {
       setLoadingStatus(true);
-      const res = await integracionesApi.reconnectWhatsApp();
+      const res = await integracionesApi.reconnectWhatsApp(selectedSucursalId);
       setStatus(res);
     } catch (err) {
       console.error('Error reiniciando sesión:', err);
@@ -314,7 +345,7 @@ export const WhatsAppCenter: React.FC = () => {
   const handleDisconnect = async () => {
     try {
       setLoadingStatus(true);
-      const res = await integracionesApi.disconnectWhatsApp();
+      const res = await integracionesApi.disconnectWhatsApp(selectedSucursalId);
       setStatus(res);
     } catch (err) {
       console.error('Error desconectando WhatsApp:', err);
@@ -328,7 +359,7 @@ export const WhatsAppCenter: React.FC = () => {
     setDiagnosticOpen(true);
     setDiagnosticLoading(true);
     try {
-      const data = await integracionesApi.runDiagnostic();
+      const data = await integracionesApi.runDiagnostic(selectedSucursalId);
       setDiagnosticData(data);
     } catch (err) {
       console.error('Error ejecutando diagnóstico:', err);
@@ -350,7 +381,7 @@ export const WhatsAppCenter: React.FC = () => {
         workingHoursStart,
         workingHoursEnd,
         proxyUrl: proxyUrl.trim() || null,
-      });
+      }, selectedSucursalId);
       setAntiBanAlert('¡Políticas de protección Anti-Baneo actualizadas correctamente!');
     } catch (err: any) {
       setAntiBanAlert('Error al guardar políticas Anti-Baneo');
@@ -370,10 +401,10 @@ export const WhatsAppCenter: React.FC = () => {
         whatsapp_instance: serverInstance,
         whatsapp_api_key: serverApiKey,
         whatsapp_active: serverActive,
-      });
+      }, selectedSucursalId);
       const [newCfg, newStatus] = await Promise.all([
-        integracionesApi.getConfig(),
-        integracionesApi.getWhatsAppStatus()
+        integracionesApi.getConfig(selectedSucursalId),
+        integracionesApi.getWhatsAppStatus(selectedSucursalId)
       ]);
       setConfig(newCfg);
       setStatus(newStatus);
@@ -403,7 +434,7 @@ export const WhatsAppCenter: React.FC = () => {
     setCheckingNumber(true);
     setNumberCheckResult(null);
     try {
-      const res = await integracionesApi.checkNumber(fullPhone);
+      const res = await integracionesApi.checkNumber(fullPhone, selectedSucursalId);
       setNumberCheckResult({
         checked: true,
         exists: res.result?.exists ?? true,
@@ -458,10 +489,10 @@ export const WhatsAppCenter: React.FC = () => {
         message: testMessage,
         variables: {
           paciente: 'Carlos Rodríguez',
-          empresa: 'PyCore PRO',
+          empresa: config ? (status?.sucursal_nombre || 'PyCore PRO') : 'Empresa Principal',
           random: String(Math.floor(1000 + Math.random() * 9000)),
         },
-      });
+      }, selectedSucursalId);
       setTestAlert({ success: true, text: res.mensaje || '¡Mensaje despachado con éxito al servidor de WhatsApp!' });
     } catch (err: any) {
       setTestAlert({ success: false, text: err.response?.data?.detail || 'Error al despachar mensaje de prueba' });
@@ -582,7 +613,7 @@ export const WhatsAppCenter: React.FC = () => {
         target_type: broadcastTarget,
         message: broadcastMessage,
         delay_seconds: broadcastDelaySeconds,
-      });
+      }, selectedSucursalId);
       setBroadcastAlert({ success: true, text: res.message });
       toast.success(res.message || 'Difusión encolada exitosamente');
     } catch (err: any) {
@@ -672,6 +703,96 @@ export const WhatsAppCenter: React.FC = () => {
           )}
         </div>
       </ModuleHeader>
+
+      {/* ══ SELECTOR DE SUCURSAL / CANAL DE WHATSAPP ════════════════════ */}
+      <Card className="border-emerald-500/20 bg-linear-to-r from-emerald-500/5 via-transparent to-transparent shadow-xs">
+        <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Línea de WhatsApp: {selectedSucursalId ? (status?.sucursal_nombre || 'Sucursal Seleccionada') : 'Línea Central (Empresa)'}
+                </h3>
+                {status?.is_sucursal && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[11px] font-medium gap-1",
+                      status.using_fallback
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    )}
+                  >
+                    {status.using_fallback ? (
+                      <>
+                        <AlertTriangle className="h-3 w-3" />
+                        Fallback Activo (Usa Línea Corporativa)
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-3 w-3" />
+                        Línea Propia Dedicada
+                      </>
+                    )}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {selectedSucursalId
+                  ? 'Gestiona la conexión y envíos de esta sede médica. Si no vinculas una línea propia, usará automáticamente el WhatsApp de la empresa.'
+                  : 'Esta es la línea principal corporativa. Sirve de respaldo automático para todas las sucursales sin número propio.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <Label htmlFor="sucursal-selector" className="text-xs text-muted-foreground whitespace-nowrap">
+              Gestionar Sede:
+            </Label>
+            <Select
+              value={selectedSucursalId !== null ? String(selectedSucursalId) : 'empresa'}
+              onValueChange={(val) => {
+                const newId = val === 'empresa' ? null : Number(val);
+                setSelectedSucursalId(newId);
+              }}
+            >
+              <SelectTrigger id="sucursal-selector" className="w-[230px] bg-background text-xs h-9">
+                <SelectValue placeholder="Seleccionar sede" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="empresa" className="text-xs">
+                  🏢 Línea Central (Empresa)
+                </SelectItem>
+                {sucursales.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)} className="text-xs">
+                    📍 {s.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ══ ALERT BANNER: FALLBACK ACTIVO EN SUCURSAL ════════════════════ */}
+      {status?.is_sucursal && status?.using_fallback && (
+        <Card className="border-amber-500/40 bg-amber-500/10 dark:bg-amber-950/30 shadow-xs">
+          <CardContent className="p-3.5 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs space-y-1 text-amber-900 dark:text-amber-200">
+              <p className="font-semibold">
+                La sucursal "{status.sucursal_nombre}" está funcionando bajo la Línea Central de la Empresa.
+              </p>
+              <p className="text-amber-800/90 dark:text-amber-300/90">
+                Los recordatorios y notificaciones de citas de esta sede se están enviando transparentemente a través del WhatsApp corporativo. Para que esta sede tenga su propio número de WhatsApp dedicado, escanea el código QR a continuación.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ══ ALERT BANNER: SESIÓN DESCONECTADA ═══════════════════════════ */}
       {!isConnected && (

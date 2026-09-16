@@ -33,6 +33,7 @@ from app.schemas.cita import (
     BloqueoAgendaResponse,
 )
 from app.services.whatsapp_service import WhatsAppService
+from app.services.whatsapp_resolver import resolve_whatsapp_service
 from app.api.v1.medicos import format_clean_whatsapp_number
 
 logger = logging.getLogger(__name__)
@@ -379,14 +380,6 @@ async def enviar_recordatorios_proximas(
     cod_pais = get_empresa_codigo_pais(empresa_obj)
     nombre_clinica = empresa_obj.nombre if empresa_obj else "Centro Médico"
 
-    wa_service = WhatsAppService(
-        api_url=empresa_obj.whatsapp_api_url or "https://whatsapp.theizerdev.com",
-        api_key=empresa_obj.whatsapp_api_key,
-        instance_name=empresa_obj.whatsapp_instance or f"empresa_{empresa_obj.id}",
-        company_id=empresa_obj.id,
-        country_code=cod_pais
-    )
-
     enviados_count = 0
     fecha_str = target_fecha.strftime("%d/%m/%Y")
 
@@ -402,9 +395,14 @@ async def enviar_recordatorios_proximas(
         serv_text = f"🩺 *Servicio:* {cita.servicio.nombre}\n" if cita.servicio else f"🩺 *Especialidad:* {cita.especialidad.nombre}\n"
         monto_text = f"💳 *Arancel:* ${cita.precio_estimado:.2f}\n" if (cita.precio_estimado and cita.precio_estimado > 0) else ""
 
+        wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(
+            db, cita.empresa_id, cita.sucursal_id
+        )
+        clinica_nombre = resolved_target.nombre if is_sucursal else nombre_clinica
+
         mensaje = (
             f"👋 ¡Hola *{cita.paciente.nombres}*!\n\n"
-            f"⏰ Le recordamos que mañana *{fecha_str}* tiene cita programada en *{nombre_clinica}*:\n\n"
+            f"⏰ Le recordamos que mañana *{fecha_str}* tiene cita programada en *{clinica_nombre}*:\n\n"
             f"{serv_text}"
             f"👨‍⚕️ *Especialista:* Dr(a). {doc_name}\n"
             f"⏰ *Hora:* {cita.hora_inicio}\n"
@@ -427,6 +425,7 @@ async def enviar_recordatorios_proximas(
                 enviados_count += 1
                 db.add(WhatsAppMessage(
                     empresa_id=cita.empresa_id,
+                    sucursal_id=resolved_target.id if is_sucursal else None,
                     recipient_phone=clean_phone,
                     recipient_name=f"{cita.paciente.nombres} {cita.paciente.apellidos}",
                     message_content=mensaje,
@@ -642,12 +641,8 @@ async def create_cita(
                     f"¡Cuidamos de su salud! 🩺✨"
                 )
 
-                wa_service = WhatsAppService(
-                    api_url=empresa_obj.whatsapp_api_url or "https://whatsapp.theizerdev.com",
-                    api_key=empresa_obj.whatsapp_api_key,
-                    instance_name=empresa_obj.whatsapp_instance or f"empresa_{empresa_obj.id}",
-                    company_id=empresa_obj.id,
-                    country_code=cod_pais_empresa
+                wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(
+                    db, empresa_id, nueva_cita.sucursal_id
                 )
 
                 send_res = await wa_service.send_message(
@@ -661,6 +656,7 @@ async def create_cita(
                     nueva_cita.whatsapp_notificado_at = datetime.now()
                     db.add(WhatsAppMessage(
                         empresa_id=empresa_id,
+                        sucursal_id=resolved_target.id if is_sucursal else None,
                         recipient_phone=clean_phone,
                         recipient_name=f"{paciente.nombres} {paciente.apellidos}",
                         message_content=mensaje_ws,
@@ -919,12 +915,8 @@ async def cambiar_estado_cita(
                         f"¡Pronto será llamado a su consulta médica! 🩺✨"
                     )
 
-                    wa_service = WhatsAppService(
-                        api_url=empresa_obj.whatsapp_api_url or "https://whatsapp.theizerdev.com",
-                        api_key=empresa_obj.whatsapp_api_key,
-                        instance_name=empresa_obj.whatsapp_instance or f"empresa_{empresa_obj.id}",
-                        company_id=empresa_obj.id,
-                        country_code=cod_pais_empresa
+                    wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(
+                        db, cita.empresa_id, cita.sucursal_id
                     )
 
                     send_res = await wa_service.send_message(
@@ -940,6 +932,7 @@ async def cambiar_estado_cita(
                         db.add(
                             WhatsAppMessage(
                                 empresa_id=cita.empresa_id,
+                                sucursal_id=resolved_target.id if is_sucursal else None,
                                 recipient_phone=clean_phone,
                                 recipient_name=f"{paciente.nombres} {paciente.apellidos}",
                                 message_content=mensaje_ws,
@@ -951,6 +944,7 @@ async def cambiar_estado_cita(
                         db.add(
                             WhatsAppMessage(
                                 empresa_id=cita.empresa_id,
+                                sucursal_id=resolved_target.id if is_sucursal else None,
                                 recipient_phone=clean_phone,
                                 recipient_name=f"{paciente.nombres} {paciente.apellidos}",
                                 message_content=mensaje_ws,
@@ -1081,12 +1075,8 @@ async def notificar_whatsapp(
         f"¡Cuidamos de su salud! 🩺✨"
     )
 
-    wa_service = WhatsAppService(
-        api_url=cita.empresa.whatsapp_api_url or "https://whatsapp.theizerdev.com" if cita.empresa else "https://whatsapp.theizerdev.com",
-        api_key=cita.empresa.whatsapp_api_key if cita.empresa else None,
-        instance_name=cita.empresa.whatsapp_instance or f"empresa_{cita.empresa_id}" if cita.empresa else f"empresa_{cita.empresa_id}",
-        company_id=cita.empresa_id,
-        country_code=cod_pais_empresa
+    wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(
+        db, cita.empresa_id, cita.sucursal_id
     )
 
     send_res = await wa_service.send_message(
@@ -1103,6 +1093,7 @@ async def notificar_whatsapp(
         db.add(
             WhatsAppMessage(
                 empresa_id=cita.empresa_id,
+                sucursal_id=resolved_target.id if is_sucursal else None,
                 recipient_phone=clean_phone,
                 recipient_name=f"{paciente.nombres} {paciente.apellidos}",
                 message_content=mensaje,

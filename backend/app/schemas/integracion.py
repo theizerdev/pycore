@@ -18,12 +18,18 @@ class IntegracionesConfigResponse(BaseModel):
     whatsapp_api_key: Optional[str] = None
     whatsapp_instance: Optional[str] = None
     whatsapp_connected: bool = False
+    whatsapp_status: Optional[str] = "disconnected"
+    whatsapp_phone: Optional[str] = None
     whatsapp_rate_limit: int = 300
     whatsapp_warmup_mode: bool = True
     whatsapp_working_hours_enabled: bool = True
     whatsapp_working_hours_start: str = "08:00"
     whatsapp_working_hours_end: str = "20:00"
     whatsapp_proxy_url: Optional[str] = None
+    is_sucursal: bool = False
+    sucursal_id: Optional[int] = None
+    sucursal_nombre: Optional[str] = None
+    using_fallback: bool = False
 
     # Pasarelas
     paypal_active: bool = False
@@ -162,6 +168,10 @@ class WhatsAppStatusResponse(BaseModel):
     instance_name: str
     phone_number: Optional[str] = None
     last_sync: Optional[datetime] = None
+    is_sucursal: bool = False
+    sucursal_id: Optional[int] = None
+    sucursal_nombre: Optional[str] = None
+    using_fallback: bool = False
 
 
 class WhatsAppSendTestRequest(BaseModel):
@@ -205,6 +215,7 @@ class WhatsAppTemplateResponse(BaseModel):
 class WhatsAppMessageResponse(BaseModel):
     id: int
     empresa_id: int
+    sucursal_id: Optional[int] = None
     recipient_phone: str
     recipient_name: Optional[str] = None
     message_content: str

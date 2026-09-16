@@ -22,6 +22,7 @@ class WhatsAppMessage(Base, TimestampMixin):
     __tablename__ = "whatsapp_messages"
 
     empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id", ondelete="SET NULL"), nullable=True, index=True)
     recipient_phone = Column(String(30), nullable=False, index=True)
     recipient_name = Column(String(120), nullable=True)
     message_content = Column(Text, nullable=False)
@@ -34,5 +35,6 @@ class WhatsAppMessage(Base, TimestampMixin):
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0, nullable=False)
 
-    # Relación
+    # Relaciones
     empresa = relationship("Empresa", back_populates="whatsapp_messages")
+    sucursal = relationship("Sucursal", lazy="selectin")

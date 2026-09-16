@@ -272,6 +272,10 @@ export interface IntegracionesConfig {
 
   bcv_rate_cached?: number | null;
   bcv_rate_updated_at?: string | null;
+  is_sucursal?: boolean;
+  sucursal_id?: number | null;
+  sucursal_nombre?: string | null;
+  using_fallback?: boolean;
 }
 
 export interface BcvRateData {
@@ -291,6 +295,10 @@ export interface WhatsAppStatus {
   instance_name: string;
   phone_number?: string | null;
   last_sync?: string | null;
+  sucursal_id?: number | null;
+  is_sucursal?: boolean;
+  sucursal_nombre?: string | null;
+  using_fallback?: boolean;
 }
 
 export interface WhatsAppTemplate {
@@ -308,6 +316,7 @@ export interface WhatsAppTemplate {
 export interface WhatsAppMessage {
   id: number;
   empresa_id: number;
+  sucursal_id?: number | null;
   recipient_phone: string;
   recipient_name?: string | null;
   message_content: string;

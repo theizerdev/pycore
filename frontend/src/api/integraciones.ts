@@ -60,8 +60,9 @@ export interface MessagesResponse {
 
 export const integracionesApi = {
   // Configuración General
-  getConfig: async (): Promise<IntegracionesConfig> => {
-    const res = await client.get<IntegracionesConfig>('/integraciones');
+  getConfig: async (sucursal_id?: number | null): Promise<IntegracionesConfig> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.get<IntegracionesConfig>(`/integraciones${params}`);
     return res.data;
   },
 
@@ -103,39 +104,46 @@ export const integracionesApi = {
   },
 
   // WhatsApp Conexión & Ciclo de Vida
-  getWhatsAppStatus: async (): Promise<WhatsAppStatus> => {
-    const res = await client.get<WhatsAppStatus>('/integraciones/whatsapp/status');
+  getWhatsAppStatus: async (sucursal_id?: number | null): Promise<WhatsAppStatus> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.get<WhatsAppStatus>(`/integraciones/whatsapp/status${params}`);
     return res.data;
   },
 
-  connectWhatsApp: async (): Promise<WhatsAppStatus> => {
-    const res = await client.post<WhatsAppStatus>('/integraciones/whatsapp/connect');
+  connectWhatsApp: async (sucursal_id?: number | null): Promise<WhatsAppStatus> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.post<WhatsAppStatus>(`/integraciones/whatsapp/connect${params}`);
     return res.data;
   },
 
-  reconnectWhatsApp: async (): Promise<WhatsAppStatus> => {
-    const res = await client.post<WhatsAppStatus>('/integraciones/whatsapp/reconnect');
+  reconnectWhatsApp: async (sucursal_id?: number | null): Promise<WhatsAppStatus> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.post<WhatsAppStatus>(`/integraciones/whatsapp/reconnect${params}`);
     return res.data;
   },
 
-  disconnectWhatsApp: async (): Promise<WhatsAppStatus> => {
-    const res = await client.post<WhatsAppStatus>('/integraciones/whatsapp/disconnect');
+  disconnectWhatsApp: async (sucursal_id?: number | null): Promise<WhatsAppStatus> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.post<WhatsAppStatus>(`/integraciones/whatsapp/disconnect${params}`);
     return res.data;
   },
 
-  runDiagnostic: async (): Promise<WhatsAppDiagnostic> => {
-    const res = await client.get<WhatsAppDiagnostic>('/integraciones/whatsapp/diagnostic');
+  runDiagnostic: async (sucursal_id?: number | null): Promise<WhatsAppDiagnostic> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.get<WhatsAppDiagnostic>(`/integraciones/whatsapp/diagnostic${params}`);
     return res.data;
   },
 
   // Anti-Baneo & Estadísticas de Cola
-  getQueueStats: async (): Promise<QueueStats> => {
-    const res = await client.get<QueueStats>('/integraciones/whatsapp/queue-stats');
+  getQueueStats: async (sucursal_id?: number | null): Promise<QueueStats> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.get<QueueStats>(`/integraciones/whatsapp/queue-stats${params}`);
     return res.data;
   },
 
-  simulateScan: async (): Promise<WhatsAppStatus> => {
-    const res = await client.post<WhatsAppStatus>('/integraciones/whatsapp/simulate-scan');
+  simulateScan: async (sucursal_id?: number | null): Promise<WhatsAppStatus> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.post<WhatsAppStatus>(`/integraciones/whatsapp/simulate-scan${params}`);
     return res.data;
   },
 
@@ -146,8 +154,9 @@ export const integracionesApi = {
     workingHoursStart: string;
     workingHoursEnd: string;
     proxyUrl?: string | null;
-  }): Promise<{ success: boolean; mensaje: string }> => {
-    const res = await client.post('/integraciones/whatsapp/antiban', data);
+  }, sucursal_id?: number | null): Promise<{ success: boolean; mensaje: string }> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.post(`/integraciones/whatsapp/antiban${params}`, data);
     return res.data;
   },
 
@@ -162,14 +171,16 @@ export const integracionesApi = {
     whatsapp_instance: string;
     whatsapp_api_key?: string;
     whatsapp_active: boolean;
-  }): Promise<{ success: boolean; mensaje: string }> => {
-    const res = await client.put('/integraciones/whatsapp/update', data);
+  }, sucursal_id?: number | null): Promise<{ success: boolean; mensaje: string }> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.put(`/integraciones/whatsapp/update${params}`, data);
     return res.data;
   },
 
   // Verificador de Números & Spintax
-  checkNumber: async (phone: string): Promise<{ success: boolean; result?: { exists: boolean; jid: string; phone: string }; error?: string }> => {
-    const res = await client.post('/integraciones/whatsapp/check-number', { phone });
+  checkNumber: async (phone: string, sucursal_id?: number | null): Promise<{ success: boolean; result?: { exists: boolean; jid: string; phone: string }; error?: string }> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.post(`/integraciones/whatsapp/check-number${params}`, { phone });
     return res.data;
   },
 
@@ -178,8 +189,9 @@ export const integracionesApi = {
     return res.data;
   },
 
-  sendWhatsAppTest: async (data: { phone: string; message: string; sync?: boolean; variables?: Record<string, any> }): Promise<{ success: boolean; mensaje: string; resultado: any }> => {
-    const res = await client.post('/integraciones/whatsapp/send-test', data);
+  sendWhatsAppTest: async (data: { phone: string; message: string; sync?: boolean; variables?: Record<string, any> }, sucursal_id?: number | null): Promise<{ success: boolean; mensaje: string; resultado: any }> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.post(`/integraciones/whatsapp/send-test${params}`, data);
     return res.data;
   },
 
@@ -211,8 +223,9 @@ export const integracionesApi = {
   },
 
   // Bitácora & Historial
-  getMessages: async (page: number = 1, search: string = '', status: string = 'all', limit: number = 15): Promise<MessagesResponse> => {
-    const res = await client.get<MessagesResponse>(`/integraciones/whatsapp/mensajes?page=${page}&search=${encodeURIComponent(search)}&status=${status}&limit=${limit}`);
+  getMessages: async (page: number = 1, search: string = '', status: string = 'all', limit: number = 15, sucursal_id?: number | null): Promise<MessagesResponse> => {
+    const sucursalParam = sucursal_id ? `&sucursal_id=${sucursal_id}` : '';
+    const res = await client.get<MessagesResponse>(`/integraciones/whatsapp/mensajes?page=${page}&search=${encodeURIComponent(search)}&status=${status}&limit=${limit}${sucursalParam}`);
     return res.data;
   },
 
@@ -233,8 +246,9 @@ export const integracionesApi = {
     message: string;
     delay_seconds: number;
     variables?: Record<string, any>;
-  }): Promise<{ success: boolean; dispatched_count: number; message: string }> => {
-    const res = await client.post('/integraciones/whatsapp/broadcast/dispatch', data);
+  }, sucursal_id?: number | null): Promise<{ success: boolean; dispatched_count: number; message: string }> => {
+    const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
+    const res = await client.post(`/integraciones/whatsapp/broadcast/dispatch${params}`, data);
     return res.data;
   },
 };
