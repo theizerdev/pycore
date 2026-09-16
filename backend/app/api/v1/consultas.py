@@ -289,6 +289,7 @@ async def get_consulta(
             .limit(1)
         )
         res_prev = await db.execute(stmt_prev)
+        cp = res_prev.scalar_one_or_none()
         if cp:
             med_nombre = f"{cp.medico.nombres} {cp.medico.apellidos}" if cp.medico else "Médico"
             esp_nombre = cp.especialidad.nombre if cp.especialidad else "Especialidad"

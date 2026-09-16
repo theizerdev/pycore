@@ -56,6 +56,18 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+import time
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    process_time = (time.perf_counter() - start_time) * 1000
+    response.headers["X-Process-Time-Ms"] = f"{process_time:.1f}"
+    if process_time > 200:
+        print(f"[SLOW ENDPOINT {process_time:.0f}ms] {request.method} {request.url.path}?{request.url.query}")
+    return response
+
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
