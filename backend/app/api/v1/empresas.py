@@ -37,15 +37,25 @@ async def create_empresa(
 
     empresa = Empresa(**req.model_dump())
     
-    # Asignar Plan Prueba por defecto (7 Días Gratis) si no es la Empresa 1
-    stmt_prueba = select(Plan).where(Plan.codigo == 'prueba', Plan.activo == True)
-    res_prueba = await db.execute(stmt_prueba)
-    plan_prueba = res_prueba.scalar_one_or_none()
-    
-    if plan_prueba:
-        empresa.plan_id = plan_prueba.id
-        empresa.plan_estado = 'prueba'
-        empresa.plan_vencimiento = datetime.now() + timedelta(days=7)
+    # Asignar Plan si no viene especificado en la solicitud
+    if not empresa.plan_id:
+        stmt_prueba = select(Plan).where(Plan.codigo == 'prueba', Plan.activo == True)
+        res_prueba = await db.execute(stmt_prueba)
+        plan_asignado = res_prueba.scalar_one_or_none()
+        
+        if not plan_asignado:
+            stmt_fallback = select(Plan).where(Plan.activo == True).order_by(Plan.orden.asc()).limit(1)
+            res_fallback = await db.execute(stmt_fallback)
+            plan_asignado = res_fallback.scalar_one_or_none()
+
+        if plan_asignado:
+            empresa.plan_id = plan_asignado.id
+            if plan_asignado.codigo == 'prueba':
+                empresa.plan_estado = 'prueba'
+                empresa.plan_vencimiento = datetime.now() + timedelta(days=7)
+            else:
+                empresa.plan_estado = 'activo'
+                empresa.plan_vencimiento = datetime.now() + timedelta(days=30)
 
     db.add(empresa)
     await db.commit()

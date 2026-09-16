@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, or_
 from app.models.pais import Pais
+from app.models.plan import Plan
 from app.models.empresa import Empresa
 from app.models.sucursal import Sucursal
 from app.models.permiso import Permiso
@@ -370,6 +371,127 @@ PAISES_INICIALES = [
     }
 ]
 
+PLANES_INICIALES = [
+    {
+        "codigo": "prueba",
+        "nombre": "Prueba Gratuita (7 Días)",
+        "descripcion": "Acceso inicial de prueba con herramientas clínicas básicas para evaluar la plataforma.",
+        "precio_regular_mensual": 0.0,
+        "precio_promocional_mensual": 0.0,
+        "precio_mensual": 0.0,
+        "precio_anual": 0.0,
+        "precio_3_meses": 0.0,
+        "precio_6_meses": 0.0,
+        "precio_12_meses": 0.0,
+        "sucursales_incluidas": 1,
+        "precio_sucursal_extra_mensual": 15.0,
+        "max_usuarios": 2,
+        "max_sucursales": 1,
+        "max_mensajes_whatsapp": 50,
+        "tiene_promocion": False,
+        "badge_promocion": None,
+        "destacado": False,
+        "orden": 1,
+        "activo": True,
+        "modulos_permitidos": [
+            "dashboard", "pacientes", "citas", "consultas", "recetas", "turnero"
+        ]
+    },
+    {
+        "codigo": "basico",
+        "nombre": "Plan Básico",
+        "descripcion": "Ideal para consultorios independientes, consultas privadas y médicos particulares con 1 sede.",
+        "precio_regular_mensual": 25.0,
+        "precio_promocional_mensual": 19.99,
+        "precio_mensual": 25.0,
+        "precio_3_meses": 65.0,
+        "precio_6_meses": 120.0,
+        "precio_12_meses": 220.0,
+        "precio_anual": 220.0,
+        "sucursales_incluidas": 1,
+        "precio_sucursal_extra_mensual": 15.0,
+        "max_usuarios": 3,
+        "max_sucursales": 1,
+        "max_mensajes_whatsapp": 250,
+        "tiene_promocion": False,
+        "badge_promocion": None,
+        "destacado": False,
+        "orden": 2,
+        "activo": True,
+        "modulos_permitidos": [
+            "dashboard", "pacientes", "citas", "consultas", "recetas", "turnero", "tasas"
+        ]
+    },
+    {
+        "codigo": "pro",
+        "nombre": "Plan Profesional",
+        "descripcion": "La solución integral para policlínicas y centros médicos con múltiples especialistas y sedes.",
+        "precio_regular_mensual": 49.0,
+        "precio_promocional_mensual": 39.0,
+        "precio_mensual": 49.0,
+        "precio_3_meses": 135.0,
+        "precio_6_meses": 250.0,
+        "precio_12_meses": 450.0,
+        "precio_anual": 450.0,
+        "sucursales_incluidas": 2,
+        "precio_sucursal_extra_mensual": 12.0,
+        "max_usuarios": 10,
+        "max_sucursales": 3,
+        "max_mensajes_whatsapp": 1500,
+        "tiene_promocion": True,
+        "badge_promocion": "MÁS POPULAR",
+        "destacado": True,
+        "orden": 3,
+        "activo": True,
+        "modulos_permitidos": [
+            "dashboard", "pacientes", "citas", "consultas", "recetas", "turnero", "teleconsulta", "whatsapp", "tasas", "auditoria"
+        ]
+    },
+    {
+        "codigo": "enterprise",
+        "nombre": "Plan Corporativo Enterprise",
+        "descripcion": "Acceso total sin límites para redes de clínicas, hospitales y centros de alta demanda con máxima capacidad.",
+        "precio_regular_mensual": 99.0,
+        "precio_promocional_mensual": 89.0,
+        "precio_mensual": 99.0,
+        "precio_3_meses": 270.0,
+        "precio_6_meses": 500.0,
+        "precio_12_meses": 950.0,
+        "precio_anual": 950.0,
+        "sucursales_incluidas": 5,
+        "precio_sucursal_extra_mensual": 10.0,
+        "max_usuarios": 999,
+        "max_sucursales": 999,
+        "max_mensajes_whatsapp": 10000,
+        "tiene_promocion": False,
+        "badge_promocion": "ILIMITADO",
+        "destacado": False,
+        "orden": 4,
+        "activo": True,
+        "modulos_permitidos": [
+            "dashboard", "pacientes", "citas", "consultas", "recetas", "turnero", "teleconsulta", "whatsapp", "tasas", "auditoria", "reportes_avanzados", "api_externa"
+        ]
+    }
+]
+
+async def seed_planes_data(db: AsyncSession) -> dict:
+    """Crea o actualiza los planes del sistema SaaS de forma idempotente."""
+    planes_map = {}
+    for p_data in PLANES_INICIALES:
+        stmt = select(Plan).where(Plan.codigo == p_data["codigo"])
+        res = await db.execute(stmt)
+        plan = res.scalar_one_or_none()
+        if not plan:
+            plan = Plan(**p_data)
+            db.add(plan)
+            await db.flush()
+        else:
+            for k, v in p_data.items():
+                setattr(plan, k, v)
+            await db.flush()
+        planes_map[p_data["codigo"]] = plan
+    return planes_map
+
 async def seed_initial_data(db: AsyncSession):
     # 0. Crear o actualizar Países
     paises_map = {}
@@ -490,6 +612,11 @@ async def seed_initial_data(db: AsyncSession):
                     rol.permisos.append(p)
         roles_map[r_data["slug"]] = rol
 
+    # 2.5 Crear o actualizar Planes de Suscripción SaaS
+    planes_map = await seed_planes_data(db)
+    plan_master = planes_map.get("enterprise")
+    plan_master_id = plan_master.id if plan_master else None
+
     # 3. Crear Empresa Inicial
     stmt_emp = select(Empresa).where(
         or_(
@@ -511,6 +638,9 @@ async def seed_initial_data(db: AsyncSession):
             direccion="Av. Principal de las Mercedes, Torre Empresarial Titanium, Piso 5",
             pais_id=default_pais_id,
             pais_telefono_id=default_pais_id,
+            plan_id=plan_master_id,
+            plan_estado="activo",
+            plan_vencimiento=None,
             activo=True
         )
         db.add(empresa)
@@ -522,7 +652,20 @@ async def seed_initial_data(db: AsyncSession):
         if not empresa.pais_id:
             empresa.pais_id = default_pais_id
             empresa.pais_telefono_id = default_pais_id
-            await db.flush()
+        if not empresa.plan_id and plan_master_id:
+            empresa.plan_id = plan_master_id
+            empresa.plan_estado = "activo"
+            empresa.plan_vencimiento = None
+        await db.flush()
+
+    # Garantizar que cualquier otra empresa preexistente tenga un plan asignado
+    stmt_otras = select(Empresa).where(Empresa.id != empresa.id, Empresa.plan_id.is_(None))
+    res_otras = await db.execute(stmt_otras)
+    plan_default = planes_map.get("prueba") or planes_map.get("basico") or list(planes_map.values())[0]
+    for emp_otra in res_otras.scalars().all():
+        emp_otra.plan_id = plan_default.id
+        emp_otra.plan_estado = "prueba"
+        await db.flush()
 
     # 4. Crear Sucursales Iniciales
     stmt_suc1 = select(Sucursal).where(Sucursal.codigo == "SC-01")

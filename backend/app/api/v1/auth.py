@@ -257,6 +257,10 @@ async def register_public_empresa(
     stmt_prueba = select(Plan).where(Plan.codigo == 'prueba', Plan.activo == True)
     res_prueba = await db.execute(stmt_prueba)
     plan_prueba = res_prueba.scalar_one_or_none()
+    if not plan_prueba:
+        stmt_fb = select(Plan).where(Plan.activo == True).order_by(Plan.orden.asc()).limit(1)
+        res_fb = await db.execute(stmt_fb)
+        plan_prueba = res_fb.scalar_one_or_none()
 
     # 0. Resolver teléfono (soporta req.telefono y req.company_phone de FixSale POS)
     phone_number = (req.telefono or req.company_phone or "").strip() or None
