@@ -914,6 +914,15 @@ export const ConsultasPage: React.FC = () => {
                               Finalizada
                             </Badge>
                           )}
+                          {consulta.es_subsecuente ? (
+                            <Badge className="bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30 text-[9.5px] py-0 px-1.5 font-semibold">
+                              Control
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[9.5px] py-0 px-1.5 font-semibold">
+                              1ra Vez
+                            </Badge>
+                          )}
                         </div>
                       </td>
 
@@ -1287,7 +1296,7 @@ export const ConsultasPage: React.FC = () => {
                 <CardContent className="p-4 space-y-3.5 flex-1 flex flex-col justify-between">
                   {/* Fila Superior: Hora, Código y Semáforo */}
                   <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <Clock className="size-3.5 text-muted-foreground" />
                       <span className="font-bold text-foreground text-xs">
                         {formatHora(consulta.fecha_consulta)}
@@ -1296,6 +1305,15 @@ export const ConsultasPage: React.FC = () => {
                         <span className="font-mono text-[10px] text-muted-foreground pl-1">
                           #{consulta.codigo}
                         </span>
+                      )}
+                      {consulta.es_subsecuente ? (
+                        <Badge className="bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30 text-[9.5px] py-0 px-1.5 font-semibold">
+                          Control
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[9.5px] py-0 px-1.5 font-semibold">
+                          1ra Vez
+                        </Badge>
                       )}
                     </div>
 

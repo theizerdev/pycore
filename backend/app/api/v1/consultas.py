@@ -258,48 +258,58 @@ async def get_consulta(
     if not consulta:
         raise HTTPException(status_code=404, detail="Consulta médica no encontrada")
 
-    # Buscar consultas anteriores finalizadas de este paciente
-    stmt_prev = (
-        select(ConsultaMedica)
-        .options(
-            selectinload(ConsultaMedica.medico),
-            selectinload(ConsultaMedica.especialidad)
-        )
-        .where(
-            ConsultaMedica.paciente_id == consulta.paciente_id,
-            ConsultaMedica.id != consulta.id,
-            ConsultaMedica.fecha_consulta <= consulta.fecha_consulta,
-            ConsultaMedica.estado == "finalizada"
-        )
-        .order_by(ConsultaMedica.fecha_consulta.desc())
+    # Contar eficientemente cuántas consultas finalizadas previas tiene este paciente
+    stmt_count = select(func.count(ConsultaMedica.id)).where(
+        ConsultaMedica.paciente_id == consulta.paciente_id,
+        ConsultaMedica.id != consulta.id,
+        ConsultaMedica.fecha_consulta <= consulta.fecha_consulta,
+        ConsultaMedica.estado == "finalizada"
     )
-    res_prev = await db.execute(stmt_prev)
-    prev_consultas = res_prev.scalars().all()
+    res_count = await db.execute(stmt_count)
+    total_previas = res_count.scalar() or 0
 
-    total_previas = len(prev_consultas)
     consulta.es_subsecuente = total_previas > 0
     consulta.total_consultas_previas = total_previas
 
-    if prev_consultas:
-        cp = prev_consultas[0]
-        med_nombre = f"{cp.medico.nombres} {cp.medico.apellidos}" if cp.medico else "Médico"
-        esp_nombre = cp.especialidad.nombre if cp.especialidad else "Especialidad"
-        consulta.consulta_previa = ConsultaPreviaResumen(
-            id=cp.id,
-            codigo=cp.codigo,
-            fecha_consulta=cp.fecha_consulta,
-            medico_nombre=med_nombre,
-            especialidad_nombre=esp_nombre,
-            motivo_consulta=cp.motivo_consulta,
-            enfermedad_actual=cp.enfermedad_actual,
-            diagnostico_principal=cp.diagnostico_principal,
-            diagnosticos_secundarios=cp.diagnosticos_secundarios or [],
-            plan_tratamiento=cp.plan_tratamiento,
-            indicaciones_generales=cp.indicaciones_generales,
-            signos_vitales=cp.signos_vitales or {},
-            receta_medica=cp.receta_medica or [],
-            estudios_solicitados=cp.estudios_solicitados or []
+    # Si existen consultas previas, cargar únicamente la más reciente (limit 1)
+    if total_previas > 0:
+        stmt_prev = (
+            select(ConsultaMedica)
+            .options(
+                selectinload(ConsultaMedica.medico),
+                selectinload(ConsultaMedica.especialidad)
+            )
+            .where(
+                ConsultaMedica.paciente_id == consulta.paciente_id,
+                ConsultaMedica.id != consulta.id,
+                ConsultaMedica.fecha_consulta <= consulta.fecha_consulta,
+                ConsultaMedica.estado == "finalizada"
+            )
+            .order_by(ConsultaMedica.fecha_consulta.desc())
+            .limit(1)
         )
+        res_prev = await db.execute(stmt_prev)
+        if cp:
+            med_nombre = f"{cp.medico.nombres} {cp.medico.apellidos}" if cp.medico else "Médico"
+            esp_nombre = cp.especialidad.nombre if cp.especialidad else "Especialidad"
+            consulta.consulta_previa = ConsultaPreviaResumen(
+                id=cp.id,
+                codigo=cp.codigo,
+                fecha_consulta=cp.fecha_consulta,
+                medico_nombre=med_nombre,
+                especialidad_nombre=esp_nombre,
+                motivo_consulta=cp.motivo_consulta,
+                enfermedad_actual=cp.enfermedad_actual,
+                diagnostico_principal=cp.diagnostico_principal,
+                diagnosticos_secundarios=cp.diagnosticos_secundarios or [],
+                plan_tratamiento=cp.plan_tratamiento,
+                indicaciones_generales=cp.indicaciones_generales,
+                signos_vitales=cp.signos_vitales or {},
+                receta_medica=cp.receta_medica or [],
+                estudios_solicitados=cp.estudios_solicitados or []
+            )
+        else:
+            consulta.consulta_previa = None
     else:
         consulta.consulta_previa = None
 

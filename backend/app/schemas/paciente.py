@@ -81,16 +81,16 @@ class ConsultaResumenResponse(BaseModel):
     id: int
     fecha_consulta: datetime
     motivo_consulta: str
-    medico_id: int
+    medico_id: Optional[int] = None
     medico_nombre: Optional[str] = None
-    especialidad_id: int
+    especialidad_id: Optional[int] = None
     especialidad_nombre: Optional[str] = None
     sucursal_nombre: Optional[str] = None
-    signos_vitales: Dict[str, Any] = {}
-    diagnostico_principal: str
-    diagnosticos_secundarios: List[str] = []
+    signos_vitales: Optional[Dict[str, Any]] = {}
+    diagnostico_principal: Optional[str] = None
+    diagnosticos_secundarios: Optional[List[Any]] = []
     plan_tratamiento: Optional[str] = None
-    receta_medica: List[Dict[str, Any]] = []
+    receta_medica: Optional[List[Any]] = []
     indicaciones_generales: Optional[str] = None
     estado: str = "finalizada"
 

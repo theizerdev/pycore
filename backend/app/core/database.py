@@ -29,7 +29,11 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     connect_args={"check_same_thread": False, "timeout": 30} if "sqlite" in settings.DATABASE_URL else {"charset": "utf8mb4"},
-    pool_pre_ping=True
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=20,
+    pool_recycle=1800,
+    pool_timeout=30
 )
 
 # Configurar SQLite para WAL mode y alto rendimiento concurrente

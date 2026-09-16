@@ -14,6 +14,7 @@ import SignosVitalesWidget from '../../components/clinica/SignosVitalesWidget';
 import PrescripcionRecetaWidget from '../../components/clinica/PrescripcionRecetaWidget';
 import EstudiosSolicitadosWidget from '../../components/clinica/EstudiosSolicitadosWidget';
 import { EstudiosArchivosTab } from '../../components/clinica/EstudiosArchivosTab';
+import { PatientRecordDrawer } from './PatientRecordDrawer';
 import { toast } from 'sonner';
 import { cn, getInitials } from '../../lib/utils';
 
@@ -66,6 +67,10 @@ import {
   BedDouble,
   FileCheck2,
   Image as ImageIcon,
+  ChevronRight,
+  History,
+  ChevronUp,
+  FolderOpen,
 } from 'lucide-react';
 
 interface ConsultaAtencionPageProps {
@@ -199,6 +204,11 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   // Carrito de Estudios
   const [estudios, setEstudios] = useState<EstudioSolicitado[]>([]);
 
+  // Historial Clínico Completo y Consulta Previa
+  const [drawerHistorialOpen, setDrawerHistorialOpen] = useState<boolean>(false);
+  const [resumenPrevioAbierto, setResumenPrevioAbierto] = useState<boolean>(true);
+  const [fechaProximoControl, setFechaProximoControl] = useState<string>('');
+
   // Carrito de Medicamentos (Receta)
   const [medicamentos, setMedicamentos] = useState<MedicamentoPrescrito[]>([]);
 
@@ -231,6 +241,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       setEnfermedadActual(data.enfermedad_actual || data.datos_plantilla?.enfermedad_actual || '');
       setObservacionesAdicionales(data.observaciones_adicionales || data.datos_plantilla?.observaciones_adicionales || '');
       setReferidoPara(data.referido_para || data.datos_plantilla?.referido_para || '');
+      setFechaProximoControl(data.datos_plantilla?.fecha_proximo_control || '');
 
       setSignosVitales({
         peso: data.signos_vitales?.peso || '',
@@ -339,6 +350,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         enfermedad_actual: enfermedadActual,
         observaciones_adicionales: observacionesAdicionales,
         referido_para: referidoPara,
+        fecha_proximo_control: fechaProximoControl,
       },
       estudios_solicitados: estudios,
       receta_medica: medicamentos,
@@ -649,6 +661,18 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                       </Badge>
                     )}
 
+                    {consulta.es_subsecuente ? (
+                      <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30 font-semibold gap-1">
+                        <History className="h-3 w-3 text-sky-600" />
+                        Consulta de Control (Visita #{(consulta.total_consultas_previas || 0) + 1})
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-semibold gap-1">
+                        <Sparkles className="h-3 w-3 text-emerald-600" />
+                        Primera Consulta
+                      </Badge>
+                    )}
+
                     {consulta.estado === 'finalizada' && (
                       <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-semibold">
                         Atención Finalizada
@@ -728,8 +752,20 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 </div>
               </div>
 
-              {/* Estado de Preconsulta */}
-              <div className="flex items-center gap-2 self-end lg:self-center">
+              {/* Acciones y Estado de Preconsulta */}
+              <div className="flex flex-wrap items-center gap-2 self-end lg:self-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDrawerHistorialOpen(true)}
+                  className="gap-1.5 h-8 font-semibold text-xs border-primary/30 text-primary hover:bg-primary/10 cursor-pointer shadow-2xs"
+                  title="Abrir expediente clínico completo del paciente sin perder el progreso de esta consulta"
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  <span>Ver Expediente Completo</span>
+                </Button>
+
                 {hasPreconsulta ? (
                   isPreconsultaCompletada ? (
                     <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1.5 py-1.5 px-3 font-semibold">
@@ -750,6 +786,126 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
             </div>
           </CardContent>
         </Card>
+
+        {/* ── CARD RESUMEN DE LA CONSULTA PREVIA (SI ES CONSULTA SUBSECUENTE) ── */}
+        {consulta.consulta_previa && (
+          <Card className="border-sky-500/30 bg-sky-500/[0.03] overflow-hidden shadow-xs">
+            <div
+              className="px-4 py-3 bg-sky-500/10 border-b border-sky-500/20 flex items-center justify-between cursor-pointer select-none"
+              onClick={() => setResumenPrevioAbierto((prev) => !prev)}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-sky-500/20 text-sky-600 dark:text-sky-400">
+                  <History className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-xs font-bold text-sky-900 dark:text-sky-200 uppercase tracking-wide">
+                  Resumen de la Consulta Previa —{' '}
+                  {new Date(consulta.consulta_previa.fecha_consulta).toLocaleDateString(undefined, {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </span>
+                {consulta.consulta_previa.medico_nombre && (
+                  <Badge variant="outline" className="text-[10.5px] bg-background/80 text-sky-800 dark:text-sky-300 border-sky-400/40 font-medium">
+                    Atendido por: {consulta.consulta_previa.medico_nombre}
+                  </Badge>
+                )}
+                {consulta.consulta_previa.especialidad_nombre && (
+                  <Badge variant="secondary" className="text-[10px] font-normal">
+                    {consulta.consulta_previa.especialidad_nombre}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDrawerHistorialOpen(true);
+                  }}
+                  className="h-6 text-[11px] px-2 text-sky-700 dark:text-sky-300 hover:text-sky-900 hover:bg-sky-500/20 gap-1 font-semibold cursor-pointer"
+                >
+                  <span>Historial Completo</span>
+                  <ChevronRight className="h-3 w-3" />
+                </Button>
+                {resumenPrevioAbierto ? (
+                  <ChevronUp className="h-4 w-4 text-sky-700 dark:text-sky-300" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-sky-700 dark:text-sky-300" />
+                )}
+              </div>
+            </div>
+
+            {resumenPrevioAbierto && (
+              <CardContent className="p-4 space-y-3 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="p-2.5 rounded-xl bg-background/80 border border-sky-500/15">
+                    <span className="font-bold text-muted-foreground block text-[10.5px] uppercase tracking-wider">
+                      Motivo Anterior:
+                    </span>
+                    <p className="font-medium text-foreground mt-1 line-clamp-3">
+                      {consulta.consulta_previa.motivo_consulta || 'Sin motivo registrado'}
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-background/80 border border-sky-500/15">
+                    <span className="font-bold text-muted-foreground block text-[10.5px] uppercase tracking-wider">
+                      Diagnóstico Previo:
+                    </span>
+                    <p className="font-bold text-sky-700 dark:text-sky-300 mt-1 line-clamp-3">
+                      {consulta.consulta_previa.diagnostico_principal || 'No registrado'}
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-background/80 border border-sky-500/15">
+                    <span className="font-bold text-muted-foreground block text-[10.5px] uppercase tracking-wider">
+                      Constantes Vitales Previas:
+                    </span>
+                    <p className="font-medium text-foreground mt-1">
+                      {consulta.consulta_previa.signos_vitales?.peso ? `Peso: ${consulta.consulta_previa.signos_vitales.peso} kg · ` : ''}
+                      {consulta.consulta_previa.signos_vitales?.presion_sistolica
+                        ? `PA: ${consulta.consulta_previa.signos_vitales.presion_sistolica}/${consulta.consulta_previa.signos_vitales.presion_diastolica} mmHg · `
+                        : ''}
+                      {consulta.consulta_previa.signos_vitales?.frecuencia_cardiaca
+                        ? `FC: ${consulta.consulta_previa.signos_vitales.frecuencia_cardiaca} lpm`
+                        : 'Sin signos registrados'}
+                    </p>
+                  </div>
+                </div>
+
+                {consulta.consulta_previa.plan_tratamiento && (
+                  <div className="p-2.5 rounded-xl bg-background/80 border border-sky-500/15">
+                    <span className="font-bold text-muted-foreground block text-[10.5px] uppercase tracking-wider">
+                      Plan de Tratamiento y Conducta en Visita Anterior:
+                    </span>
+                    <p className="text-foreground mt-1 whitespace-pre-wrap leading-relaxed">
+                      {consulta.consulta_previa.plan_tratamiento}
+                    </p>
+                  </div>
+                )}
+
+                {consulta.consulta_previa.receta_medica && consulta.consulta_previa.receta_medica.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] font-bold text-muted-foreground">
+                      Fármacos indicados previamente:
+                    </span>
+                    {consulta.consulta_previa.receta_medica.map((m, idx) => (
+                      <Badge
+                        key={idx}
+                        variant="secondary"
+                        className="text-[10px] bg-sky-500/10 text-sky-800 dark:text-sky-300 border border-sky-500/20 font-medium"
+                      >
+                        {m.medicamento} ({m.dosis})
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        )}
       </div>
 
       {/* ── BARRA DE PROGRESO DE LOS PASOS CONFIGURADOS ── */}
@@ -1181,6 +1337,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
 
             <SignosVitalesWidget
               signos={signosVitales}
+              signosAnteriores={consulta.consulta_previa?.signos_vitales}
               onChange={(key, val) => {
                 setSignosVitales((prev) => ({ ...prev, [key]: val }));
                 setDatosPlantilla((prev) => ({ ...prev, [key]: val }));
@@ -1535,496 +1692,587 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
           </div>
         )}
 
-      {/* ======================================================== */}
-      {/* ── PASO 4: ESTUDIOS Y EXÁMENES (VISOR + SOLICITUD) ──── */}
-      {/* ======================================================== */}
-      {currentStep === 4 && (
-        <div className="space-y-6">
-          <Tabs defaultValue="adjuntos" className="w-full">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <FlaskConical className="h-5 w-5 text-primary" />
-                  Paso 4: Estudios Médicos, Laboratorio e Imagenología
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Consulte exámenes adjuntos en el visor clínico inteligente o gestione nuevas órdenes de laboratorio e imagen.
-                </p>
+        {/* ======================================================== */}
+        {/* ── PASO 4: ESTUDIOS Y EXÁMENES (VISOR + SOLICITUD) ──── */}
+        {/* ======================================================== */}
+        {currentStep === 4 && (
+          <div className="space-y-6">
+            <Tabs defaultValue="adjuntos" className="w-full">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <FlaskConical className="h-5 w-5 text-primary" />
+                    Paso 4: Estudios Médicos, Laboratorio e Imagenología
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Consulte exámenes adjuntos en el visor clínico inteligente o gestione nuevas órdenes de laboratorio e imagen.
+                  </p>
+                </div>
+
+                <TabsList className="bg-muted/60 p-1">
+                  <TabsTrigger value="adjuntos" className="text-xs gap-1.5 cursor-pointer">
+                    <ImageIcon className="h-3.5 w-3.5 text-cyan-500" />
+                    <span>Visor de Estudios & Lab</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="solicitados" className="text-xs gap-1.5 cursor-pointer">
+                    <ClipboardList className="h-3.5 w-3.5 text-indigo-500" />
+                    <span>Órdenes a Solicitar ({estudios.length})</span>
+                  </TabsTrigger>
+                </TabsList>
               </div>
 
-              <TabsList className="bg-muted/60 p-1">
-                <TabsTrigger value="adjuntos" className="text-xs gap-1.5 cursor-pointer">
-                  <ImageIcon className="h-3.5 w-3.5 text-cyan-500" />
-                  <span>Visor de Estudios & Lab</span>
-                </TabsTrigger>
-                <TabsTrigger value="solicitados" className="text-xs gap-1.5 cursor-pointer">
-                  <ClipboardList className="h-3.5 w-3.5 text-indigo-500" />
-                  <span>Órdenes a Solicitar ({estudios.length})</span>
-                </TabsTrigger>
-              </TabsList>
-            </div>
+              <TabsContent value="adjuntos" className="mt-4">
+                {consulta.paciente_id ? (
+                  <EstudiosArchivosTab
+                    pacienteId={consulta.paciente_id}
+                    consultaId={consulta.id}
+                    medicoId={consulta.medico_id || undefined}
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">Paciente no seleccionado</p>
+                )}
+              </TabsContent>
 
-            <TabsContent value="adjuntos" className="mt-4">
-              {consulta.paciente_id ? (
-                <EstudiosArchivosTab
-                  pacienteId={consulta.paciente_id}
-                  consultaId={consulta.id}
-                  medicoId={consulta.medico_id || undefined}
+              <TabsContent value="solicitados" className="mt-4 space-y-4">
+                <EstudiosSolicitadosWidget
+                  estudios={estudios}
+                  onAdd={(est) => setEstudios((prev) => [...prev, est])}
+                  onRemove={(idx) => setEstudios((prev) => prev.filter((_, i) => i !== idx))}
+                  readOnly={readOnly}
                 />
-              ) : (
-                <p className="text-xs text-muted-foreground">Paciente no seleccionado</p>
-              )}
-            </TabsContent>
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
 
-            <TabsContent value="solicitados" className="mt-4 space-y-4">
-              <EstudiosSolicitadosWidget
-                estudios={estudios}
-                onAdd={(est) => setEstudios((prev) => [...prev, est])}
-                onRemove={(idx) => setEstudios((prev) => prev.filter((_, i) => i !== idx))}
+        {/* ======================================================== */}
+        {/* ── PASO 5: PRESCRIPCIÓN MÉDICA Y REPOSO ─────────────── */}
+        {/* ======================================================== */}
+        {currentStep === 5 && (
+          <div className="space-y-6">
+            {/* SECCIÓN 1: CARRITO DE MEDICAMENTOS */}
+            <div className="space-y-4">
+              <PrescripcionRecetaWidget
+                medicamentos={medicamentos}
+                recetaAnterior={consulta.consulta_previa?.receta_medica}
+                onImportarRecetaAnterior={(meds) => {
+                  setMedicamentos((prev) => [...prev, ...meds]);
+                  toast.success(`${meds.length} medicamento(s) importados de la consulta previa`);
+                }}
+                onAdd={(med) => setMedicamentos((prev) => [...prev, med])}
+                onRemove={(idx) => setMedicamentos((prev) => prev.filter((_, i) => i !== idx))}
                 readOnly={readOnly}
               />
-            </TabsContent>
-          </Tabs>
-        </div>
-      )}
+            </div>
 
-      {/* ======================================================== */}
-      {/* ── PASO 5: PRESCRIPCIÓN MÉDICA Y REPOSO ─────────────── */}
-      {/* ======================================================== */}
-      {currentStep === 5 && (
-        <div className="space-y-6">
-          {/* SECCIÓN 1: CARRITO DE MEDICAMENTOS */}
-          <div className="space-y-4">
-            <PrescripcionRecetaWidget
-              medicamentos={medicamentos}
-              onAdd={(med) => setMedicamentos((prev) => [...prev, med])}
-              onRemove={(idx) => setMedicamentos((prev) => prev.filter((_, i) => i !== idx))}
-              readOnly={readOnly}
-            />
-          </div>
-
-          {/* SECCIÓN 2: REPOSO MÉDICO (LICENCIA) */}
-          <div className="pt-4 border-t border-border/70 space-y-4">
-            <Card className="border-border/80 bg-card">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Calendar className="h-6 w-6 text-primary" />
-                  <div>
-                    <div className="text-sm font-bold text-foreground">
-                      Emisión de Reposo Médico / Licencia Laboral
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Indique si el paciente requiere descanso médico domiciliario o incapacidad temporal.
-                    </div>
-                  </div>
-                </div>
-
-                <Switch
-                  checked={reposo.requiere_reposo}
-                  onCheckedChange={(checked) =>
-                    setReposo((prev) => ({ ...prev, requiere_reposo: checked }))
-                  }
-                  disabled={readOnly}
-                />
-              </CardContent>
-            </Card>
-
-            {reposo.requiere_reposo && (
-              <Card className="border-amber-500/30 bg-amber-500/5 shadow-xs">
-                <CardContent className="p-5 space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold">Fecha Inicio</Label>
-                      <Input
-                        type="date"
-                        value={reposo.fecha_inicio}
-                        onChange={(e) =>
-                          setReposo((prev) => ({ ...prev, fecha_inicio: e.target.value }))
-                        }
-                        disabled={readOnly}
-                        className="h-10 bg-background font-mono"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold">Fecha Fin</Label>
-                      <Input
-                        type="date"
-                        value={reposo.fecha_fin}
-                        onChange={(e) =>
-                          setReposo((prev) => ({ ...prev, fecha_fin: e.target.value }))
-                        }
-                        disabled={readOnly}
-                        className="h-10 bg-background font-mono"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold">Días Totales Calculados</Label>
-                      <div className="h-10 flex items-center px-3 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-sm">
-                        {reposo.dias_reposo} {reposo.dias_reposo === 1 ? 'Día' : 'Días de Reposo'}
+            {/* SECCIÓN 2: REPOSO MÉDICO (LICENCIA) */}
+            <div className="pt-4 border-t border-border/70 space-y-4">
+              <Card className="border-border/80 bg-card">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-6 w-6 text-primary" />
+                    <div>
+                      <div className="text-sm font-bold text-foreground">
+                        Emisión de Reposo Médico / Licencia Laboral
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Indique si el paciente requiere descanso médico domiciliario o incapacidad temporal.
                       </div>
                     </div>
-
-                    <div className="sm:col-span-3 space-y-1">
-                      <Label className="text-xs font-semibold">Motivo / Diagnóstico del Reposo</Label>
-                      <Input
-                        value={reposo.motivo_diagnostico || ''}
-                        onChange={(e) =>
-                          setReposo((prev) => ({
-                            ...prev,
-                            motivo_diagnostico: e.target.value,
-                          }))
-                        }
-                        placeholder="Ej: Cuadro infeccioso agudo que amerita aislamiento y reposo físico absoluto..."
-                        disabled={readOnly}
-                        className="h-10 bg-background"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-3 space-y-1">
-                      <Label className="text-xs font-semibold">Observaciones y Recomendaciones</Label>
-                      <Input
-                        value={reposo.observaciones || ''}
-                        onChange={(e) =>
-                          setReposo((prev) => ({
-                            ...prev,
-                            observaciones: e.target.value,
-                          }))
-                        }
-                        placeholder="Ej: Reposo en cama, hidratación abundante, control en 72 horas..."
-                        disabled={readOnly}
-                        className="h-10 bg-background"
-                      />
-                    </div>
                   </div>
+
+                  <Switch
+                    checked={reposo.requiere_reposo}
+                    onCheckedChange={(checked) =>
+                      setReposo((prev) => ({ ...prev, requiere_reposo: checked }))
+                    }
+                    disabled={readOnly}
+                  />
                 </CardContent>
               </Card>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* ======================================================== */}
-      {/* ── PASO 6: DIAGNÓSTICO CIE-10, RESUMEN Y CIERRE ─────── */}
-      {/* ======================================================== */}
-      {currentStep === 6 && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-6 space-y-4">
-              {/* Diagnóstico Principal */}
-              <Card className="border-border/80">
-                <CardContent className="p-5 space-y-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold flex items-center justify-between">
-                      <span>
-                        Diagnóstico Principal (CIE-10 / Juicio Clínico){' '}
-                        <span className="text-destructive">*</span>
-                      </span>
-                    </Label>
-                    <Input
-                      value={diagnosticoPrincipal}
-                      onChange={(e) => setDiagnosticoPrincipal(e.target.value)}
-                      placeholder="Ej: J00 Rinofaringitis aguda (Resfriado común)"
-                      disabled={readOnly}
-                      className="h-10 text-sm font-semibold"
-                    />
+              {reposo.requiere_reposo && (
+                <Card className="border-amber-500/30 bg-amber-500/5 shadow-xs">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">Fecha Inicio</Label>
+                        <Input
+                          type="date"
+                          value={reposo.fecha_inicio}
+                          onChange={(e) =>
+                            setReposo((prev) => ({ ...prev, fecha_inicio: e.target.value }))
+                          }
+                          disabled={readOnly}
+                          className="h-10 bg-background font-mono"
+                        />
+                      </div>
 
-                    {/* Sugerencias Rápidas CIE-10 */}
-                    {!readOnly && (
-                      <div className="pt-2 space-y-1.5">
-                        <span className="text-[11px] font-semibold text-muted-foreground">
-                          CIE-10 Frecuentes:
-                        </span>
-                        <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 rounded-lg border border-border/60 bg-muted/20">
-                          {CIE10_FRECUENTES.map((cie) => (
-                            <button
-                              key={cie.codigo}
-                              type="button"
-                              onClick={() =>
-                                setDiagnosticoPrincipal(`${cie.codigo} - ${cie.descripcion}`)
-                              }
-                              className="text-xs px-2.5 py-1 rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/70 transition-all text-left truncate max-w-full cursor-pointer"
-                            >
-                              <strong>{cie.codigo}</strong>: {cie.descripcion}
-                            </button>
-                          ))}
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">Fecha Fin</Label>
+                        <Input
+                          type="date"
+                          value={reposo.fecha_fin}
+                          onChange={(e) =>
+                            setReposo((prev) => ({ ...prev, fecha_fin: e.target.value }))
+                          }
+                          disabled={readOnly}
+                          className="h-10 bg-background font-mono"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">Días Totales Calculados</Label>
+                        <div className="h-10 flex items-center px-3 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-sm">
+                          {reposo.dias_reposo} {reposo.dias_reposo === 1 ? 'Día' : 'Días de Reposo'}
                         </div>
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
 
-              {/* Diagnósticos Secundarios */}
-              <Card className="border-border/80">
-                <CardContent className="p-5 space-y-3">
-                  <Label className="text-xs font-semibold">
-                    Diagnósticos Secundarios / Comorbilidades
-                  </Label>
-                  {!readOnly && (
-                    <div className="flex gap-2">
-                      <Input
-                        value={nuevoDiagSecundario}
-                        onChange={(e) => setNuevoDiagSecundario(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAgregarDiagSecundario();
+                      <div className="sm:col-span-3 space-y-1">
+                        <Label className="text-xs font-semibold">Motivo / Diagnóstico del Reposo</Label>
+                        <Input
+                          value={reposo.motivo_diagnostico || ''}
+                          onChange={(e) =>
+                            setReposo((prev) => ({
+                              ...prev,
+                              motivo_diagnostico: e.target.value,
+                            }))
                           }
-                        }}
-                        placeholder="Añadir diagnóstico secundario..."
-                        className="h-10"
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={handleAgregarDiagSecundario}
-                        className="h-10 shrink-0 font-semibold"
-                      >
-                        Añadir
-                      </Button>
+                          placeholder="Ej: Cuadro infeccioso agudo que amerita aislamiento y reposo físico absoluto..."
+                          disabled={readOnly}
+                          className="h-10 bg-background"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3 space-y-1">
+                        <Label className="text-xs font-semibold">Observaciones y Recomendaciones</Label>
+                        <Input
+                          value={reposo.observaciones || ''}
+                          onChange={(e) =>
+                            setReposo((prev) => ({
+                              ...prev,
+                              observaciones: e.target.value,
+                            }))
+                          }
+                          placeholder="Ej: Reposo en cama, hidratación abundante, control en 72 horas..."
+                          disabled={readOnly}
+                          className="h-10 bg-background"
+                        />
+                      </div>
                     </div>
-                  )}
-
-                  {diagnosticosSecundarios.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {diagnosticosSecundarios.map((diag, idx) => (
-                        <Badge
-                          key={idx}
-                          variant="secondary"
-                          className="text-xs py-1.5 px-3 gap-2 bg-muted"
-                        >
-                          <span>{diag}</span>
-                          {!readOnly && (
-                            <button
-                              type="button"
-                              onClick={() => handleEliminarDiagSecundario(idx)}
-                              className="text-muted-foreground hover:text-destructive cursor-pointer"
-                            >
-                              &times;
-                            </button>
-                          )}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="lg:col-span-6 space-y-4">
-              {/* Plan de Tratamiento */}
-              <Card className="border-border/80">
-                <CardContent className="p-5 space-y-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">
-                      Plan de Tratamiento Integral y Conducta Médica
-                    </Label>
-                    <Textarea
-                      value={planTratamiento}
-                      onChange={(e) => setPlanTratamiento(e.target.value)}
-                      placeholder="Medidas generales, control de síntomas, signos de alarma por los que debe acudir a urgencias..."
-                      disabled={readOnly}
-                      rows={4}
-                    />
-                  </div>
-
-                  {/* Indicaciones Generales */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">
-                      Indicaciones Generales y Recomendaciones Higiénico-Dietéticas
-                    </Label>
-                    <Textarea
-                      value={indicacionesGenerales}
-                      onChange={(e) => setIndicacionesGenerales(e.target.value)}
-                      placeholder="Dieta blanda fraccionada, abundante ingesta de líquidos (2L/día), evitar exposición a cambios bruscos de temperatura..."
-                      disabled={readOnly}
-                      rows={4}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
+        )}
 
-          {/* ── RESUMEN CONSOLIDADO DE LA ATENCIÓN MÉDICA ── */}
-          <Card className="border-border/80 shadow-xs">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-border/60">
-                <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  Resumen Consolidado de la Consulta
-                </h4>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs font-semibold border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
-                    >
-                      <Printer className="h-3.5 w-3.5" />
-                      <span>Imprimir Documentos</span>
-                      <ChevronDown className="h-3 w-3 opacity-70" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem
-                      onClick={() => handleAbrirImpresion('informe')}
-                      className="cursor-pointer gap-2 py-2"
-                    >
-                      <FileText className="h-4 w-4 text-sky-500" />
-                      <span>Informe Médico</span>
-                    </DropdownMenuItem>
+        {/* ======================================================== */}
+        {/* ── PASO 6: DIAGNÓSTICO CIE-10, RESUMEN Y CIERRE ─────── */}
+        {/* ======================================================== */}
+        {currentStep === 6 && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-6 space-y-4">
+                {/* Diagnóstico Principal */}
+                <Card className="border-border/80">
+                  <CardContent className="p-5 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold flex items-center justify-between">
+                        <span>
+                          Diagnóstico Principal (CIE-10 / Juicio Clínico){' '}
+                          <span className="text-destructive">*</span>
+                        </span>
+                      </Label>
+                      <Input
+                        value={diagnosticoPrincipal}
+                        onChange={(e) => setDiagnosticoPrincipal(e.target.value)}
+                        placeholder="Ej: J00 Rinofaringitis aguda (Resfriado común)"
+                        disabled={readOnly}
+                        className="h-10 text-sm font-semibold"
+                      />
 
-                    <DropdownMenuItem
-                      onClick={() => handleAbrirImpresion('receta')}
-                      className="cursor-pointer gap-2 py-2"
-                    >
-                      <Pill className="h-4 w-4 text-emerald-500" />
-                      <div className="flex items-center justify-between w-full">
-                        <span>Receta Médica (Rx)</span>
-                        {medicamentos.length > 0 && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                            {medicamentos.length}
-                          </Badge>
-                        )}
+                      {/* Sugerencias Rápidas CIE-10 */}
+                      {!readOnly && (
+                        <div className="pt-2 space-y-1.5">
+                          <span className="text-[11px] font-semibold text-muted-foreground">
+                            CIE-10 Frecuentes:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 rounded-lg border border-border/60 bg-muted/20">
+                            {CIE10_FRECUENTES.map((cie) => (
+                              <button
+                                key={cie.codigo}
+                                type="button"
+                                onClick={() =>
+                                  setDiagnosticoPrincipal(`${cie.codigo} - ${cie.descripcion}`)
+                                }
+                                className="text-xs px-2.5 py-1 rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/70 transition-all text-left truncate max-w-full cursor-pointer"
+                              >
+                                <strong>{cie.codigo}</strong>: {cie.descripcion}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Diagnósticos Secundarios */}
+                <Card className="border-border/80">
+                  <CardContent className="p-5 space-y-3">
+                    <Label className="text-xs font-semibold">
+                      Diagnósticos Secundarios / Comorbilidades
+                    </Label>
+                    {!readOnly && (
+                      <div className="flex gap-2">
+                        <Input
+                          value={nuevoDiagSecundario}
+                          onChange={(e) => setNuevoDiagSecundario(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAgregarDiagSecundario();
+                            }
+                          }}
+                          placeholder="Añadir diagnóstico secundario..."
+                          className="h-10"
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={handleAgregarDiagSecundario}
+                          className="h-10 shrink-0 font-semibold"
+                        >
+                          Añadir
+                        </Button>
                       </div>
-                    </DropdownMenuItem>
+                    )}
 
-                    <DropdownMenuItem
-                      onClick={() => handleAbrirImpresion('estudios')}
-                      className="cursor-pointer gap-2 py-2"
-                    >
-                      <FlaskConical className="h-4 w-4 text-violet-500" />
-                      <div className="flex items-center justify-between w-full">
-                        <span>Orden de Estudios</span>
-                        {estudios.length > 0 && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                            {estudios.length}
+                    {diagnosticosSecundarios.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {diagnosticosSecundarios.map((diag, idx) => (
+                          <Badge
+                            key={idx}
+                            variant="secondary"
+                            className="text-xs py-1.5 px-3 gap-2 bg-muted"
+                          >
+                            <span>{diag}</span>
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                onClick={() => handleEliminarDiagSecundario(idx)}
+                                className="text-muted-foreground hover:text-destructive cursor-pointer"
+                              >
+                                &times;
+                              </button>
+                            )}
                           </Badge>
-                        )}
+                        ))}
                       </div>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem
-                      onClick={() => handleAbrirImpresion('reposo')}
-                      className="cursor-pointer gap-2 py-2"
-                    >
-                      <BedDouble className="h-4 w-4 text-amber-500" />
-                      <div className="flex items-center justify-between w-full">
-                        <span>Reposo Médico</span>
-                        {reposo.requiere_reposo && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                            {reposo.dias_reposo}d
-                          </Badge>
-                        )}
-                      </div>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuSeparator />
-
-                    <DropdownMenuItem
-                      onClick={() => handleAbrirImpresion('constancia')}
-                      className="cursor-pointer gap-2 py-2"
-                    >
-                      <FileCheck2 className="h-4 w-4 text-indigo-500" />
-                      <span>Constancia de Asistencia</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
 
-              <div className="p-5 rounded-2xl border border-border/80 bg-muted/20 space-y-4 text-xs">
-                {/* Fila 1: Paciente y Vitals */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-3 border-b border-border/60">
-                  <div>
-                    <span className="text-muted-foreground">Paciente:</span>
-                    <p className="font-bold text-sm text-foreground mt-0.5">
-                      {consulta.paciente?.nombres} {consulta.paciente?.apellidos}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Diagnóstico Principal:</span>
-                    <p className="font-bold text-sm text-primary mt-0.5">
-                      {diagnosticoPrincipal || 'Pendiente de registrar'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Constantes Vitales:</span>
-                    <p className="font-medium text-foreground mt-0.5">
-                      PA: {signosVitales.presion_sistolica || '-'}/
-                      {signosVitales.presion_diastolica || '-'} mmHg | FC:{' '}
-                      {signosVitales.frecuencia_cardiaca || '-'} lpm | Temp:{' '}
-                      {signosVitales.temperatura || '-'} °C
-                    </p>
-                  </div>
-                </div>
+              <div className="lg:col-span-6 space-y-4">
+                {/* Plan de Tratamiento */}
+                <Card className="border-border/80">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">
+                        Plan de Tratamiento Integral y Conducta Médica
+                      </Label>
+                      <Textarea
+                        value={planTratamiento}
+                        onChange={(e) => setPlanTratamiento(e.target.value)}
+                        placeholder="Medidas generales, control de síntomas, signos de alarma por los que debe acudir a urgencias..."
+                        disabled={readOnly}
+                        rows={4}
+                      />
+                    </div>
 
-                {/* Fila intermedia: Referido para si aplica */}
-                {referidoPara && (
-                  <div className="pb-3 border-b border-border/60 flex items-center gap-2">
-                    <span className="text-muted-foreground font-semibold">Referido para / Interconsulta:</span>
-                    <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs font-bold">
-                      {referidoPara}
-                    </Badge>
-                  </div>
-                )}
+                    {/* Indicaciones Generales */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">
+                        Indicaciones Generales y Recomendaciones Higiénico-Dietéticas
+                      </Label>
+                      <Textarea
+                        value={indicacionesGenerales}
+                        onChange={(e) => setIndicacionesGenerales(e.target.value)}
+                        placeholder="Dieta blanda fraccionada, abundante ingesta de líquidos (2L/día), evitar exposición a cambios bruscos de temperatura..."
+                        disabled={readOnly}
+                        rows={4}
+                      />
+                    </div>
 
-                {/* Fila 2: Medicamentos prescritos y Estudios */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div>
-                    <span className="font-bold text-foreground flex items-center gap-1.5 text-sm">
-                      <Pill className="h-4 w-4 text-primary" />
-                      Medicamentos Prescritos ({medicamentos.length}):
-                    </span>
-                    {medicamentos.length > 0 ? (
-                      <ul className="list-disc list-inside mt-2 space-y-1 text-muted-foreground">
-                        {medicamentos.map((m, i) => (
-                          <li key={i} className="text-foreground/90 font-medium">
-                            {m.medicamento} ({m.presentacion || 'Std'}) — {m.dosis} cada{' '}
-                            {m.frecuencia} por {m.duracion}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-muted-foreground italic mt-1">Sin medicamentos</p>
-                    )}
-                  </div>
+                    {/* Próximo Control / Cita de Seguimiento */}
+                    <div className="p-4 rounded-xl border border-border/80 bg-muted/10 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                          <Calendar className="h-3.5 w-3.5 text-primary" />
+                          <span>Próxima Consulta de Control / Seguimiento</span>
+                        </Label>
+                        {fechaProximoControl && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFechaProximoControl('');
+                              setDatosPlantilla((prev) => ({ ...prev, fecha_proximo_control: '' }));
+                            }}
+                            className="text-[11px] text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            Limpiar fecha
+                          </button>
+                        )}
+                      </div>
 
-                  <div>
-                    <span className="font-bold text-foreground flex items-center gap-1.5 text-sm">
-                      <FlaskConical className="h-4 w-4 text-primary" />
-                      Estudios Solicitados ({estudios.length}):
-                    </span>
-                    {estudios.length > 0 ? (
-                      <ul className="list-disc list-inside mt-2 space-y-1 text-muted-foreground">
-                        {estudios.map((e, i) => (
-                          <li key={i} className="text-foreground/90 font-medium">
-                            {e.nombre} ({e.categoria}) {e.urgente ? '— [URGENTE]' : ''}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-muted-foreground italic mt-1">Sin estudios ordenados</p>
-                    )}
-                  </div>
-                </div>
+                      <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
+                        <Input
+                          type="date"
+                          value={fechaProximoControl}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFechaProximoControl(val);
+                            setDatosPlantilla((prev) => ({ ...prev, fecha_proximo_control: val }));
+                          }}
+                          disabled={readOnly}
+                          className="h-9 w-full sm:w-48 bg-background font-mono text-xs"
+                        />
 
-                {/* Reposo médico si aplica */}
-                {reposo.requiere_reposo && (
-                  <div className="pt-3 border-t border-border/60 flex items-center justify-between text-amber-700 dark:text-amber-400 font-semibold">
-                    <span>
-                      ⚠️ Reposo Médico otorgado por {reposo.dias_reposo} día(s) (Desde:{' '}
-                      {reposo.fecha_inicio} Hasta: {reposo.fecha_fin})
-                    </span>
-                  </div>
-                )}
+                        {/* Botones sugeridos de control rápido */}
+                        {!readOnly && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {[
+                              { label: 'En 7 días', dias: 7 },
+                              { label: 'En 15 días', dias: 15 },
+                              { label: 'En 1 mes', dias: 30 },
+                              { label: 'En 3 meses', dias: 90 },
+                              { label: 'En 6 meses', dias: 180 },
+                            ].map((sug) => (
+                              <button
+                                key={sug.label}
+                                type="button"
+                                onClick={() => {
+                                  const target = new Date();
+                                  target.setDate(target.getDate() + sug.dias);
+                                  const isoDate = target.toISOString().split('T')[0];
+                                  setFechaProximoControl(isoDate);
+                                  setDatosPlantilla((prev) => ({
+                                    ...prev,
+                                    fecha_proximo_control: isoDate,
+                                    proximo_control_sugerido: sug.label,
+                                  }));
+                                }}
+                                className="text-[11px] px-2.5 py-1 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/15 text-primary font-medium transition-colors cursor-pointer"
+                              >
+                                {sug.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            </div>
+
+            {/* ── RESUMEN CONSOLIDADO DE LA ATENCIÓN MÉDICA ── */}
+            <Card className="border-border/80 shadow-xs">
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Resumen Consolidado de la Consulta
+                  </h4>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs font-semibold border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                        <span>Imprimir Documentos</span>
+                        <ChevronDown className="h-3 w-3 opacity-70" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem
+                        onClick={() => handleAbrirImpresion('informe')}
+                        className="cursor-pointer gap-2 py-2"
+                      >
+                        <FileText className="h-4 w-4 text-sky-500" />
+                        <span>Informe Médico</span>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => handleAbrirImpresion('receta')}
+                        className="cursor-pointer gap-2 py-2"
+                      >
+                        <Pill className="h-4 w-4 text-emerald-500" />
+                        <div className="flex items-center justify-between w-full">
+                          <span>Receta Médica (Rx)</span>
+                          {medicamentos.length > 0 && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                              {medicamentos.length}
+                            </Badge>
+                          )}
+                        </div>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => handleAbrirImpresion('estudios')}
+                        className="cursor-pointer gap-2 py-2"
+                      >
+                        <FlaskConical className="h-4 w-4 text-violet-500" />
+                        <div className="flex items-center justify-between w-full">
+                          <span>Orden de Estudios</span>
+                          {estudios.length > 0 && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                              {estudios.length}
+                            </Badge>
+                          )}
+                        </div>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => handleAbrirImpresion('reposo')}
+                        className="cursor-pointer gap-2 py-2"
+                      >
+                        <BedDouble className="h-4 w-4 text-amber-500" />
+                        <div className="flex items-center justify-between w-full">
+                          <span>Reposo Médico</span>
+                          {reposo.requiere_reposo && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                              {reposo.dias_reposo}d
+                            </Badge>
+                          )}
+                        </div>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuSeparator />
+
+                      <DropdownMenuItem
+                        onClick={() => handleAbrirImpresion('constancia')}
+                        className="cursor-pointer gap-2 py-2"
+                      >
+                        <FileCheck2 className="h-4 w-4 text-indigo-500" />
+                        <span>Constancia de Asistencia</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <div className="p-5 rounded-2xl border border-border/80 bg-muted/20 space-y-4 text-xs">
+                  {/* Fila 1: Paciente y Vitals */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-3 border-b border-border/60">
+                    <div>
+                      <span className="text-muted-foreground">Paciente:</span>
+                      <p className="font-bold text-sm text-foreground mt-0.5">
+                        {consulta.paciente?.nombres} {consulta.paciente?.apellidos}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Diagnóstico Principal:</span>
+                      <p className="font-bold text-sm text-primary mt-0.5">
+                        {diagnosticoPrincipal || 'Pendiente de registrar'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Constantes Vitales:</span>
+                      <p className="font-medium text-foreground mt-0.5">
+                        PA: {signosVitales.presion_sistolica || '-'}/
+                        {signosVitales.presion_diastolica || '-'} mmHg | FC:{' '}
+                        {signosVitales.frecuencia_cardiaca || '-'} lpm | Temp:{' '}
+                        {signosVitales.temperatura || '-'} °C
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Fila intermedia: Referido para si aplica */}
+                  {referidoPara && (
+                    <div className="pb-3 border-b border-border/60 flex items-center gap-2">
+                      <span className="text-muted-foreground font-semibold">Referido para / Interconsulta:</span>
+                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs font-bold">
+                        {referidoPara}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* Fila 2: Medicamentos prescritos y Estudios */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <span className="font-bold text-foreground flex items-center gap-1.5 text-sm">
+                        <Pill className="h-4 w-4 text-primary" />
+                        Medicamentos Prescritos ({medicamentos.length}):
+                      </span>
+                      {medicamentos.length > 0 ? (
+                        <ul className="list-disc list-inside mt-2 space-y-1 text-muted-foreground">
+                          {medicamentos.map((m, i) => (
+                            <li key={i} className="text-foreground/90 font-medium">
+                              {m.medicamento} ({m.presentacion || 'Std'}) — {m.dosis} cada{' '}
+                              {m.frecuencia} por {m.duracion}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-muted-foreground italic mt-1">Sin medicamentos</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <span className="font-bold text-foreground flex items-center gap-1.5 text-sm">
+                        <FlaskConical className="h-4 w-4 text-primary" />
+                        Estudios Solicitados ({estudios.length}):
+                      </span>
+                      {estudios.length > 0 ? (
+                        <ul className="list-disc list-inside mt-2 space-y-1 text-muted-foreground">
+                          {estudios.map((e, i) => (
+                            <li key={i} className="text-foreground/90 font-medium">
+                              {e.nombre} ({e.categoria}) {e.urgente ? '— [URGENTE]' : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-muted-foreground italic mt-1">Sin estudios ordenados</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Próximo control programado */}
+                  {fechaProximoControl && (
+                    <div className="pt-3 border-t border-border/60 flex items-center justify-between text-xs font-semibold">
+                      <span className="text-muted-foreground flex items-center gap-1.5">
+                        <Calendar className="size-3.5 text-sky-600" />
+                        Próxima Cita / Control Sugerido:
+                      </span>
+                      <Badge variant="outline" className="bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30 text-xs font-bold gap-1 py-1 px-2.5">
+                        {new Date(fechaProximoControl + 'T00:00:00').toLocaleDateString(undefined, {
+                          weekday: 'short',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                        })}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* Reposo médico si aplica */}
+                  {reposo.requiere_reposo && (
+                    <div className="pt-3 border-t border-border/60 flex items-center justify-between text-amber-700 dark:text-amber-400 font-semibold">
+                      <span>
+                        ⚠️ Reposo Médico otorgado por {reposo.dias_reposo} día(s) (Desde:{' '}
+                        {reposo.fecha_inicio} Hasta: {reposo.fecha_fin})
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       {/* ── BARRA INFERIOR FLOTANTE DE NAVEGACIÓN Y GUARDADO ── */}
@@ -2104,6 +2352,13 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         onOpenChange={setImpresionModalOpen}
         consulta={consulta}
         initialDocumento={documentoInicialImpresion}
+      />
+
+      {/* ── EXPEDIENTE CLÍNICO LONGITUDINAL DEL PACIENTE (DRAWER) ── */}
+      <PatientRecordDrawer
+        open={drawerHistorialOpen}
+        onOpenChange={setDrawerHistorialOpen}
+        paciente={consulta.paciente as any}
       />
     </div>
   );
