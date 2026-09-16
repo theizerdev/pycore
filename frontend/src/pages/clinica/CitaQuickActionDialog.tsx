@@ -3,6 +3,7 @@ import { citasApi } from '../../api/citas';
 import type { CitaMedica, CitaEstado, Paciente } from '../../types';
 import { formatCleanWhatsAppNumber } from './DoctorWelcomeModal';
 import { toast } from 'sonner';
+import { evaluarPuntualidadCita } from '../../utils/punctuality';
 import {
   Dialog,
   DialogContent,
@@ -107,6 +108,7 @@ export const CitaQuickActionDialog: React.FC<CitaQuickActionDialogProps> = ({
   if (!cita) return null;
 
   const currentCfg = ESTADOS_CONFIG[cita.estado] || ESTADOS_CONFIG.programada;
+  const puntualidad = evaluarPuntualidadCita(cita);
 
   const handleCambiarEstado = async (nuevoEstado: CitaEstado) => {
     setLoadingAction(true);
@@ -190,6 +192,117 @@ export const CitaQuickActionDialog: React.FC<CitaQuickActionDialogProps> = ({
 
         {/* Contenido principal */}
         <div className="p-5 space-y-4 text-xs">
+          {/* ── ALERTA DE PUNTUALIDAD ASISTENCIAL (Paciente vs Doctor) ── */}
+          {puntualidad.tipo === 'paciente_retrasado' && (
+            <div className="p-3.5 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100 space-y-2.5 animate-in fade-in">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-xl bg-amber-500 text-white font-bold flex items-center justify-center text-sm shrink-0 shadow-2xs">
+                    ⚠️
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs block">
+                      Paciente con Retraso ({puntualidad.minutos} min acumulados)
+                    </span>
+                    <span className="text-[11px] opacity-85 block mt-0.5">
+                      La cita inició a las {cita.hora_inicio} y el paciente aún no se ha presentado en recepción.
+                    </span>
+                  </div>
+                </div>
+                <Badge className="bg-amber-600 text-white font-mono text-[10px] shrink-0">
+                  +{puntualidad.minutos} min
+                </Badge>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-500/20">
+                {cleanPhone && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleNotificarWhatsApp}
+                    disabled={loadingAction}
+                    className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer gap-1.5 shadow-2xs"
+                  >
+                    <MessageCircle className="size-3" />
+                    <span>Contactar por WhatsApp</span>
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={loadingAction}
+                  onClick={() => handleCambiarEstado('no_asistio')}
+                  className="h-7 text-[11px] border-rose-500/40 text-rose-700 dark:text-rose-300 hover:bg-rose-500/10 cursor-pointer gap-1"
+                >
+                  <AlertCircle className="size-3" />
+                  <span>Marcar No Asistió</span>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={loadingAction}
+                  onClick={() => handleCambiarEstado('sala_espera')}
+                  className="h-7 text-[11px] bg-amber-600 hover:bg-amber-700 text-white cursor-pointer gap-1"
+                >
+                  <span>⏳ Registrar Llegada a Sala</span>
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {puntualidad.tipo === 'doctor_retrasado' && (
+            <div className="p-3.5 rounded-2xl border border-purple-500/40 bg-purple-500/10 text-purple-950 dark:text-purple-100 space-y-2.5 animate-in fade-in">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-xl bg-purple-600 text-white font-bold flex items-center justify-center text-sm shrink-0 shadow-2xs">
+                    ⏱️
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs block">
+                      Demora Médica: Paciente en Espera ({puntualidad.minutos} min)
+                    </span>
+                    <span className="text-[11px] opacity-85 block mt-0.5">
+                      El paciente ya llegó a recepción y aguarda turno con el Dr(a). {cita.medico_nombre}.
+                    </span>
+                  </div>
+                </div>
+                <Badge className="bg-purple-600 text-white font-mono text-[10px] shrink-0">
+                  +{puntualidad.minutos} min en sala
+                </Badge>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1 border-t border-purple-500/20">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={loadingAction}
+                  onClick={() => handleCambiarEstado('en_consulta')}
+                  className="h-7 text-[11px] bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer gap-1.5 shadow-2xs animate-pulse"
+                >
+                  <Stethoscope className="size-3" />
+                  <span>Llamar a Consultorio (Iniciar Consulta)</span>
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {puntualidad.tipo === 'consulta_prolongada' && (
+            <div className="p-3 rounded-2xl border border-teal-500/40 bg-teal-500/10 text-teal-950 dark:text-teal-100 space-y-1 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🩺</span>
+                <div>
+                  <span className="font-bold text-xs block">
+                    Consulta Médica con Sobretiempo (+{puntualidad.minutos} min)
+                  </span>
+                  <span className="text-[11px] opacity-85 block">
+                    La atención superó la hora estimada de término ({cita.hora_fin}). Cuidar posibles demoras con pacientes siguientes.
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Card del Paciente */}
           <div className="p-3.5 rounded-xl border border-border/80 bg-card space-y-2">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">

@@ -88,6 +88,9 @@ def build_cita_response(c: CitaMedica) -> CitaResponse:
         whatsapp_notificado_at=c.whatsapp_notificado_at,
         recordatorio_enviado=bool(c.recordatorio_enviado),
         recordatorio_enviado_at=c.recordatorio_enviado_at,
+        llegada_at=c.llegada_at,
+        atencion_at=c.atencion_at,
+        finalizada_at=c.finalizada_at,
         paciente_nombre=paciente_nombre,
         paciente_documento=paciente_doc,
         paciente_telefono=paciente_tel,
@@ -797,6 +800,14 @@ async def cambiar_estado_cita(
 
     estado_anterior = cita.estado
     cita.estado = payload.estado
+
+    # Registrar marcas de tiempo para auditoría de puntualidad
+    if payload.estado == "sala_espera" and not cita.llegada_at:
+        cita.llegada_at = datetime.now()
+    elif payload.estado == "en_consulta" and not cita.atencion_at:
+        cita.atencion_at = datetime.now()
+    elif payload.estado == "atendida" and not cita.finalizada_at:
+        cita.finalizada_at = datetime.now()
 
     if payload.estado == "cancelada":
         cita.motivo_cancelacion = payload.motivo_cancelacion

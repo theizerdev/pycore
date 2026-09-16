@@ -724,6 +724,11 @@ export interface CitaMedica {
   recordatorio_enviado?: boolean;
   recordatorio_enviado_at?: string | null;
 
+  // Flujo Asistencial y Puntualidad
+  llegada_at?: string | null;
+  atencion_at?: string | null;
+  finalizada_at?: string | null;
+
   paciente_nombre: string;
   paciente_documento: string;
   paciente_telefono?: string | null;

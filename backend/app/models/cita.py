@@ -44,6 +44,11 @@ class CitaMedica(Base, TimestampMixin):
     recordatorio_enviado = Column(Boolean, default=False, nullable=False)
     recordatorio_enviado_at = Column(DateTime, nullable=True)
 
+    # Flujo Asistencial y Auditoría de Puntualidad
+    llegada_at = Column(DateTime, nullable=True)     # Check-in en recepción (sala_espera)
+    atencion_at = Column(DateTime, nullable=True)    # Llamado a consultorio (en_consulta)
+    finalizada_at = Column(DateTime, nullable=True)  # Fin de la atención (atendida)
+
     # Relaciones
     empresa = relationship("Empresa", lazy="selectin")
     sucursal = relationship("Sucursal", lazy="selectin")

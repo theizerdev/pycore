@@ -337,14 +337,20 @@ async def cambiar_estado_consulta(
         if cita:
             if payload.estado == "en_curso":
                 cita.estado = "en_consulta"
+                if not cita.atencion_at:
+                    cita.atencion_at = datetime.now()
             elif payload.estado == "finalizada":
                 cita.estado = "atendida"
+                if not cita.finalizada_at:
+                    cita.finalizada_at = datetime.now()
             elif payload.estado == "anulada":
                 cita.estado = "cancelada"
                 if payload.motivo:
                     cita.motivo_cancelacion = payload.motivo
             elif payload.estado == "en_espera":
                 cita.estado = "sala_espera"
+                if not cita.llegada_at:
+                    cita.llegada_at = datetime.now()
             cita.updated_at = datetime.now()
 
     # Auditoría

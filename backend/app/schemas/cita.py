@@ -83,8 +83,12 @@ class CitaResponse(BaseModel):
     # Notificaciones WhatsApp
     whatsapp_notificado: bool = False
     whatsapp_notificado_at: Optional[datetime] = None
+    # Recordatorio y Puntualidad
     recordatorio_enviado: bool = False
     recordatorio_enviado_at: Optional[datetime] = None
+    llegada_at: Optional[datetime] = None
+    atencion_at: Optional[datetime] = None
+    finalizada_at: Optional[datetime] = None
 
     # Información desnormalizada para FullCalendar
     paciente_nombre: str

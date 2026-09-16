@@ -27,6 +27,7 @@ import { CitaFormModal } from './CitaFormModal';
 import { CitaQuickActionDialog } from './CitaQuickActionDialog';
 import { PatientRecordDrawer } from './PatientRecordDrawer';
 import { CitaStatusModal } from './CitaStatusModal';
+import { evaluarPuntualidadCita, type EvaluacionPuntualidad } from '../../utils/punctuality';
 import { toast } from 'sonner';
 
 import {
@@ -92,6 +93,16 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [selectedMedico, setSelectedMedico] = useState<string>('all');
   const [selectedEspecialidad, setSelectedEspecialidad] = useState<string>('all');
   const [selectedEstado, setSelectedEstado] = useState<string>('all');
+  const [filtroPuntualidad, setFiltroPuntualidad] = useState<'all' | 'paciente_retrasado' | 'doctor_retrasado' | 'alertas'>('all');
+
+  // Reloj reactivo para actualizar retrasos cada 30 segundos automáticamente
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
 
@@ -270,6 +281,33 @@ export const AgendaCalendarioPage: React.FC = () => {
     }
   };
 
+  // Citas de hoy para el panel asistencial
+  const todayStr = new Date().toISOString().split('T')[0];
+  const citasHoy = useMemo(() => {
+    return citas.filter((c) => c.fecha === todayStr && c.estado !== 'cancelada');
+  }, [citas, todayStr]);
+
+  // Resumen reactivo de puntualidad del día en curso (recalculado cada 30 segundos)
+  const resumenPuntualidadHoy = useMemo(() => {
+    let pacientesRetrasados = 0;
+    let doctoresDemorados = 0;
+    let consultasSobretiempo = 0;
+
+    citasHoy.forEach((c) => {
+      const p = evaluarPuntualidadCita(c, currentTime);
+      if (p.tipo === 'paciente_retrasado') pacientesRetrasados++;
+      else if (p.tipo === 'doctor_retrasado') doctoresDemorados++;
+      else if (p.tipo === 'consulta_prolongada') consultasSobretiempo++;
+    });
+
+    return {
+      pacientesRetrasados,
+      doctoresDemorados,
+      consultasSobretiempo,
+      totalAlertas: pacientesRetrasados + doctoresDemorados + consultasSobretiempo,
+    };
+  }, [citasHoy, currentTime]);
+
   // Filtrado reactivo en memoria
   const filteredCitas = useMemo(() => {
     return citas.filter((c) => {
@@ -285,15 +323,33 @@ export const AgendaCalendarioPage: React.FC = () => {
       if (selectedEstado !== 'all' && c.estado !== selectedEstado) {
         return false;
       }
+      if (filtroPuntualidad === 'paciente_retrasado') {
+        const p = evaluarPuntualidadCita(c, currentTime);
+        if (p.tipo !== 'paciente_retrasado') return false;
+      } else if (filtroPuntualidad === 'doctor_retrasado') {
+        const p = evaluarPuntualidadCita(c, currentTime);
+        if (p.tipo !== 'doctor_retrasado') return false;
+      } else if (filtroPuntualidad === 'alertas') {
+        const p = evaluarPuntualidadCita(c, currentTime);
+        if (
+          p.tipo !== 'paciente_retrasado' &&
+          p.tipo !== 'doctor_retrasado' &&
+          p.tipo !== 'consulta_prolongada'
+        ) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [citas, selectedSucursal, selectedMedico, selectedEspecialidad, selectedEstado]);
-
-  // Citas de hoy para el panel asistencial
-  const todayStr = new Date().toISOString().split('T')[0];
-  const citasHoy = useMemo(() => {
-    return citas.filter((c) => c.fecha === todayStr && c.estado !== 'cancelada');
-  }, [citas, todayStr]);
+  }, [
+    citas,
+    selectedSucursal,
+    selectedMedico,
+    selectedEspecialidad,
+    selectedEstado,
+    filtroPuntualidad,
+    currentTime,
+  ]);
 
   const pacientesEnEspera = useMemo(() => {
     return citas.filter((c) => c.fecha === todayStr && c.estado === 'sala_espera');
@@ -672,6 +728,100 @@ export const AgendaCalendarioPage: React.FC = () => {
         </div>
       </div>
 
+      {/* ── BARRA DE MONITOREO DE PUNTUALIDAD Y DEMORAS DEL DÍA ────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl border border-border/80 bg-card shadow-2xs">
+        <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+          <Clock className="size-4 text-teal-600 dark:text-teal-400 shrink-0" />
+          <span className="font-bold">Monitoreo de Puntualidad (Hoy):</span>
+          <span className="text-muted-foreground font-normal">
+            {citasHoy.length} citas registradas para hoy
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {/* Chip Pacientes Retrasados */}
+          <button
+            type="button"
+            onClick={() =>
+              setFiltroPuntualidad(
+                filtroPuntualidad === 'paciente_retrasado' ? 'all' : 'paciente_retrasado'
+              )
+            }
+            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+              filtroPuntualidad === 'paciente_retrasado'
+                ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-2 ring-amber-400/40'
+                : resumenPuntualidadHoy.pacientesRetrasados > 0
+                ? 'bg-amber-500/15 border-amber-500/35 text-amber-900 dark:text-amber-200 hover:bg-amber-500/25'
+                : 'bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted'
+            }`}
+            title="Pacientes con cita hoy cuya hora ya pasó y no se han presentado en recepción"
+          >
+            <span
+              className={`size-2 rounded-full ${
+                resumenPuntualidadHoy.pacientesRetrasados > 0
+                  ? 'bg-amber-500 animate-ping'
+                  : 'bg-muted-foreground/40'
+              }`}
+            />
+            <span>
+              ⚠️ {resumenPuntualidadHoy.pacientesRetrasados} Paciente
+              {resumenPuntualidadHoy.pacientesRetrasados === 1 ? '' : 's'} Retrasado
+              {resumenPuntualidadHoy.pacientesRetrasados === 1 ? '' : 's'}
+            </span>
+          </button>
+
+          {/* Chip Doctor Demorado */}
+          <button
+            type="button"
+            onClick={() =>
+              setFiltroPuntualidad(
+                filtroPuntualidad === 'doctor_retrasado' ? 'all' : 'doctor_retrasado'
+              )
+            }
+            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+              filtroPuntualidad === 'doctor_retrasado'
+                ? 'bg-purple-600 text-white border-purple-700 shadow-xs ring-2 ring-purple-400/40'
+                : resumenPuntualidadHoy.doctoresDemorados > 0
+                ? 'bg-purple-500/15 border-purple-500/35 text-purple-900 dark:text-purple-200 hover:bg-purple-500/25'
+                : 'bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted'
+            }`}
+            title="Pacientes en sala de espera aguardando que el doctor inicie la consulta"
+          >
+            <span
+              className={`size-2 rounded-full ${
+                resumenPuntualidadHoy.doctoresDemorados > 0
+                  ? 'bg-purple-500 animate-ping'
+                  : 'bg-muted-foreground/40'
+              }`}
+            />
+            <span>
+              ⏱️ {resumenPuntualidadHoy.doctoresDemorados} Demora
+              {resumenPuntualidadHoy.doctoresDemorados === 1 ? '' : 's'} Médica
+              {resumenPuntualidadHoy.doctoresDemorados === 1 ? '' : 's'}
+            </span>
+          </button>
+
+          {/* Chip Sobretiempo si aplica */}
+          {resumenPuntualidadHoy.consultasSobretiempo > 0 && (
+            <span className="px-2.5 py-1.5 rounded-xl bg-teal-500/15 border border-teal-500/30 text-teal-900 dark:text-teal-200 text-xs font-semibold flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-teal-500 animate-pulse" />
+              <span>🩺 {resumenPuntualidadHoy.consultasSobretiempo} Sobretiempo</span>
+            </span>
+          )}
+
+          {/* Restablecer si hay filtro activo */}
+          {filtroPuntualidad !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setFiltroPuntualidad('all')}
+              className="text-xs text-teal-600 dark:text-teal-400 hover:underline font-semibold ml-1 cursor-pointer"
+            >
+              Ver todas
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* ── CONTENEDOR DEL FULLCALENDAR INTERACTIVO (Espacio Maximizado) ── */}
       <Card className="overflow-hidden border-border/80 shadow-2xs bg-card p-4">
         <style>{`
@@ -898,6 +1048,7 @@ export const AgendaCalendarioPage: React.FC = () => {
             if (!cita) return <div>{eventInfo.event.title}</div>;
 
             const timeRange = `${format12Hour(cita.hora_inicio)} - ${format12Hour(cita.hora_fin)}`;
+            const puntualidad = evaluarPuntualidadCita(cita, currentTime);
 
             const estadoLabels: Record<string, { label: string; dot: string }> = {
               programada: { label: 'Por llegar', dot: 'bg-blue-400' },
@@ -932,6 +1083,18 @@ export const AgendaCalendarioPage: React.FC = () => {
                         <span className="font-bold text-xs text-foreground block truncate">
                           {cita.paciente_nombre}
                         </span>
+
+                        {/* Indicador de puntualidad (Paciente o Doctor retrasado) */}
+                        {puntualidad.tipo !== 'a_tiempo' && puntualidad.badgeLabel && (
+                          <span
+                            className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full border shadow-2xs flex items-center gap-1 shrink-0 ${puntualidad.badgeClass}`}
+                            title={puntualidad.explicacion}
+                          >
+                            <span className={`size-1.5 rounded-full ${puntualidad.dotClass}`} />
+                            <span>{puntualidad.badgeLabel}</span>
+                          </span>
+                        )}
+
                         {cita.es_sobreturno && (
                           <Badge className="bg-amber-600 text-white text-[9px] px-1 py-0 h-4">
                             ⚡ Sobreturno
@@ -988,7 +1151,7 @@ export const AgendaCalendarioPage: React.FC = () => {
             if (isMonthView) {
               return (
                 <div
-                  className="flex items-center justify-between gap-1 w-full px-1.5 py-0.5 rounded text-white overflow-hidden text-[11px] leading-tight"
+                  className={`flex items-center justify-between gap-1 w-full px-1.5 py-0.5 rounded text-white overflow-hidden text-[11px] leading-tight ${puntualidad.borderClass}`}
                   style={{ backgroundColor: cita.especialidad_color || '#8b5cf6' }}
                 >
                   <div className="flex items-center gap-1 truncate min-w-0">
@@ -998,6 +1161,14 @@ export const AgendaCalendarioPage: React.FC = () => {
                     <span className="font-semibold truncate">
                       {cita.paciente_nombre}
                     </span>
+                    {puntualidad.tipo !== 'a_tiempo' && (
+                      <span
+                        className="text-[9px] shrink-0 font-bold"
+                        title={puntualidad.explicacion}
+                      >
+                        {puntualidad.tipo === 'paciente_retrasado' ? '⚠️' : '⏱️'}
+                      </span>
+                    )}
                     {cita.es_sobreturno && (
                       <span className="text-[9px] text-amber-200">⚡</span>
                     )}
@@ -1019,7 +1190,9 @@ export const AgendaCalendarioPage: React.FC = () => {
 
             // ── VISTA ASISTENCIAL HORARIA (timeGridWeek / timeGridDay) ─
             return (
-              <div className="relative w-full h-full p-2 flex flex-col justify-between text-white select-none overflow-hidden rounded-md group">
+              <div
+                className={`relative w-full h-full p-2 flex flex-col justify-between text-white select-none overflow-hidden rounded-md group ${puntualidad.borderClass}`}
+              >
                 {/* ── BOTÓN OVALADO DERECHO (Modal para cambiar estado) ── */}
                 <button
                   type="button"
@@ -1034,8 +1207,21 @@ export const AgendaCalendarioPage: React.FC = () => {
                   <span className="sr-only">Cambiar Estado</span>
                 </button>
 
-                {/* ── DATOS: Paciente y Especialista ──────────────────── */}
+                {/* ── DATOS: Alerta de Retraso, Paciente y Especialista ── */}
                 <div className="space-y-0.5 pr-8">
+                  {/* Badge de Alerta de Puntualidad (Paciente Atrasado vs Doctor Demorado) */}
+                  {puntualidad.tipo !== 'a_tiempo' && puntualidad.badgeLabel && (
+                    <div className="flex items-center gap-1 mb-1 animate-in fade-in duration-200">
+                      <span
+                        className={`text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md border shadow-xs flex items-center gap-1 ${puntualidad.badgeClass}`}
+                        title={puntualidad.explicacion}
+                      >
+                        <span className={`size-1.5 rounded-full ${puntualidad.dotClass}`} />
+                        <span>{puntualidad.badgeLabel}</span>
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-1 flex-wrap">
                     <span className="font-bold text-xs leading-tight block truncate text-white drop-shadow-xs">
                       {cita.paciente_nombre}
