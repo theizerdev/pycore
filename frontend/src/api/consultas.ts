@@ -103,6 +103,23 @@ export interface ReposoMedico {
   observaciones?: string;
 }
 
+export interface ConsultaPreviaResumen {
+  id: number;
+  codigo?: string;
+  fecha_consulta: string;
+  medico_nombre?: string;
+  especialidad_nombre?: string;
+  motivo_consulta?: string;
+  enfermedad_actual?: string;
+  diagnostico_principal?: string;
+  diagnosticos_secundarios?: any[];
+  plan_tratamiento?: string;
+  indicaciones_generales?: string;
+  signos_vitales?: Record<string, any>;
+  receta_medica?: MedicamentoPrescrito[];
+  estudios_solicitados?: EstudioSolicitado[];
+}
+
 export interface ConsultaMedica {
   id: number;
   codigo?: string;
@@ -131,6 +148,11 @@ export interface ConsultaMedica {
   estado: 'en_espera' | 'en_curso' | 'finalizada' | 'anulada';
   created_at?: string;
   updated_at?: string;
+
+  // Detección de control / subsecuente
+  es_subsecuente?: boolean;
+  total_consultas_previas?: number;
+  consulta_previa?: ConsultaPreviaResumen | null;
 
   paciente?: PacienteMini;
   medico?: MedicoMini;

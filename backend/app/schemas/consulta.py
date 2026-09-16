@@ -124,6 +124,25 @@ class ConsultaCambiarEstado(BaseModel):
     estado: str  # 'en_espera', 'en_curso', 'finalizada', 'anulada'
     motivo: Optional[str] = None
 
+class ConsultaPreviaResumen(BaseModel):
+    id: int
+    codigo: Optional[str] = None
+    fecha_consulta: datetime
+    medico_nombre: Optional[str] = None
+    especialidad_nombre: Optional[str] = None
+    motivo_consulta: Optional[str] = None
+    enfermedad_actual: Optional[str] = None
+    diagnostico_principal: Optional[str] = None
+    diagnosticos_secundarios: Optional[List[Any]] = []
+    plan_tratamiento: Optional[str] = None
+    indicaciones_generales: Optional[str] = None
+    signos_vitales: Optional[Dict[str, Any]] = {}
+    receta_medica: Optional[List[Any]] = []
+    estudios_solicitados: Optional[List[Any]] = []
+
+    class Config:
+        from_attributes = True
+
 class ConsultaResponse(BaseModel):
     id: int
     codigo: Optional[str] = None
@@ -152,6 +171,11 @@ class ConsultaResponse(BaseModel):
     estado: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    # Datos de control / subsecuente
+    es_subsecuente: bool = False
+    total_consultas_previas: int = 0
+    consulta_previa: Optional[ConsultaPreviaResumen] = None
 
     # Relaciones anidadas
     paciente: Optional[PacienteMini] = None

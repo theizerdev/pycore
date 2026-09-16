@@ -48,15 +48,19 @@ const DURACIONES_SUGERIDAS = [
 
 interface PrescripcionRecetaWidgetProps {
   medicamentos: MedicamentoPrescrito[];
+  recetaAnterior?: MedicamentoPrescrito[] | null;
   onAdd: (med: MedicamentoPrescrito) => void;
   onRemove: (index: number) => void;
+  onImportarRecetaAnterior?: (meds: MedicamentoPrescrito[]) => void;
   readOnly?: boolean;
 }
 
 export const PrescripcionRecetaWidget: React.FC<PrescripcionRecetaWidgetProps> = ({
   medicamentos,
+  recetaAnterior,
   onAdd,
   onRemove,
+  onImportarRecetaAnterior,
   readOnly = false,
 }) => {
   const [nuevoMed, setNuevoMed] = useState<MedicamentoPrescrito>({
@@ -85,6 +89,30 @@ export const PrescripcionRecetaWidget: React.FC<PrescripcionRecetaWidgetProps> =
 
   return (
     <div className="space-y-6">
+      {/* Opción de Clonar / Importar Tratamiento Anterior */}
+      {!readOnly && recetaAnterior && recetaAnterior.length > 0 && onImportarRecetaAnterior && (
+        <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in-50">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-300 font-semibold text-xs sm:text-sm">
+              <Clock className="size-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span>Tratamiento de la Consulta Anterior Disponible ({recetaAnterior.length} fármacos)</span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
+              {recetaAnterior.map((m) => m.medicamento).filter(Boolean).join(', ')}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onImportarRecetaAnterior(recetaAnterior)}
+            className="border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-xs shrink-0 cursor-pointer"
+          >
+            ⚡ Clonar Tratamiento Previo
+          </Button>
+        </div>
+      )}
+
       {/* Formulario de Prescripción */}
       {!readOnly && (
         <div className="p-5 rounded-xl border border-teal-200/70 dark:border-teal-900/50 bg-teal-50/30 dark:bg-teal-950/20 space-y-4">

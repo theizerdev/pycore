@@ -22,6 +22,7 @@ from app.schemas.consulta import (
     ConsultaUpdate,
     ConsultaCambiarEstado,
     ConsultaResponse,
+    ConsultaPreviaResumen,
     ConsultaResumenContadores,
 )
 
@@ -195,6 +196,30 @@ async def list_consultas(
 
     result = await db.execute(stmt)
     consultas = result.scalars().all()
+
+    # Determinar si cada consulta es primera vez o subsecuente
+    paciente_ids = list({c.paciente_id for c in consultas if c.paciente_id})
+    if paciente_ids:
+        prev_stmt = (
+            select(ConsultaMedica.paciente_id, func.count(ConsultaMedica.id))
+            .where(
+                ConsultaMedica.paciente_id.in_(paciente_ids),
+                ConsultaMedica.estado == "finalizada"
+            )
+            .group_by(ConsultaMedica.paciente_id)
+        )
+        prev_res = await db.execute(prev_stmt)
+        finalizadas_por_paciente = dict(prev_res.all())
+        for c in consultas:
+            total = finalizadas_por_paciente.get(c.paciente_id, 0)
+            consultas_anteriores = total - 1 if c.estado == "finalizada" and total > 0 else total
+            c.es_subsecuente = consultas_anteriores > 0
+            c.total_consultas_previas = consultas_anteriores
+    else:
+        for c in consultas:
+            c.es_subsecuente = False
+            c.total_consultas_previas = 0
+
     return consultas
 
 
@@ -205,7 +230,8 @@ async def get_consulta(
     current_user: Usuario = Depends(require_permission("consultas.ver")),
 ):
     """
-    Obtiene el detalle completo de una consulta médica por ID.
+    Obtiene el detalle completo de una consulta médica por ID, enriquecido con la detección
+    automática de consulta subsecuente / control y el resumen estructurado de la consulta previa.
     """
     stmt = (
         select(ConsultaMedica)
@@ -231,6 +257,51 @@ async def get_consulta(
     consulta = res.scalar_one_or_none()
     if not consulta:
         raise HTTPException(status_code=404, detail="Consulta médica no encontrada")
+
+    # Buscar consultas anteriores finalizadas de este paciente
+    stmt_prev = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad)
+        )
+        .where(
+            ConsultaMedica.paciente_id == consulta.paciente_id,
+            ConsultaMedica.id != consulta.id,
+            ConsultaMedica.fecha_consulta <= consulta.fecha_consulta,
+            ConsultaMedica.estado == "finalizada"
+        )
+        .order_by(ConsultaMedica.fecha_consulta.desc())
+    )
+    res_prev = await db.execute(stmt_prev)
+    prev_consultas = res_prev.scalars().all()
+
+    total_previas = len(prev_consultas)
+    consulta.es_subsecuente = total_previas > 0
+    consulta.total_consultas_previas = total_previas
+
+    if prev_consultas:
+        cp = prev_consultas[0]
+        med_nombre = f"{cp.medico.nombres} {cp.medico.apellidos}" if cp.medico else "Médico"
+        esp_nombre = cp.especialidad.nombre if cp.especialidad else "Especialidad"
+        consulta.consulta_previa = ConsultaPreviaResumen(
+            id=cp.id,
+            codigo=cp.codigo,
+            fecha_consulta=cp.fecha_consulta,
+            medico_nombre=med_nombre,
+            especialidad_nombre=esp_nombre,
+            motivo_consulta=cp.motivo_consulta,
+            enfermedad_actual=cp.enfermedad_actual,
+            diagnostico_principal=cp.diagnostico_principal,
+            diagnosticos_secundarios=cp.diagnosticos_secundarios or [],
+            plan_tratamiento=cp.plan_tratamiento,
+            indicaciones_generales=cp.indicaciones_generales,
+            signos_vitales=cp.signos_vitales or {},
+            receta_medica=cp.receta_medica or [],
+            estudios_solicitados=cp.estudios_solicitados or []
+        )
+    else:
+        consulta.consulta_previa = None
 
     return consulta
 

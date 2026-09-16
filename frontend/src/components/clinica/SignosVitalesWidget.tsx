@@ -3,6 +3,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Badge } from '../ui/badge';
+import { cn } from '../../lib/utils';
 import {
   HeartPulse,
   Activity,
@@ -11,6 +12,8 @@ import {
   Scale,
   Ruler,
   Info,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 
 export interface SignosVitalesData {
@@ -29,12 +32,14 @@ export interface SignosVitalesData {
 
 interface SignosVitalesWidgetProps {
   signos: SignosVitalesData;
+  signosAnteriores?: SignosVitalesData | null;
   onChange?: (key: string, value: any) => void;
   readOnly?: boolean;
 }
 
 export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
   signos,
+  signosAnteriores,
   onChange,
   readOnly = false,
 }) => {
@@ -81,6 +86,16 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Banner de Consulta de Control / Comparativa */}
+      {signosAnteriores && (
+        <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900/50 text-xs text-teal-800 dark:text-teal-300 animate-in fade-in-50">
+          <Activity className="size-4 shrink-0 text-teal-600 dark:text-teal-400" />
+          <span>
+            <strong>Modo Comparativo de Control:</strong> Mostrando comparativa evolutiva con los signos vitales registrados en la consulta previa.
+          </span>
+        </div>
+      )}
+
       {/* Grid de Parámetros Antropométricos */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Peso */}
@@ -100,6 +115,25 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
             disabled={readOnly}
             className="font-medium text-base h-10"
           />
+          {signosAnteriores?.peso && (
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+              <span>Anterior: <strong className="text-slate-700 dark:text-slate-300">{signosAnteriores.peso} kg</strong></span>
+              {Number(signos.peso) > 0 && Number(signosAnteriores.peso) > 0 && (
+                <span className={cn(
+                  "font-semibold px-1.5 py-0.5 rounded text-[10px]",
+                  Number(signos.peso) > Number(signosAnteriores.peso)
+                    ? "text-amber-700 bg-amber-100/80 dark:bg-amber-950/60 dark:text-amber-300"
+                    : Number(signos.peso) < Number(signosAnteriores.peso)
+                    ? "text-emerald-700 bg-emerald-100/80 dark:bg-emerald-950/60 dark:text-emerald-300"
+                    : "text-slate-500 bg-slate-100 dark:bg-slate-800"
+                )}>
+                  {(Number(signos.peso) - Number(signosAnteriores.peso)) > 0
+                    ? `+${(Number(signos.peso) - Number(signosAnteriores.peso)).toFixed(1)}`
+                    : (Number(signos.peso) - Number(signosAnteriores.peso)).toFixed(1)} kg
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Talla */}
@@ -119,6 +153,11 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
             disabled={readOnly}
             className="font-medium text-base h-10"
           />
+          {signosAnteriores?.talla && (
+            <div className="text-[11px] text-slate-500 pt-0.5">
+              <span>Anterior: <strong className="text-slate-700 dark:text-slate-300">{signosAnteriores.talla} cm</strong></span>
+            </div>
+          )}
         </div>
 
         {/* IMC Calculado */}
@@ -164,6 +203,11 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
             disabled={readOnly}
             className="font-medium text-base h-10"
           />
+          {signosAnteriores?.temperatura && (
+            <div className="text-[11px] text-slate-500 pt-0.5">
+              <span>Anterior: <strong className="text-slate-700 dark:text-slate-300">{signosAnteriores.temperatura} °C</strong></span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -194,6 +238,11 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
               className="h-10 text-center font-medium"
             />
           </div>
+          {(signosAnteriores?.presion_sistolica || signosAnteriores?.presion_diastolica) && (
+            <div className="text-[11px] text-slate-500 pt-0.5">
+              <span>Anterior: <strong className="text-slate-700 dark:text-slate-300">{signosAnteriores.presion_sistolica || '-'}/{signosAnteriores.presion_diastolica || '-'} mmHg</strong></span>
+            </div>
+          )}
         </div>
 
         {/* Frecuencia Cardíaca */}
@@ -210,6 +259,11 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
             disabled={readOnly}
             className="h-10 font-medium"
           />
+          {signosAnteriores?.frecuencia_cardiaca && (
+            <div className="text-[11px] text-slate-500 pt-0.5">
+              <span>Anterior: <strong className="text-slate-700 dark:text-slate-300">{signosAnteriores.frecuencia_cardiaca} LPM</strong></span>
+            </div>
+          )}
         </div>
 
         {/* Frecuencia Respiratoria */}
@@ -226,6 +280,11 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
             disabled={readOnly}
             className="h-10 font-medium"
           />
+          {signosAnteriores?.frecuencia_respiratoria && (
+            <div className="text-[11px] text-slate-500 pt-0.5">
+              <span>Anterior: <strong className="text-slate-700 dark:text-slate-300">{signosAnteriores.frecuencia_respiratoria} RPM</strong></span>
+            </div>
+          )}
         </div>
 
         {/* Saturación O2 */}
@@ -242,6 +301,11 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
             disabled={readOnly}
             className="h-10 font-medium"
           />
+          {signosAnteriores?.saturacion_oxigeno && (
+            <div className="text-[11px] text-slate-500 pt-0.5">
+              <span>Anterior: <strong className="text-slate-700 dark:text-slate-300">{signosAnteriores.saturacion_oxigeno}%</strong></span>
+            </div>
+          )}
         </div>
       </div>
 
