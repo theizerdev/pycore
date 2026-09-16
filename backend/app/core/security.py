@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -55,10 +55,10 @@ async def get_current_user(
         select(Usuario)
         .where(Usuario.id == user_id)
         .options(
-            selectinload(Usuario.rol).selectinload(Rol.permisos),
-            selectinload(Usuario.empresa),
-            selectinload(Usuario.sucursal_defecto),
-            selectinload(Usuario.sucursales_asignadas).selectinload(UsuarioSucursal.sucursal)
+            joinedload(Usuario.rol).selectinload(Rol.permisos),
+            joinedload(Usuario.empresa),
+            joinedload(Usuario.sucursal_defecto),
+            selectinload(Usuario.sucursales_asignadas).joinedload(UsuarioSucursal.sucursal)
         )
     )
     result = await db.execute(stmt)

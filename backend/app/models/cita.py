@@ -50,9 +50,9 @@ class CitaMedica(Base, TimestampMixin):
     finalizada_at = Column(DateTime, nullable=True)  # Fin de la atención (atendida)
 
     # Relaciones
-    empresa = relationship("Empresa", lazy="selectin")
-    sucursal = relationship("Sucursal", lazy="selectin")
-    medico = relationship("Medico", lazy="selectin")
-    especialidad = relationship("Especialidad", lazy="selectin")
-    servicio = relationship("Servicio", lazy="selectin")
-    paciente = relationship("Paciente", lazy="selectin")
+    empresa = relationship("Empresa")
+    sucursal = relationship("Sucursal")
+    medico = relationship("Medico")
+    especialidad = relationship("Especialidad")
+    servicio = relationship("Servicio")
+    paciente = relationship("Paciente")

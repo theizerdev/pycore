@@ -37,4 +37,4 @@ class Sucursal(Base, TimestampMixin):
     empresa = relationship("Empresa", back_populates="sucursales", lazy="selectin")
     pais = relationship("Pais", foreign_keys=[pais_id], lazy="selectin")
     pais_telefono = relationship("Pais", foreign_keys=[pais_telefono_id], lazy="selectin")
-    usuarios_asignados = relationship("UsuarioSucursal", back_populates="sucursal", cascade="all, delete-orphan", lazy="selectin")
+    usuarios_asignados = relationship("UsuarioSucursal", back_populates="sucursal", cascade="all, delete-orphan")

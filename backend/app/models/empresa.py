@@ -83,12 +83,12 @@ class Empresa(Base, TimestampMixin):
     plan = relationship("Plan", back_populates="empresas", lazy="selectin")
     pais = relationship("Pais", foreign_keys=[pais_id], lazy="selectin")
     pais_telefono = relationship("Pais", foreign_keys=[pais_telefono_id], lazy="selectin")
-    sucursales = relationship("Sucursal", back_populates="empresa", cascade="all, delete-orphan", lazy="selectin")
+    sucursales = relationship("Sucursal", back_populates="empresa", cascade="all, delete-orphan")
     usuarios = relationship("Usuario", back_populates="empresa")
     whatsapp_templates = relationship("WhatsAppTemplate", back_populates="empresa", cascade="all, delete-orphan")
     whatsapp_messages = relationship("WhatsAppMessage", back_populates="empresa", cascade="all, delete-orphan")
-    suscripciones = relationship("Suscripcion", back_populates="empresa", cascade="all, delete-orphan", lazy="selectin")
-    pagos_suscripcion = relationship("PagoSuscripcion", back_populates="empresa", cascade="all, delete-orphan", lazy="selectin")
+    suscripciones = relationship("Suscripcion", back_populates="empresa", cascade="all, delete-orphan")
+    pagos_suscripcion = relationship("PagoSuscripcion", back_populates="empresa", cascade="all, delete-orphan")
 
     def is_exempt_from_subscription(self) -> bool:
         """La Empresa ID 1 (Dueña del SaaS) está exenta de control de suscripción."""

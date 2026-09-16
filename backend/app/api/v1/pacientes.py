@@ -4,7 +4,7 @@ from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import or_, func
 
 from app.core.database import get_db
@@ -47,13 +47,21 @@ def calcular_edad(fecha_nac: Optional[date]) -> tuple[Optional[int], Optional[st
         return 0, f"{meses} meses" if meses > 1 else "1 mes"
     return anios, f"{anios} años"
 
-def _format_paciente_response(p: Paciente) -> PacienteResponse:
+def _format_paciente_response(
+    p: Paciente,
+    total_consultas: Optional[int] = None,
+    ultima_fecha: Optional[datetime] = None
+) -> PacienteResponse:
     alergias_data = p.alergias if isinstance(p.alergias, list) else []
     edad_anios, edad_txt = calcular_edad(p.fecha_nacimiento)
 
-    consultas_list = p.consultas if isinstance(p.consultas, list) else []
-    total_consultas = len(consultas_list)
-    ultima_fecha = consultas_list[0].fecha_consulta if total_consultas > 0 else None
+    if total_consultas is None or ultima_fecha is None:
+        consultas_list = getattr(p, "consultas", []) or []
+        if isinstance(consultas_list, list) and len(consultas_list) > 0:
+            total_consultas = len(consultas_list)
+            ultima_fecha = consultas_list[0].fecha_consulta
+        else:
+            total_consultas = total_consultas or 0
 
     return PacienteResponse(
         id=p.id,
@@ -115,9 +123,8 @@ async def list_pacientes(
     Lista los pacientes registrados con soporte multi-tenant, filtros clínicos y búsqueda en tiempo real.
     """
     stmt = select(Paciente).options(
-        selectinload(Paciente.pais_telefono),
-        selectinload(Paciente.sucursal_registro),
-        selectinload(Paciente.consultas)
+        joinedload(Paciente.pais_telefono),
+        joinedload(Paciente.sucursal_registro),
     )
 
     if not current_user.es_superadmin:
@@ -152,13 +159,36 @@ async def list_pacientes(
 
     stmt = stmt.order_by(Paciente.apellidos.asc(), Paciente.nombres.asc()).offset(offset_val).limit(limit_val)
     result = await db.execute(stmt)
-    pacientes = result.scalars().all()
+    pacientes = result.scalars().unique().all()
 
     # Filtro post-consulta en Python para alergias si aplica
     if con_alergias is True:
         pacientes = [p for p in pacientes if isinstance(p.alergias, list) and len(p.alergias) > 0]
 
-    return [_format_paciente_response(p) for p in pacientes]
+    # Pre-calcular contadores de consultas en 1 sola consulta agregada ultrarrápida
+    p_ids = [p.id for p in pacientes]
+    stats_map = {}
+    if p_ids:
+        stats_stmt = (
+            select(
+                ConsultaMedica.paciente_id,
+                func.count(ConsultaMedica.id).label("total"),
+                func.max(ConsultaMedica.fecha_consulta).label("ultima_fecha")
+            )
+            .where(ConsultaMedica.paciente_id.in_(p_ids))
+            .group_by(ConsultaMedica.paciente_id)
+        )
+        stats_res = await db.execute(stats_stmt)
+        stats_map = {row[0]: (row[1], row[2]) for row in stats_res.all()}
+
+    return [
+        _format_paciente_response(
+            p,
+            total_consultas=stats_map.get(p.id, (0, None))[0],
+            ultima_fecha=stats_map.get(p.id, (0, None))[1]
+        )
+        for p in pacientes
+    ]
 
 
 @router.get("/{id}", response_model=PacienteResponse)
@@ -167,11 +197,10 @@ async def get_paciente(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(require_permission("pacientes.ver"))
 ):
-    """Obtiene el detalle completo de un paciente."""
+    """Obtiene el detalle completo de un paciente optimizado sin N+1."""
     stmt = select(Paciente).options(
-        selectinload(Paciente.pais_telefono),
-        selectinload(Paciente.sucursal_registro),
-        selectinload(Paciente.consultas)
+        joinedload(Paciente.pais_telefono),
+        joinedload(Paciente.sucursal_registro),
     ).where(Paciente.id == id)
 
     if not current_user.es_superadmin:
@@ -182,7 +211,15 @@ async def get_paciente(
     if not paciente:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paciente no encontrado")
 
-    return _format_paciente_response(paciente)
+    c_res = await db.execute(
+        select(func.count(ConsultaMedica.id), func.max(ConsultaMedica.fecha_consulta))
+        .where(ConsultaMedica.paciente_id == id)
+    )
+    c_row = c_res.first()
+    tot = c_row[0] if c_row else 0
+    ult = c_row[1] if c_row else None
+
+    return _format_paciente_response(paciente, total_consultas=tot, ultima_fecha=ult)
 
 
 @router.post("", response_model=PacienteResponse, status_code=status.HTTP_201_CREATED)
@@ -445,11 +482,11 @@ async def get_paciente_historial(
     """
     Retorna el historial clínico consolidado del paciente:
     consultas previas, diagnósticos, evolución de signos vitales y prescripciones médicas.
+    Optimizado con joinedload para evitar subconsultas N+1 secuenciales.
     """
     stmt = select(Paciente).options(
-        selectinload(Paciente.pais_telefono),
-        selectinload(Paciente.sucursal_registro),
-        selectinload(Paciente.consultas)
+        joinedload(Paciente.pais_telefono),
+        joinedload(Paciente.sucursal_registro),
     ).where(Paciente.id == id)
 
     if not current_user.es_superadmin:
@@ -460,17 +497,17 @@ async def get_paciente_historial(
     if not paciente:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paciente no encontrado")
 
-    # Cargar consultas detalladas con relaciones de médico, especialidad y sucursal
+    # Cargar consultas detalladas con relaciones de médico, especialidad y sucursal en una sola consulta JOIN
     stmt_consultas = select(ConsultaMedica).options(
-        selectinload(ConsultaMedica.medico),
-        selectinload(ConsultaMedica.especialidad),
-        selectinload(ConsultaMedica.sucursal)
+        joinedload(ConsultaMedica.medico),
+        joinedload(ConsultaMedica.especialidad),
+        joinedload(ConsultaMedica.sucursal)
     ).where(
         ConsultaMedica.paciente_id == id
     ).order_by(ConsultaMedica.fecha_consulta.desc())
 
     res_c = await db.execute(stmt_consultas)
-    consultas = res_c.scalars().all()
+    consultas = res_c.scalars().unique().all()
 
     consultas_formateadas = []
     signos_recientes = None
@@ -507,7 +544,11 @@ async def get_paciente_historial(
             )
         )
 
-    paciente_resp = _format_paciente_response(paciente)
+    paciente_resp = _format_paciente_response(
+        paciente,
+        total_consultas=len(consultas),
+        ultima_fecha=consultas[0].fecha_consulta if consultas else None
+    )
     alergias_list = paciente.alergias if isinstance(paciente.alergias, list) else []
 
     return PacienteHistorialResponse(

@@ -1,11 +1,12 @@
 import logging
-from datetime import datetime, date
-from typing import List, Optional
+import time
+from datetime import datetime, date, time as dtime
+from typing import List, Optional, Dict, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user, require_permission, registrar_auditoria
@@ -32,14 +33,24 @@ router = APIRouter(prefix="/consultas", tags=["Consultas Médicas"])
 
 VALID_ESTADOS_CONSULTA = ["en_espera", "en_curso", "finalizada", "anulada"]
 
+_medico_id_cache: Dict[Tuple[int, int], Tuple[Optional[int], float]] = {}
+
 
 async def get_medico_id_for_user(db: AsyncSession, user: Usuario) -> Optional[int]:
     """
     Si el usuario logueado es un médico especialista, obtiene su ID de médico para restringir
     la visualización de consultas exclusivamente a sus propios pacientes.
+    Con caché en memoria (TTL 60s) para evitar consultas repetitivas.
     """
     if user.es_superadmin:
         return None
+
+    now = time.time()
+    cache_key = (user.id, user.empresa_id or 0)
+    if cache_key in _medico_id_cache:
+        cached_val, ts = _medico_id_cache[cache_key]
+        if now - ts < 60:
+            return cached_val
 
     is_doctor_role = bool(user.rol and user.rol.slug == "medico")
     
@@ -53,10 +64,12 @@ async def get_medico_id_for_user(db: AsyncSession, user: Usuario) -> Optional[in
     res = await db.execute(stmt)
     med_id = res.scalar_one_or_none()
 
+    ret = None
     if is_doctor_role or med_id is not None:
-        return med_id if med_id is not None else -1
+        ret = med_id if med_id is not None else -1
 
-    return None
+    _medico_id_cache[cache_key] = (ret, now)
+    return ret
 
 
 @router.get("/resumen-contadores", response_model=ConsultaResumenContadores)
@@ -74,11 +87,19 @@ async def get_resumen_contadores(
     - atendidas (estado = 'finalizada')
     - total_hoy
     Si el usuario logueado es un doctor, sus contadores reflejan solo sus propios pacientes.
+    Utiliza agregación SQL y rango de fechas indexado para respuesta sub-milisegundo.
     """
     target_date = fecha or date.today()
+    start_dt = datetime.combine(target_date, dtime.min)
+    end_dt = datetime.combine(target_date, dtime.max)
 
-    query = select(ConsultaMedica).where(
-        func.date(ConsultaMedica.fecha_consulta) == target_date
+    query = (
+        select(ConsultaMedica.estado, func.count(ConsultaMedica.id))
+        .where(
+            ConsultaMedica.fecha_consulta >= start_dt,
+            ConsultaMedica.fecha_consulta <= end_dt,
+        )
+        .group_by(ConsultaMedica.estado)
     )
 
     if not current_user.es_superadmin:
@@ -95,12 +116,12 @@ async def get_resumen_contadores(
         query = query.where(ConsultaMedica.sucursal_id == sucursal_id)
 
     result = await db.execute(query)
-    consultas = result.scalars().all()
+    counts_by_estado = dict(result.all())
 
-    sala_espera = sum(1 for c in consultas if c.estado == "en_espera")
-    en_consulta = sum(1 for c in consultas if c.estado == "en_curso")
-    atendidas = sum(1 for c in consultas if c.estado == "finalizada")
-    total_hoy = len(consultas)
+    sala_espera = counts_by_estado.get("en_espera", 0)
+    en_consulta = counts_by_estado.get("en_curso", 0)
+    atendidas = counts_by_estado.get("finalizada", 0)
+    total_hoy = sum(counts_by_estado.values())
 
     return ConsultaResumenContadores(
         sala_espera=sala_espera,
@@ -127,16 +148,17 @@ async def list_consultas(
     """
     Lista consultas médicas según filtros de estado, fecha, especialidad, médico o texto de búsqueda.
     Si el usuario logueado es un doctor, solo ve sus propias consultas.
+    Optimizado con joinedload para reducir consultas N+1 y filtros de fecha indexados.
     """
     stmt = (
         select(ConsultaMedica)
         .options(
-            selectinload(ConsultaMedica.paciente),
-            selectinload(ConsultaMedica.medico),
-            selectinload(ConsultaMedica.especialidad),
-            selectinload(ConsultaMedica.preconsulta),
-            selectinload(ConsultaMedica.sucursal),
-            selectinload(ConsultaMedica.cita),
+            joinedload(ConsultaMedica.paciente),
+            joinedload(ConsultaMedica.medico),
+            joinedload(ConsultaMedica.especialidad),
+            joinedload(ConsultaMedica.preconsulta),
+            joinedload(ConsultaMedica.sucursal),
+            joinedload(ConsultaMedica.cita),
         )
         .order_by(ConsultaMedica.fecha_consulta.asc(), ConsultaMedica.id.asc())
     )
@@ -160,14 +182,16 @@ async def list_consultas(
         elif len(estados_list) > 1:
             stmt = stmt.where(ConsultaMedica.estado.in_(estados_list))
 
-    # Filtro por fecha
+    # Filtro por fecha usando rangos para aprovechar el índice B-tree de MySQL
     if fecha:
-        stmt = stmt.where(func.date(ConsultaMedica.fecha_consulta) == fecha)
+        start_dt = datetime.combine(fecha, dtime.min)
+        end_dt = datetime.combine(fecha, dtime.max)
+        stmt = stmt.where(ConsultaMedica.fecha_consulta >= start_dt, ConsultaMedica.fecha_consulta <= end_dt)
     else:
         if fecha_desde:
-            stmt = stmt.where(func.date(ConsultaMedica.fecha_consulta) >= fecha_desde)
+            stmt = stmt.where(ConsultaMedica.fecha_consulta >= datetime.combine(fecha_desde, dtime.min))
         if fecha_hasta:
-            stmt = stmt.where(func.date(ConsultaMedica.fecha_consulta) <= fecha_hasta)
+            stmt = stmt.where(ConsultaMedica.fecha_consulta <= datetime.combine(fecha_hasta, dtime.max))
 
     # Filtros relacionales
     if medico_id:
@@ -195,7 +219,7 @@ async def list_consultas(
         )
 
     result = await db.execute(stmt)
-    consultas = result.scalars().all()
+    consultas = result.scalars().unique().all()
 
     # Determinar si cada consulta es primera vez o subsecuente
     paciente_ids = list({c.paciente_id for c in consultas if c.paciente_id})
@@ -337,9 +361,11 @@ async def create_consulta(
     fecha_str = datetime.now().strftime("%Y%m%d")
     
     # Generar correlativo
+    today_val = date.today()
     count_res = await db.execute(
         select(func.count(ConsultaMedica.id)).where(
-            func.date(ConsultaMedica.fecha_consulta) == date.today()
+            ConsultaMedica.fecha_consulta >= datetime.combine(today_val, dtime.min),
+            ConsultaMedica.fecha_consulta <= datetime.combine(today_val, dtime.max)
         )
     )
     daily_count = (count_res.scalar() or 0) + 1

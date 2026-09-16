@@ -5,7 +5,7 @@ from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import or_, func
 
 from app.core.database import get_db
@@ -136,10 +136,10 @@ async def list_medicos(
     Lista el directorio médico asistencial con filtros por especialidad, sucursal y estado.
     """
     stmt = select(Medico).options(
-        selectinload(Medico.especialidad),
-        selectinload(Medico.pais_telefono),
-        selectinload(Medico.sucursal_defecto),
-        selectinload(Medico.usuario)
+        joinedload(Medico.especialidad),
+        joinedload(Medico.pais_telefono),
+        joinedload(Medico.sucursal_defecto),
+        joinedload(Medico.usuario)
     )
 
     if not current_user.es_superadmin:
@@ -176,7 +176,7 @@ async def list_medicos(
 
     stmt = stmt.order_by(Medico.apellidos.asc(), Medico.nombres.asc())
     result = await db.execute(stmt)
-    medicos = result.scalars().all()
+    medicos = result.scalars().unique().all()
 
     return [_format_medico_response(m) for m in medicos]
 

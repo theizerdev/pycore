@@ -48,7 +48,7 @@ class Paciente(Base, TimestampMixin):
     empresa = relationship("Empresa", lazy="selectin")
     sucursal_registro = relationship("Sucursal", foreign_keys=[sucursal_registro_id], lazy="selectin")
     pais_telefono = relationship("Pais", foreign_keys=[pais_telefono_id], lazy="selectin")
-    consultas = relationship("ConsultaMedica", back_populates="paciente", order_by="desc(ConsultaMedica.fecha_consulta)", lazy="selectin")
+    consultas = relationship("ConsultaMedica", back_populates="paciente", order_by="desc(ConsultaMedica.fecha_consulta)")
 
     @property
     def edad(self):

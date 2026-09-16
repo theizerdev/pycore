@@ -29,10 +29,10 @@ class Preconsulta(Base, TimestampMixin):
     whatsapp_enviado_at = Column(DateTime, nullable=True)
 
     # Relaciones
-    empresa = relationship("Empresa", lazy="selectin")
-    sucursal = relationship("Sucursal", lazy="selectin")
-    cita = relationship("CitaMedica", lazy="selectin")
-    paciente = relationship("Paciente", lazy="selectin")
-    medico = relationship("Medico", lazy="selectin")
-    especialidad = relationship("Especialidad", lazy="selectin")
-    consulta = relationship("ConsultaMedica", back_populates="preconsulta", uselist=False, lazy="selectin")
+    empresa = relationship("Empresa")
+    sucursal = relationship("Sucursal")
+    cita = relationship("CitaMedica")
+    paciente = relationship("Paciente")
+    medico = relationship("Medico")
+    especialidad = relationship("Especialidad")
+    consulta = relationship("ConsultaMedica", back_populates="preconsulta", uselist=False)
