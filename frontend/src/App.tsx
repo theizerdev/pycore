@@ -63,6 +63,7 @@ const DoctoresPage = lazyComponent(() => import('./pages/clinica/DoctoresPage'),
 const PacientesPage = lazyComponent(() => import('./pages/clinica/PacientesPage'), 'PacientesPage');
 const AgendaCalendarioPage = lazyComponent(() => import('./pages/clinica/AgendaCalendarioPage'), 'AgendaCalendarioPage');
 const PreconsultaPublicPage = lazyComponent(() => import('./pages/clinica/PreconsultaPublicPage'), 'PreconsultaPublicPage');
+const TurneroPantallaPage = lazyComponent(() => import('./pages/clinica/TurneroPantallaPage'), 'TurneroPantallaPage');
 const ConsultasPage = lazyComponent(() => import('./pages/clinica/ConsultasPage'), 'ConsultasPage');
 const ConsultaAtencionPage = lazyComponent<{ readOnly?: boolean }>(() => import('./pages/clinica/ConsultaAtencionPage'), 'ConsultaAtencionPage');
 const ServiciosPage = lazyComponent(() => import('./pages/administracion/ServiciosPage'), 'ServiciosPage');
@@ -89,6 +90,7 @@ export const App: React.FC = () => {
             <Route path="/verify-whatsapp" element={<Login initialView="verify-whatsapp" />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/preconsulta/:token" element={<PreconsultaPublicPage />} />
+            <Route path="/turnero/:codigoSucursal" element={<TurneroPantallaPage />} />
 
             {/* Rutas Protegidas dentro de AdminLayout */}
             <Route

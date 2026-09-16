@@ -89,10 +89,12 @@ async def check_and_send_subscription_reminders():
             # Registrar mensaje de WhatsApp saliente
             wa_msg = WhatsAppMessage(
                 empresa_id=empresa.id,
-                destinatario=telefono,
-                mensaje=mensaje,
-                estado="sent",
-                tipo="recordatorio_vencimiento_suscripcion"
+                recipient_phone=telefono,
+                recipient_name=empresa.nombre,
+                message_content=mensaje,
+                status="sent",
+                direction="outbound",
+                sent_at=now
             )
             db.add(wa_msg)
 

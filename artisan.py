@@ -144,6 +144,27 @@ asyncio.run(main())
         print(f"\n{C_BG_GREEN} SUCCESS {C_RESET} {C_GREEN}Base de datos recreada limpiamente.{C_RESET}\n")
     return code
 
+def cmd_schedule_run(args):
+    """Ejecuta inmediatamente el lote de automatizaciones programadas (suscripciones y citas)."""
+    print(f"{C_BOLD}{C_CYAN}Ejecutando tareas programadas en segundo plano (schedule:run)...{C_RESET}")
+    script = """
+import asyncio
+from app.services.background_scheduler import run_all_scheduled_tasks
+
+async def main():
+    res = await run_all_scheduled_tasks()
+    print('[OK] Resultado del scheduler:')
+    print(res)
+
+asyncio.run(main())
+"""
+    code = run_cmd(f'"{VENV_PYTHON}" -c "{script}"')
+    if code == 0:
+        print(f"\n{C_BG_GREEN} SUCCESS {C_RESET} {C_GREEN}Tareas programadas ejecutadas con éxito.{C_RESET}\n")
+    else:
+        print(f"\n{C_BG_RED} FAILED {C_RESET} {C_RED}Error al ejecutar tareas programadas.{C_RESET}\n")
+    return code
+
 def cmd_test(args):
     """Ejecuta las pruebas automatizadas del backend con pytest."""
     print(f"{C_BOLD}{C_CYAN}Ejecutando suite de pruebas automatizadas con pytest...{C_RESET}")
@@ -160,6 +181,7 @@ def print_help():
     print(f"  {C_GREEN}migrate:fresh{C_RESET}              Reconstruye las tablas desde cero (--seed para poblar)")
     print(f"  {C_GREEN}make:migration <nombre>{C_RESET}   Crea una nueva migración autogenerada")
     print(f"  {C_GREEN}db:seed{C_RESET}                    Ejecuta los seeders de datos iniciales")
+    print(f"  {C_GREEN}schedule:run{C_RESET}               Ejecuta el lote de tareas programadas (suscripciones y citas)")
     print(f"  {C_GREEN}test{C_RESET}                       Ejecuta la suite de pruebas unitarias y de integración")
     print(f"  {C_GREEN}list | help{C_RESET}                Muestra esta lista de comandos\n")
 
@@ -203,6 +225,8 @@ def main():
         sys.exit(cmd_make_migration(args))
     elif action == "db:seed":
         sys.exit(cmd_db_seed(None))
+    elif action == "schedule:run":
+        sys.exit(cmd_schedule_run(None))
     elif action == "test":
         sys.exit(cmd_test(None))
     else:

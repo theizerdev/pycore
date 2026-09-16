@@ -20,6 +20,8 @@ from app.models.consulta import ConsultaMedica
 from app.models.cita import CitaMedica
 from app.models.bloqueo import BloqueoAgenda
 from app.models.servicio import Servicio
+from app.models.turnero import TurnoLlamado
+from app.models.estudio import EstudioAdjunto
 
 __all__ = [
     "Base",
@@ -49,5 +51,7 @@ __all__ = [
     "CitaMedica",
     "BloqueoAgenda",
     "Servicio",
+    "TurnoLlamado",
+    "EstudioAdjunto",
 ]
 

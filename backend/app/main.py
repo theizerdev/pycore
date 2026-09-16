@@ -32,8 +32,20 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as session:
         await seed_initial_data(session)
 
+    # 3. Iniciar Scheduler de Tareas en Segundo Plano (Suscripciones y Recordatorios)
+    try:
+        from app.services.background_scheduler import start_background_scheduler, stop_background_scheduler
+        start_background_scheduler()
+    except Exception as e:
+        print(f"Aviso al iniciar background scheduler: {e}")
+
     yield
     # Limpieza al apagar el servidor si fuera necesario
+    try:
+        from app.services.background_scheduler import stop_background_scheduler
+        stop_background_scheduler()
+    except Exception:
+        pass
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

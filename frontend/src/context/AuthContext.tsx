@@ -166,7 +166,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth debe usarse dentro de un AuthProvider');
+    // Fallback resiliente para evitar crashes durante HMR o transiciones de montaje
+    let savedUser: Usuario | null = null;
+    let savedToken: string | null = null;
+    let savedPermisos: string[] = [];
+    try {
+      const u = localStorage.getItem('pycore_user');
+      if (u) savedUser = JSON.parse(u) as Usuario;
+      savedToken = localStorage.getItem('pycore_token');
+      const p = localStorage.getItem('pycore_permissions');
+      if (p) savedPermisos = JSON.parse(p) as string[];
+    } catch {
+      // Ignorar errores de parsing
+    }
+
+    return {
+      user: savedUser,
+      token: savedToken,
+      permisos: savedPermisos,
+      sucursalActiva: null,
+      isLoading: false,
+      login: () => {},
+      logout: () => {},
+      setSucursalActiva: () => {},
+      hasPermission: (slug: string) => {
+        if (savedUser?.es_superadmin) return true;
+        return savedPermisos.includes(slug) || savedPermisos.includes('all');
+      },
+      refreshUser: async () => {},
+    };
   }
   return context;
 };

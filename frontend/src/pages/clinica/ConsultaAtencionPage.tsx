@@ -13,6 +13,7 @@ import OdontogramaWidget, { type OdontogramaData } from '../../components/clinic
 import SignosVitalesWidget from '../../components/clinica/SignosVitalesWidget';
 import PrescripcionRecetaWidget from '../../components/clinica/PrescripcionRecetaWidget';
 import EstudiosSolicitadosWidget from '../../components/clinica/EstudiosSolicitadosWidget';
+import { EstudiosArchivosTab } from '../../components/clinica/EstudiosArchivosTab';
 import { toast } from 'sonner';
 import { cn, getInitials } from '../../lib/utils';
 
@@ -24,6 +25,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import { Switch } from '../../components/ui/switch';
 import { Card, CardContent } from '../../components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -63,6 +65,7 @@ import {
   ChevronDown,
   BedDouble,
   FileCheck2,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface ConsultaAtencionPageProps {
@@ -1533,26 +1536,55 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         )}
 
       {/* ======================================================== */}
-      {/* ── PASO 4: ESTUDIOS Y EXÁMENES (CARRITO) ────────────── */}
+      {/* ── PASO 4: ESTUDIOS Y EXÁMENES (VISOR + SOLICITUD) ──── */}
       {/* ======================================================== */}
       {currentStep === 4 && (
         <div className="space-y-6">
-          <div>
-            <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-              <FlaskConical className="h-5 w-5 text-primary" />
-              Paso 4: Solicitud de Estudios y Exámenes Complementarios
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Añada los exámenes de laboratorio, imágenes diagnósticas o procedimientos requeridos.
-            </p>
-          </div>
+          <Tabs defaultValue="adjuntos" className="w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <FlaskConical className="h-5 w-5 text-primary" />
+                  Paso 4: Estudios Médicos, Laboratorio e Imagenología
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Consulte exámenes adjuntos en el visor clínico inteligente o gestione nuevas órdenes de laboratorio e imagen.
+                </p>
+              </div>
 
-          <EstudiosSolicitadosWidget
-            estudios={estudios}
-            onAdd={(est) => setEstudios((prev) => [...prev, est])}
-            onRemove={(idx) => setEstudios((prev) => prev.filter((_, i) => i !== idx))}
-            readOnly={readOnly}
-          />
+              <TabsList className="bg-muted/60 p-1">
+                <TabsTrigger value="adjuntos" className="text-xs gap-1.5 cursor-pointer">
+                  <ImageIcon className="h-3.5 w-3.5 text-cyan-500" />
+                  <span>Visor de Estudios & Lab</span>
+                </TabsTrigger>
+                <TabsTrigger value="solicitados" className="text-xs gap-1.5 cursor-pointer">
+                  <ClipboardList className="h-3.5 w-3.5 text-indigo-500" />
+                  <span>Órdenes a Solicitar ({estudios.length})</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="adjuntos" className="mt-4">
+              {consulta.paciente_id ? (
+                <EstudiosArchivosTab
+                  pacienteId={consulta.paciente_id}
+                  consultaId={consulta.id}
+                  medicoId={consulta.medico_id || undefined}
+                />
+              ) : (
+                <p className="text-xs text-muted-foreground">Paciente no seleccionado</p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="solicitados" className="mt-4 space-y-4">
+              <EstudiosSolicitadosWidget
+                estudios={estudios}
+                onAdd={(est) => setEstudios((prev) => [...prev, est])}
+                onRemove={(idx) => setEstudios((prev) => prev.filter((_, i) => i !== idx))}
+                readOnly={readOnly}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       )}
 

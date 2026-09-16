@@ -33,7 +33,9 @@ import {
   Weight,
   Thermometer,
   Zap,
+  FlaskConical,
 } from 'lucide-react';
+import { EstudiosArchivosTab } from '../../components/clinica/EstudiosArchivosTab';
 
 interface PatientRecordDrawerProps {
   open: boolean;
@@ -206,10 +208,14 @@ export const PatientRecordDrawer: React.FC<PatientRecordDrawerProps> = ({
         <div className="flex-1 flex flex-col overflow-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-5 pt-3 border-b border-border/70 bg-card">
-              <TabsList className="grid grid-cols-4 h-9 bg-muted/50 p-1">
+              <TabsList className="grid grid-cols-5 h-9 bg-muted/50 p-1">
                 <TabsTrigger value="consultas" className="text-xs gap-1.5 cursor-pointer data-[state=active]:bg-background">
                   <Stethoscope className="size-3.5 text-teal-600" />
                   <span>Historial Consultas ({consultas.length})</span>
+                </TabsTrigger>
+                <TabsTrigger value="estudios" className="text-xs gap-1.5 cursor-pointer data-[state=active]:bg-background">
+                  <FlaskConical className="size-3.5 text-cyan-500" />
+                  <span>Estudios & Lab</span>
                 </TabsTrigger>
                 <TabsTrigger value="recetas" className="text-xs gap-1.5 cursor-pointer data-[state=active]:bg-background">
                   <Pill className="size-3.5 text-indigo-600" />
@@ -509,6 +515,11 @@ export const PatientRecordDrawer: React.FC<PatientRecordDrawerProps> = ({
                     </div>
                   </div>
                 </div>
+              </TabsContent>
+
+              {/* ── 5. ESTUDIOS Y EXÁMENES (LAB & IMAGENOLOGÍA) ─────── */}
+              <TabsContent value="estudios" className="space-y-4 m-0">
+                <EstudiosArchivosTab pacienteId={paciente.id} />
               </TabsContent>
             </div>
           </Tabs>

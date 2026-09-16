@@ -83,10 +83,12 @@ import {
   CalendarClock,
   Eye,
   Filter,
+  Tv,
 } from 'lucide-react';
 import { DocumentosImpresionModal, type TipoDocumentoClinico } from '../../components/clinica/DocumentosImpresionModal';
 import { PatientRecordDrawer } from './PatientRecordDrawer';
 import type { Paciente } from '../../types';
+import { turneroApi } from '../../api/turnero';
 
 type TabKey = 'sala-espera' | 'en-consulta' | 'atendidas';
 
@@ -289,6 +291,22 @@ export const ConsultasPage: React.FC = () => {
       action: async () => {
         try {
           await consultasApi.cambiarEstado(consulta.id, 'en_curso');
+          
+          // Despachar llamado automático a la pantalla Turnero Smart TV
+          try {
+            await turneroApi.llamar({
+              paciente_nombre: `${consulta.paciente?.nombres || ''} ${consulta.paciente?.apellidos || ''}`.trim(),
+              medico_nombre: `Dr(a). ${consulta.medico?.nombres || ''} ${consulta.medico?.apellidos || ''}`.trim(),
+              consultorio: `Consultorio ${consulta.medico?.id || '1'}`,
+              especialidad: consulta.especialidad?.nombre || undefined,
+              cita_id: consulta.cita_id,
+              paciente_id: consulta.paciente_id,
+              sucursal_id: consulta.sucursal_id,
+            });
+          } catch (turnErr) {
+            console.warn('Aviso al emitir llamado en turnero:', turnErr);
+          }
+
           toast.success(`Paciente ${consulta.paciente?.nombres} ingresó a consulta médica.`);
           // Redirigir a la vista completa de atención
           navigate(`/clinica/consultas/${consulta.id}/atencion`);
@@ -486,6 +504,21 @@ export const ConsultasPage: React.FC = () => {
 
         {/* Acciones superiores */}
         <div className="flex items-center gap-2.5">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => {
+              const sucursalCod = selectedSucursal && selectedSucursal !== 'all'
+                ? sucursales.find(s => String(s.id) === selectedSucursal)?.codigo || selectedSucursal
+                : (user?.sucursal_defecto?.codigo || (user?.sucursal_defecto_id ? String(user.sucursal_defecto_id) : (sucursales[0]?.codigo || String(sucursales[0]?.id || '1'))));
+              window.open(`/turnero/${sucursalCod}`, '_blank');
+            }}
+            className="h-9 gap-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-medium shadow-xs"
+          >
+            <Tv className="h-4 w-4" />
+            <span className="hidden sm:inline">Pantalla Turnero TV</span>
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
