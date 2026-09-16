@@ -718,7 +718,7 @@ async def send_whatsapp_test(
     from app.services.plan_quota_service import PlanQuotaService
     await PlanQuotaService.check_whatsapp_limit(db, empresa_id, count=1)
 
-    wa_service, target_used, es_suc = await resolve_whatsapp_service(db, empresa_id, sucursal_id)
+    wa_service, target_used, es_suc, using_fallback = await resolve_whatsapp_service(db, empresa_id, sucursal_id)
     if not wa_service:
         raise HTTPException(status_code=400, detail="No hay una instancia de WhatsApp activa ni configurada")
 

@@ -65,12 +65,12 @@ async def resolve_whatsapp_service(
     db: AsyncSession,
     empresa_id: int,
     sucursal_id: Optional[int] = None
-) -> Tuple[Optional[WhatsAppService], Any, bool]:
+) -> Tuple[Optional[WhatsAppService], Any, bool, bool]:
     """
     Resuelve el servicio de WhatsApp adecuado para el envío de mensajes:
-    1. Si sucursal_id tiene WhatsApp conectado y activo -> Usa Sucursal (es_sucursal=True).
-    2. Fallback -> Si la Sucursal no está conectada o no existe, usa la Empresa (es_sucursal=False).
-    Retorna: (wa_service, entidad_usada, es_sucursal)
+    1. Si sucursal_id tiene WhatsApp conectado y activo -> Usa Sucursal (es_sucursal=True, using_fallback=False).
+    2. Fallback -> Si la Sucursal no está conectada o no existe, usa la Empresa (es_sucursal=False, using_fallback=True si sucursal_id).
+    Retorna: (wa_service, entidad_usada, es_sucursal, using_fallback)
     """
     # 1. Cargar empresa para heredar código de país y api_url base
     stmt_emp = (
@@ -112,7 +112,7 @@ async def resolve_whatsapp_service(
                 company_id=empresa_id,
                 country_code=cod_pais_suc
             )
-            return service, sucursal, True
+            return service, sucursal, True, False
 
     # 3. Fallback a Empresa
     if empresa:
@@ -124,6 +124,7 @@ async def resolve_whatsapp_service(
             company_id=empresa.id,
             country_code=cod_pais
         )
-        return service, empresa, False
+        using_fallback = bool(sucursal_id is not None)
+        return service, empresa, False, using_fallback
 
-    return None, None, False
+    return None, None, False, False
