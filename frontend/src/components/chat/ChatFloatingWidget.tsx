@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { chatApi, MAX_CHAT_FILE_SIZE_BYTES } from '../../api/chat';
+import { API_BASE_URL } from '../../api/client';
 import { sucursalesApi } from '../../api/sucursales';
 import type {
   ChatCanal,
@@ -42,7 +43,7 @@ import { Button } from '../ui/button';
 const EMOJIS_PRESET = ['👍', '🩺', '💉', '📋', '✅', '⏰', '⚠️', '💊', '🙏', '😊', '👋', '🚨'];
 
 export const ChatFloatingWidget: React.FC = () => {
-  const { user } = useAuth();
+  const { user, sucursalActiva } = useAuth();
 
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'chats' | 'personal'>('chats');
@@ -64,20 +65,31 @@ export const ChatFloatingWidget: React.FC = () => {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
 
-  // Referencias
+  // Referencias para evitar problemas de closure en WebSockets
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const activeCanalRef = useRef<ChatCanal | null>(null);
+  const isOpenRef = useRef<boolean>(isOpen);
 
-  // 1. Cargar sucursales del usuario al montar
+  useEffect(() => {
+    activeCanalRef.current = activeCanal;
+  }, [activeCanal]);
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  // 1. Cargar sucursales del usuario al montar y sincronizar con sucursalActiva
   useEffect(() => {
     const loadSucursales = async () => {
       try {
         const sucs = await sucursalesApi.list();
         setSucursales(sucs);
         if (sucs.length > 0) {
-          const defaultId = user?.sucursal_defecto_id || sucs[0].id;
+          const defaultId = sucursalActiva?.id || user?.sucursal_defecto_id || sucs[0].id;
           setSelectedSucursalId(defaultId);
         }
       } catch (err) {
@@ -85,61 +97,129 @@ export const ChatFloatingWidget: React.FC = () => {
       }
     };
     loadSucursales();
-  }, [user]);
+  }, [user, sucursalActiva]);
 
-  // 2. Conectar WebSocket bi-direccional
+  // 2. Conectar WebSocket bi-direccional en tiempo real
   useEffect(() => {
     if (!selectedSucursalId) return;
 
-    const token = localStorage.getItem('token');
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+    let isMounted = true;
+
+    const token = localStorage.getItem('pycore_token');
     if (!token) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-    const wsUrl = `${protocol}//${host}/api/v1/chat/ws?token=${token}&sucursal_id=${selectedSucursalId}`;
+    const connectWs = () => {
+      if (!isMounted) return;
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+      // Derivar protocolo y host a partir de API_BASE_URL
+      let base = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+      if (!base.startsWith('http://') && !base.startsWith('https://')) {
+        const proto = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        base = `${proto}//${window.location.host}${base}`;
+      }
+      const wsBase = base.startsWith('https://')
+        ? base.replace('https://', 'wss://')
+        : base.replace('http://', 'ws://');
 
-    ws.onmessage = (event) => {
+      const wsUrl = `${wsBase}/api/v1/chat/ws?token=${encodeURIComponent(token)}&sucursal_id=${selectedSucursalId}`;
+
       try {
-        const data = JSON.parse(event.data);
-        if (data.event === 'nuevo_mensaje') {
-          const nuevoMsg: ChatMensaje = data.mensaje;
+        socket = new WebSocket(wsUrl);
+        wsRef.current = socket;
 
-          // Si el mensaje pertenece al canal que está abierto actualmente
-          if (activeCanal && activeCanal.id === data.canal_id) {
-            setMensajes((prev) => [...prev, nuevoMsg]);
-            // Marcar como leído
-            chatApi.markAsRead(activeCanal.id);
-          } else {
-            // Actualizar contador de no leídos
-            setTotalNoLeidos((prev) => prev + 1);
-            setCanales((prev) =>
-              prev.map((c) =>
-                c.id === data.canal_id
-                  ? { ...c, no_leidos: c.no_leidos + 1, ultimo_mensaje: nuevoMsg }
-                  : c
-              )
-            );
+        socket.onopen = () => {
+          console.log('🟢 [CHAT WS] Conectado en tiempo real a la sucursal', selectedSucursalId);
+          setWsConnected(true);
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === 'nuevo_mensaje') {
+              const nuevoMsg: ChatMensaje = data.mensaje;
+              const currentCanal = activeCanalRef.current;
+              const currentIsOpen = isOpenRef.current;
+
+              // 1. Si el canal está actualmente abierto en pantalla:
+              if (currentIsOpen && currentCanal && currentCanal.id === data.canal_id) {
+                setMensajes((prev) => {
+                  if (prev.some((m) => m.id === nuevoMsg.id)) return prev;
+                  return [...prev, nuevoMsg];
+                });
+                // Marcar como leído en backend
+                chatApi.markAsRead(currentCanal.id).catch(() => {});
+              } else {
+                // Si no estamos viendo este canal y no fue enviado por este usuario, incrementar badge
+                if (nuevoMsg.remitente_id !== user?.id) {
+                  setTotalNoLeidos((prev) => prev + 1);
+                }
+              }
+
+              // 2. Actualizar el canal en la lista lateral
+              setCanales((prev) => {
+                const canalExiste = prev.some((c) => c.id === data.canal_id);
+                if (!canalExiste) {
+                  fetchCanalesYContadores();
+                  return prev;
+                }
+
+                const isViewing = currentIsOpen && currentCanal && currentCanal.id === data.canal_id;
+                return prev.map((c) => {
+                  if (c.id === data.canal_id) {
+                    const addUnread = (!isViewing && nuevoMsg.remitente_id !== user?.id) ? 1 : 0;
+                    return {
+                      ...c,
+                      ultimo_mensaje: nuevoMsg,
+                      no_leidos: isViewing ? 0 : c.no_leidos + addUnread,
+                      updated_at: nuevoMsg.created_at,
+                    };
+                  }
+                  return c;
+                });
+              });
+            }
+          } catch (err) {
+            console.error('Error procesando evento WebSocket de chat:', err);
           }
-        }
+        };
+
+        socket.onerror = (e) => {
+          console.warn('⚠️ [CHAT WS] Error en socket:', e);
+        };
+
+        socket.onclose = () => {
+          setWsConnected(false);
+          if (isMounted) {
+            console.log('🔴 [CHAT WS] Conexión cerrada. Reconectando en 3s...');
+            reconnectTimeout = setTimeout(connectWs, 3000);
+          }
+        };
       } catch (err) {
-        console.error('Error procesando evento WebSocket de chat:', err);
+        console.error('Error iniciando WebSocket de chat:', err);
+        if (isMounted) {
+          reconnectTimeout = setTimeout(connectWs, 4000);
+        }
       }
     };
 
+    connectWs();
+
+    // Ping cada 25 segundos para evitar timeouts de proxies
     const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ event: 'ping' }));
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ event: 'ping' }));
       }
     }, 25000);
 
     return () => {
+      isMounted = false;
       clearInterval(pingInterval);
-      ws.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (socket) socket.close();
     };
-  }, [selectedSucursalId, activeCanal]);
+  }, [selectedSucursalId, user?.id]);
 
   // 3. Cargar canales y no leídos al cambiar de sucursal
   const fetchCanalesYContadores = async () => {
@@ -162,7 +242,30 @@ export const ChatFloatingWidget: React.FC = () => {
     return () => clearInterval(interval);
   }, [selectedSucursalId]);
 
-  // 4. Cargar personal de la sucursal
+  // 4. Sincronizador de respaldo: sondeo periódico si una conversación está abierta
+  useEffect(() => {
+    if (!isOpen || !activeCanal) return;
+
+    const syncInterval = setInterval(async () => {
+      try {
+        const msgs = await chatApi.getMensajes(activeCanal.id);
+        setMensajes((prev) => {
+          const prevLastId = prev.length > 0 ? prev[prev.length - 1].id : null;
+          const newLastId = msgs.length > 0 ? msgs[msgs.length - 1].id : null;
+          if (msgs.length !== prev.length || newLastId !== prevLastId) {
+            return msgs;
+          }
+          return prev;
+        });
+      } catch (err) {
+        // Silencioso
+      }
+    }, 3000);
+
+    return () => clearInterval(syncInterval);
+  }, [isOpen, activeCanal?.id]);
+
+  // 5. Cargar personal de la sucursal
   const fetchPersonal = async () => {
     if (!selectedSucursalId) return;
     try {
@@ -179,7 +282,7 @@ export const ChatFloatingWidget: React.FC = () => {
     }
   }, [isOpen, activeTab, selectedSucursalId]);
 
-  // 5. Cargar mensajes cuando se abre un canal
+  // 6. Cargar mensajes cuando se abre un canal
   useEffect(() => {
     if (!activeCanal) return;
 
@@ -203,12 +306,12 @@ export const ChatFloatingWidget: React.FC = () => {
     };
 
     loadMessages();
-  }, [activeCanal]);
+  }, [activeCanal?.id]);
 
   // Auto-scroll al fondo
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [mensajes]);
+  }, [mensajes.length]);
 
   // Enviar mensaje de texto
   const handleSendText = async (e?: React.FormEvent) => {
@@ -224,7 +327,10 @@ export const ChatFloatingWidget: React.FC = () => {
         contenido: texto,
         tipo: 'texto',
       });
-      setMensajes((prev) => [...prev, msg]);
+      setMensajes((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      setCanales((prev) =>
+        prev.map((c) => (c.id === activeCanal.id ? { ...c, ultimo_mensaje: msg, updated_at: msg.created_at } : c))
+      );
     } catch (err) {
       console.error('Error enviando mensaje:', err);
       toast.error('No se pudo enviar el mensaje.');
@@ -243,7 +349,10 @@ export const ChatFloatingWidget: React.FC = () => {
         archivo_tipo: uploadRes.archivo_tipo,
         duracion_audio: durationSeconds,
       });
-      setMensajes((prev) => [...prev, msg]);
+      setMensajes((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      setCanales((prev) =>
+        prev.map((c) => (c.id === activeCanal.id ? { ...c, ultimo_mensaje: msg, updated_at: msg.created_at } : c))
+      );
       setIsRecordingVoice(false);
     } catch (err) {
       console.error('Error guardando nota de voz:', err);
@@ -278,7 +387,10 @@ export const ChatFloatingWidget: React.FC = () => {
         archivo_tipo: uploadRes.archivo_tipo,
         contenido: file.name,
       });
-      setMensajes((prev) => [...prev, msg]);
+      setMensajes((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      setCanales((prev) =>
+        prev.map((c) => (c.id === activeCanal.id ? { ...c, ultimo_mensaje: msg, updated_at: msg.created_at } : c))
+      );
       toast.success('Archivo adjuntado correctamente');
     } catch (err: any) {
       console.error('Error subiendo archivo:', err);
@@ -393,9 +505,18 @@ export const ChatFloatingWidget: React.FC = () => {
               )}
 
               <div className="min-w-0">
-                <h4 className="text-sm font-semibold truncate leading-tight">
-                  {activeCanal ? activeCanal.nombre : 'Comunicación Clínica'}
-                </h4>
+                <div className="flex items-center gap-1.5">
+                  <h4 className="text-sm font-semibold truncate leading-tight">
+                    {activeCanal ? activeCanal.nombre : 'Comunicación Clínica'}
+                  </h4>
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full shrink-0",
+                      wsConnected ? "bg-emerald-300 animate-pulse" : "bg-amber-300"
+                    )}
+                    title={wsConnected ? "Conectado en tiempo real (WebSockets)" : "Sincronizando..."}
+                  />
+                </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-emerald-100 mt-0.5">
                   <Building2 className="h-3 w-3 shrink-0" />
                   <span className="truncate">

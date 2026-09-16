@@ -42,11 +42,18 @@ class ChatConnectionManager:
     async def send_to_user(self, usuario_id: int, message: dict):
         """Envía un mensaje a todas las conexiones activas de un usuario específico."""
         if usuario_id in self.active_users:
+            dead_sockets = []
             for ws in list(self.active_users[usuario_id]):
                 try:
                     await ws.send_json(message)
                 except Exception as e:
                     logger.warning(f"Error enviando mensaje a usuario {usuario_id}: {e}")
+                    dead_sockets.append(ws)
+            for ws in dead_sockets:
+                if ws in self.active_users.get(usuario_id, []):
+                    self.active_users[usuario_id].remove(ws)
+            if usuario_id in self.active_users and not self.active_users[usuario_id]:
+                del self.active_users[usuario_id]
 
     async def broadcast_to_participants(self, participant_ids: List[int], message: dict):
         """Difunde un evento en tiempo real a todos los participantes de un canal."""

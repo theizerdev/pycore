@@ -174,7 +174,10 @@ async def send_channel_message(
         "sucursal_id": sucursal_id,
         "mensaje": mensaje_resp.model_dump(mode="json")
     }
-    await chat_ws_manager.broadcast_to_participants(participant_ids, ws_event)
+    if canal.tipo == "canal_sucursal":
+        await chat_ws_manager.broadcast_to_sucursal(sucursal_id, ws_event)
+    else:
+        await chat_ws_manager.broadcast_to_participants(participant_ids, ws_event)
 
     return mensaje_resp
 
