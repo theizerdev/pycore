@@ -22,6 +22,7 @@ from app.models.bloqueo import BloqueoAgenda
 from app.models.servicio import Servicio
 from app.models.turnero import TurnoLlamado
 from app.models.estudio import EstudioAdjunto
+from app.models.chat import ChatCanal, ChatParticipante, ChatMensaje
 
 __all__ = [
     "Base",
@@ -53,5 +54,8 @@ __all__ = [
     "Servicio",
     "TurnoLlamado",
     "EstudioAdjunto",
+    "ChatCanal",
+    "ChatParticipante",
+    "ChatMensaje",
 ]
 

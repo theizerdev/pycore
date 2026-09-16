@@ -133,11 +133,63 @@ async def send_daily_appointment_reminders() -> Dict[str, Any]:
     }
 
 
+async def cleanup_old_chat_messages(days_retention: int = 30) -> Dict[str, Any]:
+    """
+    Política de retención del Chat Clínico:
+    Elimina mensajes con más de 30 días de antigüedad y borra físicamente
+    los archivos adjuntos (audios, imágenes, documentos) del disco.
+    """
+    import os
+    from sqlalchemy import delete
+    from app.models.chat import ChatMensaje
+
+    logger.info(f"🧹 [SCHEDULER] Iniciando purga de mensajes de chat antiguos (> {days_retention} días)...")
+    cutoff_date = datetime.now() - timedelta(days=days_retention)
+    upload_chat_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "chat"))
+
+    archivos_eliminados = 0
+    mensajes_eliminados = 0
+
+    async with AsyncSessionLocal() as db:
+        # 1. Obtener mensajes anteriores a cutoff_date con archivo_url para eliminar archivos físicos
+        stmt_files = select(ChatMensaje.archivo_url).where(
+            ChatMensaje.created_at < cutoff_date,
+            ChatMensaje.archivo_url.isnot(None)
+        )
+        res_files = await db.execute(stmt_files)
+        file_urls = res_files.scalars().all()
+
+        for url in file_urls:
+            if url and url.startswith("/uploads/chat/"):
+                fname = url.replace("/uploads/chat/", "")
+                fpath = os.path.join(upload_chat_dir, fname)
+                try:
+                    if os.path.exists(fpath):
+                        os.remove(fpath)
+                        archivos_eliminados += 1
+                except Exception as ex:
+                    logger.warning(f"No se pudo eliminar archivo físico {fpath}: {ex}")
+
+        # 2. Eliminar registros de mensajes de la base de datos
+        stmt_del = delete(ChatMensaje).where(ChatMensaje.created_at < cutoff_date)
+        res_del = await db.execute(stmt_del)
+        mensajes_eliminados = res_del.rowcount or 0
+        await db.commit()
+
+    logger.info(f"🧹 [SCHEDULER] Purga de chat completada: {mensajes_eliminados} mensajes y {archivos_eliminados} archivos eliminados.")
+    return {
+        "mensajes_eliminados": mensajes_eliminados,
+        "archivos_eliminados": archivos_eliminados,
+        "fecha_corte": str(cutoff_date)
+    }
+
+
 async def run_all_scheduled_tasks() -> Dict[str, Any]:
     """
     Ejecuta el lote completo de tareas automatizadas:
     1. Suscripciones y vencimientos + alertas por hitos WhatsApp
     2. Recordatorios de citas para el día de mañana
+    3. Purga de mensajes de chat y archivos adjuntos mayores a 30 días
     """
     logger.info("🚀 [SCHEDULER] Ejecutando lote de automatizaciones en segundo plano...")
     start_time = datetime.now()
@@ -159,13 +211,22 @@ async def run_all_scheduled_tasks() -> Dict[str, Any]:
         logger.error(f"❌ Error en send_daily_appointment_reminders: {e}", exc_info=True)
         citas_res = {"error": str(e)}
 
+    # 3. Chat clínico: purga de mensajes y multimedia > 30 días
+    chat_res = None
+    try:
+        chat_res = await cleanup_old_chat_messages(days_retention=30)
+    except Exception as e:
+        logger.error(f"❌ Error en cleanup_old_chat_messages: {e}", exc_info=True)
+        chat_res = {"error": str(e)}
+
     elapsed = (datetime.now() - start_time).total_seconds()
     logger.info(f"🏁 [SCHEDULER] Lote de tareas completado en {elapsed:.2f}s.")
     return {
         "ejecutado_en": str(datetime.now()),
         "duracion_segundos": elapsed,
         "suscripciones": sub_res,
-        "citas": citas_res
+        "citas": citas_res,
+        "chat_purga": chat_res
     }
 
 

@@ -82,6 +82,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers=headers
     )
 
+import os
+from fastapi.staticfiles import StaticFiles
+
+# Montar directorio de archivos estáticos (multimedia chat y adjuntos)
+UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "uploads"))
+os.makedirs(os.path.join(UPLOAD_DIR, "chat"), exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 # Incluir Rutas
 app.include_router(api_router, prefix=settings.API_V1_STR)
 

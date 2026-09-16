@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminHeader } from './AdminHeader';
 import { TemplateCustomizer } from './TemplateCustomizer';
+import { ChatFloatingWidget } from '../chat/ChatFloatingWidget';
 import { useTemplateSettings } from '../../context/TemplateSettingsContext';
 import { cn } from '../../lib/utils';
 
@@ -56,6 +57,9 @@ export const AdminLayout: React.FC = () => {
 
       {/* Personalizador de Plantilla Flotante & Drawer (Template Customizer) */}
       <TemplateCustomizer />
+
+      {/* Chat Clínico Interno Flotante Persistente en Todas las Pantallas */}
+      <ChatFloatingWidget />
     </div>
   );
 };
