@@ -43,37 +43,9 @@ async def create_sucursal(
     if not current_user.es_superadmin and req.empresa_id != current_user.empresa_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No puedes crear sucursales en otra empresa")
 
-    # Validación Estricta de Límite de Sucursales según Suscripción Aprobada (FixSale POS)
-    stmt_emp = select(Empresa).where(Empresa.id == target_empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
-
-    if empresa and not empresa.is_exempt_from_subscription():
-        stmt_sub = (
-            select(Suscripcion)
-            .where(Suscripcion.empresa_id == empresa.id, Suscripcion.estado == "aprobado")
-            .order_by(Suscripcion.id.desc())
-            .limit(1)
-        )
-        res_sub = await db.execute(stmt_sub)
-        sub_aprobada = res_sub.scalar_one_or_none()
-
-        if sub_aprobada and sub_aprobada.sucursales_contratadas:
-            max_allowed = sub_aprobada.sucursales_contratadas
-        elif empresa.plan and empresa.plan.sucursales_incluidas:
-            max_allowed = empresa.plan.sucursales_incluidas
-        else:
-            max_allowed = 1
-
-        stmt_count = select(func.count(Sucursal.id)).where(Sucursal.empresa_id == empresa.id)
-        res_count = await db.execute(stmt_count)
-        current_count = res_count.scalar() or 0
-
-        if current_count >= max_allowed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Límite de sucursales alcanzado. Tu suscripción o plan actual permite un máximo de {max_allowed} sucursal(es). Para agregar más, actualiza tu suscripción en el sistema."
-            )
+    # Validación Estricta de Límite de Sucursales según Suscripción Aprobada
+    from app.services.plan_quota_service import PlanQuotaService
+    await PlanQuotaService.check_sucursal_limit(db, target_empresa_id)
 
     sucursal = Sucursal(**req.model_dump())
     db.add(sucursal)

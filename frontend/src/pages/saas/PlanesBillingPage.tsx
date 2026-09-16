@@ -17,7 +17,8 @@ import {
   Check,
   Landmark,
   Smartphone,
-  Copy
+  Copy,
+  Users
 } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -303,6 +304,114 @@ export const PlanesBillingPage: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Medidores de Recursos Contratados */}
+            <div className="pt-2 border-t space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-emerald-500" />
+                  <span>Consumo y Capacidad de Recursos del Plan</span>
+                </p>
+                <span className="text-[11px] text-muted-foreground font-medium">
+                  {isExempt ? 'Plan Enterprise Ilimitado' : (suscripcion?.plan_activo?.nombre || 'Plan Activo')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* 1. Usuarios */}
+                <div className="p-3 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold flex items-center gap-1.5 text-muted-foreground">
+                      <Users className="size-3.5 text-indigo-500" />
+                      Usuarios del Equipo
+                    </span>
+                    <span className="font-bold text-foreground">
+                      {suscripcion?.metricas.usuarios_usados} / {isExempt ? '∞' : suscripcion?.metricas.max_usuarios}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        (suscripcion?.metricas.usuarios_porcentaje || 0) >= 100
+                          ? 'bg-destructive'
+                          : (suscripcion?.metricas.usuarios_porcentaje || 0) >= 80
+                          ? 'bg-amber-500'
+                          : 'bg-indigo-500'
+                      }`}
+                      style={{ width: `${Math.min(100, isExempt ? 15 : (suscripcion?.metricas.usuarios_porcentaje || 0))}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>{isExempt ? 'Acceso Ilimitado' : `${suscripcion?.metricas.usuarios_porcentaje || 0}% ocupado`}</span>
+                    {!isExempt && (suscripcion?.metricas.usuarios_usados || 0) >= (suscripcion?.metricas.max_usuarios || 0) && (
+                      <span className="text-destructive font-bold">Límite alcanzado</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Sucursales */}
+                <div className="p-3 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold flex items-center gap-1.5 text-muted-foreground">
+                      <Building2 className="size-3.5 text-emerald-500" />
+                      Sedes / Sucursales
+                    </span>
+                    <span className="font-bold text-foreground">
+                      {suscripcion?.metricas.sucursales_usadas} / {isExempt ? '∞' : suscripcion?.metricas.max_sucursales}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        (suscripcion?.metricas.sucursales_porcentaje || 0) >= 100
+                          ? 'bg-destructive'
+                          : (suscripcion?.metricas.sucursales_porcentaje || 0) >= 80
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(100, isExempt ? 15 : (suscripcion?.metricas.sucursales_porcentaje || 0))}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>{isExempt ? 'Acceso Ilimitado' : `${suscripcion?.metricas.sucursales_porcentaje || 0}% ocupado`}</span>
+                    {!isExempt && (suscripcion?.metricas.sucursales_usadas || 0) >= (suscripcion?.metricas.max_sucursales || 0) && (
+                      <span className="text-destructive font-bold">Límite alcanzado</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. WhatsApp */}
+                <div className="p-3 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold flex items-center gap-1.5 text-muted-foreground">
+                      <Smartphone className="size-3.5 text-teal-500" />
+                      WhatsApp (Mes)
+                    </span>
+                    <span className="font-bold text-foreground">
+                      {suscripcion?.metricas.mensajes_whatsapp_mes} / {isExempt ? '∞' : suscripcion?.metricas.max_mensajes_whatsapp}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        (suscripcion?.metricas.whatsapp_porcentaje || 0) >= 100
+                          ? 'bg-destructive'
+                          : (suscripcion?.metricas.whatsapp_porcentaje || 0) >= 80
+                          ? 'bg-amber-500'
+                          : 'bg-teal-500'
+                      }`}
+                      style={{ width: `${Math.min(100, isExempt ? 5 : (suscripcion?.metricas.whatsapp_porcentaje || 0))}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>{isExempt ? 'Acceso Ilimitado' : `${suscripcion?.metricas.whatsapp_porcentaje || 0}% consumido`}</span>
+                    {!isExempt && (suscripcion?.metricas.mensajes_whatsapp_mes || 0) >= (suscripcion?.metricas.max_mensajes_whatsapp || 0) && (
+                      <span className="text-destructive font-bold">Cupo agotado</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 

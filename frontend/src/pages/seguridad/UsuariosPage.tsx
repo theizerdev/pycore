@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import type { Usuario, Rol, Sucursal, Empresa } from '../../types';
+import type { Usuario, Rol, Sucursal, Empresa, SuscripcionEmpresa } from '../../types';
 import { usuariosApi } from '../../api/usuarios';
 import { rolesApi } from '../../api/roles';
 import { sucursalesApi } from '../../api/sucursales';
 import { empresasApi } from '../../api/empresas';
+import { planesApi } from '../../api/planes';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -23,7 +24,8 @@ import {
   Star,
   Globe,
   Eye,
-  EyeOff
+  EyeOff,
+  Sparkles
 } from 'lucide-react';
 import { ModuleHeader } from '../../components/common/ModuleHeader';
 import { StatCard } from '../../components/common/StatCard';
@@ -66,6 +68,20 @@ export const UsuariosPage: React.FC = () => {
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Info de Límites de Suscripción
+  const [suscripcionInfo, setSuscripcionInfo] = useState<SuscripcionEmpresa | null>(null);
+
+  useEffect(() => {
+    planesApi.getMiSuscripcion().then(setSuscripcionInfo).catch(console.error);
+  }, []);
+
+  const maxAllowedUsuarios = currentUser?.es_superadmin
+    ? 999
+    : (suscripcionInfo?.metricas.max_usuarios || 3);
+  const isExempt = Boolean(currentUser?.empresa_id === 1 || currentUser?.es_superadmin);
+  const totalActivos = usuarios.filter((u) => u.activo).length;
+  const canAddUsuario = isExempt || totalActivos < maxAllowedUsuarios;
 
   // Filtros idénticos a fixsalePOS
   const [searchTerm, setSearchTerm] = useState('');
@@ -210,6 +226,12 @@ export const UsuariosPage: React.FC = () => {
 
   // Manejadores Modal
   const handleCreateClick = () => {
+    if (!canAddUsuario) {
+      toast.error(
+        `Límite de usuarios alcanzado (${totalActivos}/${maxAllowedUsuarios}). Tu plan actual '${suscripcionInfo?.plan_activo?.nombre || 'Básico'}' no permite registrar más usuarios activos. Actualiza tu plan en Planes & Facturación para ampliar el equipo.`
+      );
+      return;
+    }
     setEditingUser(null);
     const defaultRolId = roles[0]?.id || 1;
     const defaultEmpId = currentUser?.empresa_id || (empresas[0]?.id || 1);
@@ -559,15 +581,23 @@ export const UsuariosPage: React.FC = () => {
         description="Gestión de médicos, enfermería, recepción y administradores clínicos del sistema."
         colorClassName="bg-teal-600 dark:bg-teal-700"
       >
-        {hasPermission('usuarios.crear') && (
-          <Button
-            onClick={handleCreateClick}
-            className="bg-white hover:bg-slate-100 text-teal-800 font-semibold shadow-xs text-xs h-9"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo Usuario
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {!isExempt && (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-teal-700/50 text-teal-100 text-xs font-semibold border border-teal-500/30">
+              <Sparkles className="size-3.5 text-amber-300" />
+              <span>Cupo del Plan: {stats.activos} / {maxAllowedUsuarios} usuarios</span>
+            </div>
+          )}
+          {hasPermission('usuarios.crear') && (
+            <Button
+              onClick={handleCreateClick}
+              className="bg-white hover:bg-slate-100 text-teal-800 font-semibold shadow-xs text-xs h-9 cursor-pointer"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo Usuario
+            </Button>
+          )}
+        </div>
       </ModuleHeader>
 
       {/* Stat Cards en fila idénticos a fixsalePOS */}
@@ -581,7 +611,7 @@ export const UsuariosPage: React.FC = () => {
         <StatCard
           icon={<CheckCircle className="h-6 w-6" />}
           title="USUARIOS ACTIVOS"
-          value={stats.activos}
+          value={isExempt ? `${stats.activos}` : `${stats.activos} / ${maxAllowedUsuarios}`}
           colorClassName="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400"
         />
         <StatCard

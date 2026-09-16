@@ -82,6 +82,10 @@ async def create_usuario(
 
     empresa_id = req.empresa_id if current_user.es_superadmin else current_user.empresa_id
 
+    # Validación Estricta de Límite de Usuarios según Plan SaaS
+    from app.services.plan_quota_service import PlanQuotaService
+    await PlanQuotaService.check_user_limit(db, empresa_id)
+
     usuario = Usuario(
         nombre=req.nombre,
         apellido=req.apellido,
@@ -203,6 +207,9 @@ async def update_usuario(
     if req.telefono is not None:
         usuario.telefono = req.telefono
     if req.activo is not None:
+        if req.activo is True and not usuario.activo:
+            from app.services.plan_quota_service import PlanQuotaService
+            await PlanQuotaService.check_user_limit(db, usuario.empresa_id)
         usuario.activo = req.activo
     if req.rol_id is not None:
         usuario.rol_id = req.rol_id

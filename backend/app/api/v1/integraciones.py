@@ -588,6 +588,9 @@ async def send_whatsapp_test(
     result = await db.execute(stmt)
     empresa = result.scalar_one_or_none()
 
+    from app.services.plan_quota_service import PlanQuotaService
+    await PlanQuotaService.check_whatsapp_limit(db, empresa_id, count=1)
+
     wa_service = WhatsAppService(
         api_url=empresa.whatsapp_api_url or "http://localhost:3000",
         api_key=empresa.whatsapp_api_key,
@@ -796,6 +799,9 @@ async def dispatch_broadcast(
     stmt_users = select(Usuario).where(Usuario.id.in_(req.recipient_ids))
     res_users = await db.execute(stmt_users)
     users = res_users.scalars().all()
+
+    from app.services.plan_quota_service import PlanQuotaService
+    await PlanQuotaService.check_whatsapp_limit(db, empresa_id, count=len(users))
 
     count_dispatched = 0
     for u in users:
