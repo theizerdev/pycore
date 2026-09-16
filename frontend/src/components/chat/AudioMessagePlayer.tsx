@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { getFullMediaUrl } from '../../api/chat';
 
 interface AudioMessagePlayerProps {
   src: string;
@@ -19,10 +20,8 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Normalizar URL si es relativa
-  const fullSrc = src.startsWith('http')
-    ? src
-    : `${window.location.origin}${src.startsWith('/') ? '' : '/'}${src}`;
+  // Normalizar URL apuntando al backend real si es relativa
+  const fullSrc = getFullMediaUrl(src);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -52,9 +51,9 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('ended', onEnded);
     };
-  }, []);
+  }, [fullSrc]);
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -62,11 +61,19 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       audio.pause();
       setIsPlaying(false);
     } else {
-      audio.play().then(() => {
-        setIsPlaying(true);
-      }).catch((err) => {
-        console.error('Error reproduciendo audio:', err);
+      // Pausar cualquier otro reproductor activo en la pantalla
+      document.querySelectorAll('audio').forEach((el) => {
+        if (el !== audio) {
+          el.pause();
+        }
       });
+      try {
+        await audio.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error('Error reproduciendo nota de voz:', fullSrc, err);
+        setIsPlaying(false);
+      }
     }
   };
 

@@ -26,23 +26,41 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const startRecording = async () => {
     try {
       audioChunksRef.current = [];
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
       streamRef.current = stream;
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+      }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const options: MediaRecorderOptions = {
+        audioBitsPerSecond: 64000,
+      };
+      if (mimeType) {
+        options.mimeType = mimeType;
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
 
-      mediaRecorder.start(200);
+      // Iniciar sin timeslice para generar un contenedor de audio unificado sin saltos de paquetes
+      mediaRecorder.start();
       setIsRecording(true);
       setDuration(0);
 
@@ -78,18 +96,19 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   };
 
   const handleFinishAndSend = async () => {
-    if (!mediaRecorderRef.current || audioChunksRef.current.length === 0) {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) {
       handleCancel();
       return;
     }
 
     setUploading(true);
-    stopTracks();
 
-    mediaRecorderRef.current.onstop = async () => {
+    recorder.onstop = async () => {
+      stopTracks();
       try {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const finalDuration = duration;
+        const finalDuration = Math.max(1, duration);
 
         if (audioBlob.size === 0) {
           toast.warning('La nota de voz está vacía.');
@@ -112,7 +131,9 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       }
     };
 
-    mediaRecorderRef.current.stop();
+    if (recorder.state !== 'inactive') {
+      recorder.stop();
+    }
   };
 
   useEffect(() => {

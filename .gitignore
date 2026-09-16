@@ -148,3 +148,21 @@ $RECYCLE.BIN/
 *~
 *.swp
 *.swo
+
+# ------------------------------------------------------------------------------
+# 7. Archivos Multimedia, Subidas de Usuarios, Notas de Voz y Adjuntos
+# ------------------------------------------------------------------------------
+uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/uploads/chat/*
+!backend/uploads/chat/.gitkeep
+
+# Extensiones de audio y multimedia
+*.webm
+*.ogg
+*.wav
+*.mp3
+*.m4a
+*.aac
+

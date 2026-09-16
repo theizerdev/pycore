@@ -1,4 +1,4 @@
-import client from './client';
+import client, { API_BASE_URL } from './client';
 import type {
   ChatCanal,
   ChatMensaje,
@@ -8,6 +8,20 @@ import type {
 } from '../types/chat';
 
 export const MAX_CHAT_FILE_SIZE_BYTES = 4 * 1024 * 1024; // 4 MB exactos
+
+/**
+ * Resuelve una ruta relativa (ej: /uploads/chat/...) a una URL absoluta que apunta
+ * directamente al servidor backend (evitando 404 o caídas en el servidor frontend).
+ */
+export const getFullMediaUrl = (url?: string | null): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
+    return url;
+  }
+  const apiBase = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${apiBase}${cleanPath}`;
+};
 
 export const chatApi = {
   // Obtener canales de la sucursal del usuario

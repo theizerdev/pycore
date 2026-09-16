@@ -23,7 +23,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { chatApi, MAX_CHAT_FILE_SIZE_BYTES } from '../../api/chat';
+import { chatApi, MAX_CHAT_FILE_SIZE_BYTES, getFullMediaUrl } from '../../api/chat';
 import { API_BASE_URL } from '../../api/client';
 import { sucursalesApi } from '../../api/sucursales';
 import type {
@@ -790,10 +790,10 @@ export const ChatFloatingWidget: React.FC = () => {
                           {m.tipo === 'imagen' && m.archivo_url && (
                             <div className="space-y-1">
                               <img
-                                src={m.archivo_url}
+                                src={getFullMediaUrl(m.archivo_url)}
                                 alt="Adjunto de chat"
                                 className="rounded-lg max-h-48 w-auto object-cover cursor-pointer hover:opacity-95"
-                                onClick={() => window.open(m.archivo_url!, '_blank')}
+                                onClick={() => window.open(getFullMediaUrl(m.archivo_url), '_blank')}
                               />
                               {m.contenido && m.contenido !== m.archivo_nombre && (
                                 <p className="mt-1">{m.contenido}</p>
@@ -804,7 +804,7 @@ export const ChatFloatingWidget: React.FC = () => {
                           {/* Mensaje de tipo Documento */}
                           {m.tipo === 'documento' && m.archivo_url && (
                             <a
-                              href={m.archivo_url}
+                              href={getFullMediaUrl(m.archivo_url)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className={cn(
