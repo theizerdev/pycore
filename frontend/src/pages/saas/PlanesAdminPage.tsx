@@ -111,8 +111,12 @@ export const PlanesAdminPage: React.FC = () => {
 
   const handleOpenEdit = (plan: Plan) => {
     setEditingPlan(plan);
-    const reg = plan.precio_regular_mensual || plan.precio_mensual || 15;
-    const promo = plan.precio_promocional_mensual || reg;
+    const reg = plan.precio_regular_mensual !== undefined && plan.precio_regular_mensual !== null 
+      ? plan.precio_regular_mensual 
+      : (plan.precio_mensual ?? 0);
+    const promo = plan.precio_promocional_mensual !== undefined && plan.precio_promocional_mensual !== null 
+      ? plan.precio_promocional_mensual 
+      : reg;
     setFormData({
       codigo: plan.codigo || `plan_${plan.id}`,
       nombre: plan.nombre,
@@ -122,9 +126,9 @@ export const PlanesAdminPage: React.FC = () => {
       tiene_promocion: Boolean(plan.tiene_promocion),
       badge_promocion: plan.badge_promocion || '',
       destacado: Boolean(plan.destacado),
-      orden: plan.orden || 1,
-      sucursales_incluidas: plan.sucursales_incluidas || 1,
-      precio_sucursal_extra_mensual: plan.precio_sucursal_extra_mensual || 15,
+      orden: plan.orden ?? 1,
+      sucursales_incluidas: plan.sucursales_incluidas ?? 1,
+      precio_sucursal_extra_mensual: plan.precio_sucursal_extra_mensual ?? 15,
       activo: Boolean(plan.activo)
     });
     setIsModalOpen(true);
@@ -324,8 +328,8 @@ export const PlanesAdminPage: React.FC = () => {
       {viewMode === 'cards' ? (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {planes.map((p) => {
-            const regularMensual = p.precio_regular_mensual || p.precio_mensual || 15;
-            const promoMensual = p.precio_promocional_mensual || regularMensual;
+            const regularMensual = p.precio_regular_mensual ?? p.precio_mensual ?? 0;
+            const promoMensual = p.precio_promocional_mensual ?? regularMensual;
             const tienePromo = Boolean(p.tiene_promocion) && promoMensual < regularMensual;
 
             return (
@@ -450,12 +454,12 @@ export const PlanesAdminPage: React.FC = () => {
                       {p.nombre}
                       {p.destacado && <span className="ml-1 text-amber-500">⭐</span>}
                     </TableCell>
-                    <TableCell className="font-mono">${(p.precio_regular_mensual || 15).toFixed(2)} USD</TableCell>
+                    <TableCell className="font-mono">${(p.precio_regular_mensual ?? p.precio_mensual ?? 0).toFixed(2)} USD</TableCell>
                     <TableCell className="font-mono font-bold text-emerald-600">
-                      ${(p.precio_promocional_mensual || p.precio_regular_mensual || 15).toFixed(2)} USD
+                      ${(p.precio_promocional_mensual ?? p.precio_regular_mensual ?? p.precio_mensual ?? 0).toFixed(2)} USD
                     </TableCell>
-                    <TableCell>{p.sucursales_incluidas || 1} sedes</TableCell>
-                    <TableCell className="font-mono">+${(p.precio_sucursal_extra_mensual || 15).toFixed(2)} USD</TableCell>
+                    <TableCell>{p.sucursales_incluidas ?? 1} sedes</TableCell>
+                    <TableCell className="font-mono">+${(p.precio_sucursal_extra_mensual ?? 15).toFixed(2)} USD</TableCell>
                     <TableCell>
                       <Badge variant={p.activo ? 'default' : 'secondary'} className="text-[10px]">
                         {p.activo ? 'ACTIVO' : 'INACTIVO'}

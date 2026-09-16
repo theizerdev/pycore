@@ -6,14 +6,24 @@ class PlanBase(BaseModel):
     nombre: str
     codigo: str
     descripcion: Optional[str] = None
+    precio_regular_mensual: float = 0.0
+    precio_promocional_mensual: float = 0.0
+    precio_3_meses: float = 0.0
+    precio_6_meses: float = 0.0
+    precio_12_meses: float = 0.0
     precio_mensual: float = 0.0
     precio_anual: float = 0.0
+    sucursales_incluidas: int = 1
+    precio_sucursal_extra_mensual: float = 15.0
     max_usuarios: int = 3
     max_sucursales: int = 1
     max_mensajes_whatsapp: int = 100
-    modulos_permitidos: Optional[List[str]] = []
+    tiene_promocion: bool = False
+    badge_promocion: Optional[str] = None
     destacado: bool = False
+    orden: int = 1
     activo: bool = True
+    modulos_permitidos: Optional[List[str]] = []
 
 class PlanCreate(PlanBase):
     pass
@@ -22,14 +32,24 @@ class PlanUpdate(BaseModel):
     nombre: Optional[str] = None
     codigo: Optional[str] = None
     descripcion: Optional[str] = None
+    precio_regular_mensual: Optional[float] = None
+    precio_promocional_mensual: Optional[float] = None
+    precio_3_meses: Optional[float] = None
+    precio_6_meses: Optional[float] = None
+    precio_12_meses: Optional[float] = None
     precio_mensual: Optional[float] = None
     precio_anual: Optional[float] = None
+    sucursales_incluidas: Optional[int] = None
+    precio_sucursal_extra_mensual: Optional[float] = None
     max_usuarios: Optional[int] = None
     max_sucursales: Optional[int] = None
     max_mensajes_whatsapp: Optional[int] = None
-    modulos_permitidos: Optional[List[str]] = None
+    tiene_promocion: Optional[bool] = None
+    badge_promocion: Optional[str] = None
     destacado: Optional[bool] = None
+    orden: Optional[int] = None
     activo: Optional[bool] = None
+    modulos_permitidos: Optional[List[str]] = None
 
 class PlanResponse(PlanBase):
     id: int

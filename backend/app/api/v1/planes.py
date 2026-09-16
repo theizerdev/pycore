@@ -1,6 +1,6 @@
 from typing import List
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -29,10 +29,14 @@ router = APIRouter(prefix="/planes", tags=["Planes & Suscripciones SaaS"])
 
 @router.get("", response_model=List[PlanResponse])
 async def list_planes(
+    include_inactive: bool = Query(True, description="Incluir planes inactivos"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Lista todos los niveles de planes SaaS disponibles."""
-    stmt = select(Plan).where(Plan.activo == True).order_by(Plan.precio_mensual.asc())
+    """Lista todos los niveles de planes SaaS disponibles ordenados por su orden visual."""
+    stmt = select(Plan)
+    if not include_inactive:
+        stmt = stmt.where(Plan.activo == True)
+    stmt = stmt.order_by(Plan.orden.asc(), Plan.id.asc())
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -49,7 +53,13 @@ async def create_plan(
     if res.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Ya existe un plan con este código")
 
-    plan = Plan(**req.model_dump())
+    data = req.model_dump()
+    if data.get("precio_regular_mensual") and not data.get("precio_mensual"):
+        data["precio_mensual"] = data["precio_regular_mensual"]
+    elif data.get("precio_mensual") and not data.get("precio_regular_mensual"):
+        data["precio_regular_mensual"] = data["precio_mensual"]
+
+    plan = Plan(**data)
     db.add(plan)
     await db.commit()
     await db.refresh(plan)
@@ -85,8 +95,25 @@ async def update_plan(
     for field, val in update_data.items():
         setattr(plan, field, val)
 
+    # Sincronizar compatibilidad precio_mensual / precio_regular_mensual
+    if "precio_regular_mensual" in update_data and plan.precio_regular_mensual is not None:
+        plan.precio_mensual = plan.precio_regular_mensual
+    elif "precio_mensual" in update_data and plan.precio_mensual is not None and not plan.precio_regular_mensual:
+        plan.precio_regular_mensual = plan.precio_mensual
+
     await db.commit()
     await db.refresh(plan)
+
+    await registrar_auditoria(
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=current_user.empresa_id,
+        accion="ACTUALIZAR_PLAN_SAAS",
+        modulo="planes_billing",
+        request=request,
+        detalles={"plan_id": plan.id, "nombre": plan.nombre, "cambios": list(update_data.keys())}
+    )
+
     return plan
 
 @router.get("/mi-suscripcion", response_model=SuscripcionEmpresaResponse)
