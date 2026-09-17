@@ -145,6 +145,8 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
   const [plantillaEfectiva, setPlantillaEfectiva] = useState<PlantillaEfectiva | null>(null);
   const [previewAnswers, setPreviewAnswers] = useState<Record<string, any>>({});
   const [previewSubTab, setPreviewSubTab] = useState<'preconsulta' | 'consulta'>('preconsulta');
+  const [showRefraccionInTab2, setShowRefraccionInTab2] = useState<boolean>(true);
+  const [showMotorInTab2, setShowMotorInTab2] = useState<boolean>(true);
 
   // Sub-modal para agregar/editar Campo
   const [fieldModalOpen, setFieldModalOpen] = useState<boolean>(false);
@@ -1180,6 +1182,77 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                         <p className="text-xs text-muted-foreground">
                           El odontograma anatómico interactivo de 5 caras se cargará automáticamente en la consulta médica de esta especialidad para registrar patologías y restauraciones dentales.
                         </p>
+                      </div>
+                    )}
+
+                    {/* WIDGET INTERACTIVO DE REFRACCIÓN VISUAL EN TAB 2 */}
+                    {activeWidgets.includes('refraccion') && (
+                      <div className="p-3.5 rounded-xl border border-sky-500/30 bg-sky-500/5 space-y-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Eye className="size-4 text-sky-600 dark:text-sky-400" />
+                            <span className="text-xs font-bold text-foreground">
+                              Gabinete de Refracción & Agudeza Snellen Activo
+                            </span>
+                            <Badge variant="outline" className="text-[10px] border-sky-500/30 text-sky-600 bg-sky-500/10">
+                              Snellen · Dioptrías · PIO
+                            </Badge>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowRefraccionInTab2((prev) => !prev)}
+                            className="text-xs h-7 text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 cursor-pointer"
+                          >
+                            <Eye className="size-3.5 mr-1" />
+                            <span>{showRefraccionInTab2 ? 'Ocultar Gabinete' : 'Ver y Probar Gabinete de Refracción'}</span>
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Gabinete optométrico interactivo para registrar agudeza visual OD/OI, graduación subjetiva de lentes y tonometría intraocular (PIO).
+                        </p>
+                        {showRefraccionInTab2 && (
+                          <div className="pt-2 border-t border-sky-500/20">
+                            <RefraccionWidget />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* WIDGET INTERACTIVO DE MOTOR DE EXPLORACIÓN OFTALMOLÓGICA A.12 EN TAB 2 */}
+                    {(activeWidgets.includes('motor_oftalmologia') ||
+                      especialidad?.nombre?.toLowerCase().includes('oftalmo')) && (
+                      <div className="p-3.5 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Eye className="size-4 text-indigo-600 dark:text-indigo-400" />
+                            <span className="text-xs font-bold text-foreground">
+                              Motor de Exploración Oftalmológica A.12 Activo (Pupila Inc.)
+                            </span>
+                            <Badge variant="outline" className="text-[10px] border-indigo-500/30 text-indigo-600 bg-indigo-500/10">
+                              23 Regiones · Notas por Región · Notas por Hallazgo
+                            </Badge>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowMotorInTab2((prev) => !prev)}
+                            className="text-xs h-7 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 cursor-pointer"
+                          >
+                            <Eye className="size-3.5 mr-1" />
+                            <span>{showMotorInTab2 ? 'Ocultar Motor A.12' : 'Ver y Probar Motor A.12'}</span>
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Exploración oftalmológica estructurada en 23 regiones anatómicas, con notas particulares por región, notas individuales en hallazgos, presets clínicos y redacción médica automática en el expediente.
+                        </p>
+                        {showMotorInTab2 && (
+                          <div className="pt-2 border-t border-indigo-500/20">
+                            <MotorExploracionOftalmologica />
+                          </div>
+                        )}
                       </div>
                     )}
 
