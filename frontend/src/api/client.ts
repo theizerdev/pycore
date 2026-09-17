@@ -27,11 +27,27 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      if (!window.location.pathname.includes('/login')) {
-        localStorage.removeItem('pycore_token');
-        localStorage.removeItem('pycore_user');
-        localStorage.removeItem('pycore_permissions');
-        localStorage.removeItem('pycore_sucursal');
+      const currentPath = window.location.pathname;
+      const isPublicPath =
+        currentPath === '/' ||
+        currentPath === '/landing' ||
+        currentPath.startsWith('/login') ||
+        currentPath.startsWith('/register') ||
+        currentPath.startsWith('/verify-whatsapp') ||
+        currentPath.startsWith('/forgot-password') ||
+        currentPath.startsWith('/preconsulta') ||
+        currentPath.startsWith('/turnero');
+
+      const hadToken = !!localStorage.getItem('pycore_token');
+
+      // Limpiar datos de autenticación del storage
+      localStorage.removeItem('pycore_token');
+      localStorage.removeItem('pycore_user');
+      localStorage.removeItem('pycore_permissions');
+      localStorage.removeItem('pycore_sucursal');
+
+      // Solo redirigir si el usuario estaba navegando en una ruta protegida con sesión previa
+      if (!isPublicPath && hadToken) {
         window.location.href = '/login?expired=1';
       }
     }

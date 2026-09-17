@@ -39,7 +39,7 @@ import {
 import { landingApi } from '../../api/landing';
 import type { LandingContent } from '../../api/landing';
 import { planesApi } from '../../api/planes';
-import type { Plan } from '../../api/planes';
+import type { Plan } from '../../types';
 
 // Mapa de iconos seguros por nombre
 const iconMap: Record<string, React.ElementType> = {
@@ -67,7 +67,9 @@ const iconMap: Record<string, React.ElementType> = {
 
 export const LandingPage: React.FC = () => {
   const { user } = useAuth();
-  const { isDarkMode, toggleTheme } = useTemplateSettings();
+  const { resolvedAppearance, updateAppearance } = useTemplateSettings();
+  const isDarkMode = resolvedAppearance === 'dark';
+  const toggleTheme = () => updateAppearance(isDarkMode ? 'light' : 'dark');
   const navigate = useNavigate();
 
   const [content, setContent] = useState<LandingContent | null>(null);
@@ -84,7 +86,7 @@ export const LandingPage: React.FC = () => {
       try {
         const [landingData, plansData] = await Promise.all([
           landingApi.getLandingContent().catch(() => null),
-          planesApi.getPublicPlanes().catch(() => []),
+          planesApi.list().catch(() => []),
         ]);
         if (landingData) setContent(landingData);
         if (plansData && plansData.length > 0) setPlans(plansData);

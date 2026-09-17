@@ -79,7 +79,7 @@ export interface RegionalContextType {
 const RegionalContext = createContext<RegionalContextType | undefined>(undefined);
 
 export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, sucursalActiva } = useAuth();
+  const { user, sucursalActiva, token } = useAuth();
 
   // Resolución en cascada del país activo para el usuario autenticado:
   // 1. País de la sucursal activa
@@ -134,6 +134,8 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [tasaBcvFuente, setTasaBcvFuente] = useState<string>('BCV Oficial');
 
   const refreshBcvRate = useCallback(async () => {
+    const activeToken = token || localStorage.getItem('pycore_token');
+    if (!activeToken) return;
     try {
       const res = await tasasApi.getCurrentRates();
       if (res.tasas?.USD?.tasa) {
@@ -146,11 +148,13 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err) {
       console.warn('No se pudo sincronizar la tasa BCV:', err);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
-    refreshBcvRate();
-  }, [refreshBcvRate]);
+    if (token) {
+      refreshBcvRate();
+    }
+  }, [token, refreshBcvRate]);
 
   // 1. Formateo de Moneda Principal
   const formatMoney = (amount: number | string | null | undefined, customSymbol?: string): string => {
