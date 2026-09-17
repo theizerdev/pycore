@@ -1232,14 +1232,20 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                   </div>
 
                   {/* Alerta de Alergias del Paciente */}
-                  {consulta.paciente?.alergias && (
-                    <div className="pt-0.5">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/30">
-                        <AlertCircle className="size-3.5 shrink-0" />
-                        Alergias Conocidas del Paciente: {consulta.paciente.alergias}
-                      </span>
-                    </div>
-                  )}
+                  {(() => {
+                    const al = consulta.paciente?.alergias;
+                    if (!al) return null;
+                    const txt = Array.isArray(al) ? al.filter(Boolean).join(', ') : String(al).trim();
+                    if (!txt) return null;
+                    return (
+                      <div className="pt-0.5">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/30">
+                          <AlertCircle className="size-3.5 shrink-0" />
+                          Alergias Conocidas del Paciente: {txt}
+                        </span>
+                      </div>
+                    );
+                  })()}
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pt-0.5">
                     <span className="text-primary font-semibold flex items-center gap-1">
@@ -1485,9 +1491,12 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 {hasPreconsulta && isPreconsultaCompletada ? (
                   <div className="space-y-4">
                     {/* ALERTA DE ALERGIAS SI EXISTEN */}
-                    {(preconsultaRespuestas.alergias ||
-                      preconsultaRespuestas.alergias_medicamentos ||
-                      consulta.paciente?.alergias) && (
+                    {(() => {
+                      const alPac = consulta.paciente?.alergias;
+                      const alPacTxt = Array.isArray(alPac) ? alPac.filter(Boolean).join(', ') : String(alPac || '').trim();
+                      const txt = preconsultaRespuestas.alergias || preconsultaRespuestas.alergias_medicamentos || alPacTxt;
+                      if (!txt) return null;
+                      return (
                         <div className="p-3.5 rounded-2xl bg-rose-500/10 border-2 border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs flex items-start gap-3 shadow-xs">
                           <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-rose-600" />
                           <div>
@@ -1495,13 +1504,12 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                               ⚠️ Alerta Médica - Alergias Reportadas
                             </strong>
                             <p className="mt-0.5 font-semibold text-xs text-rose-800 dark:text-rose-300">
-                              {preconsultaRespuestas.alergias ||
-                                preconsultaRespuestas.alergias_medicamentos ||
-                                consulta.paciente?.alergias}
+                              {txt}
                             </p>
                           </div>
                         </div>
-                      )}
+                      );
+                    })()}
 
                     {/* SECCIONES DINÁMICAS DE LA PLANTILLA DE PRECONSULTA */}
                     {plantillaEfectiva?.preconsulta_secciones &&

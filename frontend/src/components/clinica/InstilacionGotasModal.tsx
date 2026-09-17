@@ -63,7 +63,7 @@ interface InstilacionGotasModalProps {
     apellidos?: string;
     fecha_nacimiento?: string;
     edad?: number;
-    alergias?: string;
+    alergias?: string | string[] | any;
   };
   currentUserNombre?: string;
   initialData?: InstilacionGotasData;
@@ -116,6 +116,17 @@ export const InstilacionGotasModal: React.FC<InstilacionGotasModalProps> = ({
     }
     return false;
   })();
+
+  const alergiasTexto = React.useMemo(() => {
+    if (!paciente?.alergias) return '';
+    if (Array.isArray(paciente.alergias)) {
+      return paciente.alergias.filter(Boolean).join(', ').trim();
+    }
+    if (typeof paciente.alergias === 'string') {
+      return paciente.alergias.trim();
+    }
+    return String(paciente.alergias).trim();
+  }, [paciente?.alergias]);
 
   const [esPediatrico, setEsPediatrico] = useState<boolean>(() => {
     if (initialData?.es_pediatrico !== undefined) return initialData.es_pediatrico;
@@ -290,12 +301,12 @@ export const InstilacionGotasModal: React.FC<InstilacionGotasModalProps> = ({
         </DialogHeader>
 
         {/* ALERTA DE ALERGIAS DEL PACIENTE (Si existen) */}
-        {paciente?.alergias && paciente.alergias.trim() !== '' && (
+        {alergiasTexto !== '' && (
           <div className="p-3 rounded-xl border border-destructive/40 bg-destructive/5 flex items-start gap-2.5">
             <ShieldAlert className="size-4 text-destructive shrink-0 mt-0.5" />
             <div className="text-xs">
               <span className="font-bold text-destructive">¡Alerta de Hipersensibilidad / Alergias del Paciente!: </span>
-              <span className="text-muted-foreground">{paciente.alergias}</span>
+              <span className="text-foreground font-semibold">{alergiasTexto}</span>
               <p className="text-[10px] text-destructive mt-0.5">
                 Verifique que el principio activo a instilar no esté contraindicado antes de la aplicación.
               </p>
