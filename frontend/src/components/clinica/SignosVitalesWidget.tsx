@@ -79,6 +79,25 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
     return { valor: imcRedondeado, categoria, colorClass, variant };
   }, [signos.peso, signos.talla]);
 
+  // Superficie corporal (Mosteller)
+  const bsa = useMemo(() => {
+    const peso = parseFloat(String(signos.peso || ''));
+    const talla = parseFloat(String(signos.talla || ''));
+    if (!peso || !talla || talla <= 0) return null;
+    const cm = talla > 3 ? talla : talla * 100;
+    return Math.round(Math.sqrt((peso * cm) / 3600) * 100) / 100;
+  }, [signos.peso, signos.talla]);
+
+  // Presión Arterial Media (PAM) y Presión de Pulso
+  const pamInfo = useMemo(() => {
+    const pas = parseFloat(String(signos.presion_sistolica || ''));
+    const pad = parseFloat(String(signos.presion_diastolica || ''));
+    if (!pas || !pad || pas <= pad) return null;
+    const pam = Math.round(((2 * pad + pas) / 3) * 10) / 10;
+    const pp = pas - pad;
+    return { pam, pp };
+  }, [signos.presion_sistolica, signos.presion_diastolica]);
+
   const handleChange = (key: string, val: string) => {
     if (readOnly || !onChange) return;
     onChange(key, val);
@@ -184,6 +203,11 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
               </span>
             )}
           </div>
+          {bsa && (
+            <div className="text-[11px] text-slate-500 pt-0.5">
+              <span>Sup. Corporal: <strong className="text-slate-700 dark:text-slate-300">{bsa} m²</strong></span>
+            </div>
+          )}
         </div>
 
         {/* Temperatura */}
@@ -238,6 +262,12 @@ export const SignosVitalesWidget: React.FC<SignosVitalesWidgetProps> = ({
               className="h-10 text-center font-medium"
             />
           </div>
+          {pamInfo && (
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+              <span>PAM: <strong className="text-slate-700 dark:text-slate-300">{pamInfo.pam} mmHg</strong></span>
+              <span className="text-[10px] text-slate-400">PP: {pamInfo.pp}</span>
+            </div>
+          )}
           {(signosAnteriores?.presion_sistolica || signosAnteriores?.presion_diastolica) && (
             <div className="text-[11px] text-slate-500 pt-0.5">
               <span>Anterior: <strong className="text-slate-700 dark:text-slate-300">{signosAnteriores.presion_sistolica || '-'}/{signosAnteriores.presion_diastolica || '-'} mmHg</strong></span>

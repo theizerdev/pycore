@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu';
 import DocumentosImpresionModal, { type TipoDocumentoClinico } from '../../components/clinica/DocumentosImpresionModal';
+import CalculadorasClinicasModal from '../../components/clinica/CalculadorasClinicasModal';
 
 // Icons
 import {
@@ -71,27 +72,142 @@ import {
   History,
   ChevronUp,
   FolderOpen,
+  Calculator,
+  Search,
+  BookmarkPlus,
+  Layers,
 } from 'lucide-react';
 
 interface ConsultaAtencionPageProps {
   readOnly?: boolean;
 }
 
-// CIE-10 Sugerencias frecuentes
-const CIE10_FRECUENTES = [
-  { codigo: 'Z00.0', descripcion: 'Examen médico general de rutina' },
-  { codigo: 'J00', descripcion: 'Rinofaringitis aguda (Resfriado común)' },
-  { codigo: 'J02.9', descripcion: 'Faringitis aguda, no especificada' },
-  { codigo: 'J06.9', descripcion: 'Infección aguda de las vías respiratorias superiores' },
-  { codigo: 'I10', descripcion: 'Hipertensión esencial (primaria)' },
-  { codigo: 'E11.9', descripcion: 'Diabetes mellitus tipo 2 sin complicaciones' },
-  { codigo: 'K29.7', descripcion: 'Gastritis, no especificada' },
-  { codigo: 'N39.0', descripcion: 'Infección del tracto urinario, sitio no especificado' },
-  { codigo: 'M54.5', descripcion: 'Lumbago no especificado' },
-  { codigo: 'R10.4', descripcion: 'Otros dolores abdominales y los no especificados' },
-  { codigo: 'R51', descripcion: 'Cefalea / Dolor de cabeza' },
-  { codigo: 'K02.9', descripcion: 'Caries dental, no especificada' },
-  { codigo: 'K05.0', descripcion: 'Gingivitis aguda' },
+// CIE-10 Catálogo Ampliado por Especialidades
+export interface Cie10CatalogoItem {
+  codigo: string;
+  descripcion: string;
+  especialidad: string;
+}
+
+const CIE10_CATALOGO_ESPECIALIDADES: Cie10CatalogoItem[] = [
+  // Medicina General y Medicina Interna
+  { codigo: 'Z00.0', descripcion: 'Examen médico general de rutina y chequeo preventivo', especialidad: 'General' },
+  { codigo: 'J00', descripcion: 'Rinofaringitis aguda (Resfriado común)', especialidad: 'General' },
+  { codigo: 'J02.9', descripcion: 'Faringitis aguda, no especificada', especialidad: 'General' },
+  { codigo: 'J06.9', descripcion: 'Infección aguda de las vías respiratorias superiores', especialidad: 'General' },
+  { codigo: 'K29.7', descripcion: 'Gastritis, no especificada', especialidad: 'General' },
+  { codigo: 'N39.0', descripcion: 'Infección del tracto urinario, sitio no especificado', especialidad: 'General' },
+  { codigo: 'R51', descripcion: 'Cefalea / Cefalea tensional', especialidad: 'General' },
+  { codigo: 'R10.4', descripcion: 'Otros dolores abdominales y los no especificados', especialidad: 'General' },
+  { codigo: 'E11.9', descripcion: 'Diabetes mellitus tipo 2 sin mención de complicación', especialidad: 'Medicina Interna' },
+  { codigo: 'E66.9', descripcion: 'Obesidad, no especificada', especialidad: 'Medicina Interna' },
+  { codigo: 'E78.5', descripcion: 'Hiperlipidemia no especificada (Dislipidemia)', especialidad: 'Medicina Interna' },
+
+  // Cardiología
+  { codigo: 'I10', descripcion: 'Hipertensión esencial (primaria)', especialidad: 'Cardiología' },
+  { codigo: 'I11.9', descripcion: 'Enfermedad cardíaca hipertensiva sin insuficiencia', especialidad: 'Cardiología' },
+  { codigo: 'I20.9', descripcion: 'Angina de pecho, no especificada', especialidad: 'Cardiología' },
+  { codigo: 'I25.1', descripcion: 'Enfermedad cardíaca aterosclerótica', especialidad: 'Cardiología' },
+  { codigo: 'I48.0', descripcion: 'Fibrilación auricular paroxística', especialidad: 'Cardiología' },
+  { codigo: 'I50.9', descripcion: 'Insuficiencia cardíaca, no especificada', especialidad: 'Cardiología' },
+  { codigo: 'R00.0', descripcion: 'Taquicardia, no especificada', especialidad: 'Cardiología' },
+  { codigo: 'R00.2', descripcion: 'Palpitaciones cardíacas', especialidad: 'Cardiología' },
+
+  // Pediatría
+  { codigo: 'Z00.1', descripcion: 'Control de salud y desarrollo de niño sano', especialidad: 'Pediatría' },
+  { codigo: 'J20.9', descripcion: 'Bronquitis aguda, no especificada', especialidad: 'Pediatría' },
+  { codigo: 'A09', descripcion: 'Gastroenteritis y diarrea de presunto origen infeccioso', especialidad: 'Pediatría' },
+  { codigo: 'L01.0', descripcion: 'Impétigo contagioso infantil', especialidad: 'Pediatría' },
+  { codigo: 'H66.9', descripcion: 'Otitis media, no especificada', especialidad: 'Pediatría' },
+  { codigo: 'B34.9', descripcion: 'Infección viral, no especificada', especialidad: 'Pediatría' },
+  { codigo: 'D50.9', descripcion: 'Anemia por deficiencia de hierro', especialidad: 'Pediatría' },
+
+  // Ginecología y Obstetricia
+  { codigo: 'Z34.0', descripcion: 'Supervisión de primer embarazo normal', especialidad: 'Ginecología' },
+  { codigo: 'Z34.8', descripcion: 'Supervisión de otros embarazos normales', especialidad: 'Ginecología' },
+  { codigo: 'N76.0', descripcion: 'Vaginitis aguda / Vaginosis bacteriana', especialidad: 'Ginecología' },
+  { codigo: 'N92.0', descripcion: 'Menstruación excesiva y frecuente con ciclo regular (Menorragia)', especialidad: 'Ginecología' },
+  { codigo: 'N94.6', descripcion: 'Dismenorrea, no especificada', especialidad: 'Ginecología' },
+  { codigo: 'N80.9', descripcion: 'Endometriosis, no especificada', especialidad: 'Ginecología' },
+  { codigo: 'O24.4', descripcion: 'Diabetes mellitus que se origina con el embarazo', especialidad: 'Ginecología' },
+  { codigo: 'N95.1', descripcion: 'Síntomas menopáusicos y del climaterio', especialidad: 'Ginecología' },
+
+  // Traumatología y Ortopedia
+  { codigo: 'M54.5', descripcion: 'Lumbago no especificado / Lumbalgia mecánica', especialidad: 'Traumatología' },
+  { codigo: 'M54.2', descripcion: 'Cervicalgia', especialidad: 'Traumatología' },
+  { codigo: 'M25.5', descripcion: 'Dolor en articulación (Artralgia)', especialidad: 'Traumatología' },
+  { codigo: 'S93.4', descripcion: 'Esguince y desgarro del tobillo', especialidad: 'Traumatología' },
+  { codigo: 'S83.6', descripcion: 'Esguince y torcedura de la rodilla', especialidad: 'Traumatología' },
+  { codigo: 'M17.9', descripcion: 'Gonartrosis, no especificada (Artrosis de rodilla)', especialidad: 'Traumatología' },
+  { codigo: 'M75.1', descripcion: 'Síndrome del manguito rotador del hombro', especialidad: 'Traumatología' },
+
+  // Dermatología
+  { codigo: 'L20.9', descripcion: 'Dermatitis atópica, no especificada', especialidad: 'Dermatología' },
+  { codigo: 'L30.9', descripcion: 'Dermatitis / Eccema no especificado', especialidad: 'Dermatología' },
+  { codigo: 'L70.0', descripcion: 'Acné vulgar', especialidad: 'Dermatología' },
+  { codigo: 'L50.0', descripcion: 'Urticaria alérgica', especialidad: 'Dermatología' },
+  { codigo: 'B35.9', descripcion: 'Dermatofitosis / Tiña cutánea', especialidad: 'Dermatología' },
+  { codigo: 'L40.0', descripcion: 'Psoriasis vulgar', especialidad: 'Dermatología' },
+
+  // Odontología
+  { codigo: 'K02.9', descripcion: 'Caries dental, no especificada', especialidad: 'Odontología' },
+  { codigo: 'K05.0', descripcion: 'Gingivitis aguda', especialidad: 'Odontología' },
+  { codigo: 'K05.3', descripcion: 'Periodontitis crónica', especialidad: 'Odontología' },
+  { codigo: 'K04.0', descripcion: 'Pulpitis aguda reversible / irreversible', especialidad: 'Odontología' },
+  { codigo: 'K04.7', descripcion: 'Absceso periapical sin fístula', especialidad: 'Odontología' },
+  { codigo: 'K08.1', descripcion: 'Pérdida de piezas dentarias', especialidad: 'Odontología' },
+
+  // Oftalmología
+  { codigo: 'H10.9', descripcion: 'Conjuntivitis, no especificada', especialidad: 'Oftalmología' },
+  { codigo: 'H52.1', descripcion: 'Miopía', especialidad: 'Oftalmología' },
+  { codigo: 'H52.2', descripcion: 'Astigmatismo', especialidad: 'Oftalmología' },
+  { codigo: 'H52.4', descripcion: 'Presbicia', especialidad: 'Oftalmología' },
+  { codigo: 'H25.9', descripcion: 'Catarata senil, no especificada', especialidad: 'Oftalmología' },
+  { codigo: 'H40.9', descripcion: 'Glaucoma, no especificado', especialidad: 'Oftalmología' },
+];
+
+// Frases Clínicas Rápidas / Macros para Evaluación
+const SNIPPETS_EXAMEN_FISICO = [
+  {
+    titulo: 'Cardiopulmonar Normal',
+    categoria: 'Cardio / Resp',
+    texto: 'Tórax simétrico, normoexpansible. Ruidos cardíacos rítmicos, regulares, sin soplos audibles. Murmullo vesicular conservado en ambos campos pulmonares sin ruidos sobreagregados.',
+  },
+  {
+    titulo: 'Abdomen Normal',
+    categoria: 'Gastro',
+    texto: 'Abdomen blando, depresible, no doloroso a la palpación superficial ni profunda. RHA presentes normoactivos, sin visceromegalias palpables ni signos de irritación peritoneal.',
+  },
+  {
+    titulo: 'Neurológico Normal',
+    categoria: 'Neurología',
+    texto: 'Paciente consciente, orientado en tiempo, espacio y persona (Glasgow 15/15). Pupilas isocóricas normorreactivas a la luz. Fuerza muscular 5/5 simétrica. Sin signos meníngeos ni focalidad.',
+  },
+  {
+    titulo: 'ORL / Faringe Normal',
+    categoria: 'ORL',
+    texto: 'Faringe rosada y húmeda sin congestión ni exudados, amígdalas eutróficas. Membranas timpánicas íntegras bilateralmente con reflejo luminoso presente. Fosas nasales permeables.',
+  },
+  {
+    titulo: 'Extremidades Normales',
+    categoria: 'Osteomuscular',
+    texto: 'Extremidades simétricas, tróficas, sin deformidades óseas ni edemas periféricos. Pulsos periféricos distales presentes y simétricos. Arcos de movilidad articular conservados.',
+  },
+  {
+    titulo: 'Control Niño Sano',
+    categoria: 'Pediatría',
+    texto: 'Paciente activo, reactivo y colaborador. Normohidratado y normocoloreado. Fontanela anterior normotensa. Buena ganancia ponderoestatural acorde a curvas de crecimiento OMS.',
+  },
+  {
+    titulo: 'Control Obstétrico',
+    categoria: 'Obstetricia',
+    texto: 'Feto único intrauterino en situación longitudinal cefálica. FCF audible rítmica regular (140-150 lpm). Altura uterina acorde a edad gestacional. Dinámica uterina negativa. Sin pérdidas vaginales.',
+  },
+  {
+    titulo: 'Examen Odontológico',
+    categoria: 'Odontología',
+    texto: 'Encías rosadas, firmes, sin sangrado espontáneo. Piezas dentarias con oclusión armónica. Sin signos de caries activas en revisión visual ni lesiones en mucosas.',
+  },
 ];
 
 // Helpers para formato de paciente
@@ -229,6 +345,37 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const [planTratamiento, setPlanTratamiento] = useState<string>('');
   const [indicacionesGenerales, setIndicacionesGenerales] = useState<string>('');
 
+  // ── HERRAMIENTAS CLÍNICAS Y ASISTENTE DIAGNÓSTICO ──
+  const [calculadorasModalOpen, setCalculadorasModalOpen] = useState<boolean>(false);
+  const [cieFiltroCategoria, setCieFiltroCategoria] = useState<string>('especialidad');
+  const [cieBusqueda, setCieBusqueda] = useState<string>('');
+
+  const handleInsertarCalculoEnEvaluacion = (texto: string) => {
+    setEnfermedadActual((prev) =>
+      prev ? `${prev}\n\n[Cálculo Clínico]: ${texto}` : `[Cálculo Clínico]: ${texto}`
+    );
+    setDatosPlantilla((prev) => ({
+      ...prev,
+      enfermedad_actual: prev.enfermedad_actual
+        ? `${prev.enfermedad_actual}\n\n[Cálculo Clínico]: ${texto}`
+        : `[Cálculo Clínico]: ${texto}`,
+    }));
+    toast.success('Cálculo clínico insertado en la anamnesis');
+  };
+
+  const handleInsertarSnippetEnEvaluacion = (snippet: { titulo: string; texto: string }) => {
+    setEnfermedadActual((prev) =>
+      prev ? `${prev}\n\n[${snippet.titulo}]: ${snippet.texto}` : `[${snippet.titulo}]: ${snippet.texto}`
+    );
+    setDatosPlantilla((prev) => ({
+      ...prev,
+      enfermedad_actual: prev.enfermedad_actual
+        ? `${prev.enfermedad_actual}\n\n[${snippet.titulo}]: ${snippet.texto}`
+        : `[${snippet.titulo}]: ${snippet.texto}`,
+    }));
+    toast.success(`Macro "${snippet.titulo}" insertado en evaluación`);
+  };
+
   // ── CARGAR DETALLE DE LA CONSULTA DESDE API ──
   const fetchConsulta = async () => {
     if (!id) return;
@@ -331,6 +478,17 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       setDiagnosticosSecundarios((prev) => [...prev, nuevoDiagSecundario.trim()]);
     }
     setNuevoDiagSecundario('');
+  };
+
+  const handleAgregarDiagSecundarioConTexto = (texto: string) => {
+    const limpio = texto.trim();
+    if (!limpio) return;
+    if (!diagnosticosSecundarios.includes(limpio)) {
+      setDiagnosticosSecundarios((prev) => [...prev, limpio]);
+      toast.success(`Añadido a diagnósticos secundarios`);
+    } else {
+      toast.info('Este diagnóstico ya está en la lista secundaria');
+    }
   };
 
   const handleEliminarDiagSecundario = (index: number) => {
@@ -621,6 +779,17 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCalculadorasModalOpen(true)}
+              className="gap-1.5 h-9 font-semibold text-teal-600 dark:text-teal-400 border-teal-500/30 hover:bg-teal-50 dark:hover:bg-teal-950/30 cursor-pointer"
+            >
+              <Calculator className="h-4 w-4 text-teal-500" />
+              <span className="hidden sm:inline">Calculadoras Clínicas</span>
+              <span className="sm:hidden">Calc</span>
+            </Button>
+
             {!readOnly && (
               <Button
                 variant="outline"
@@ -1389,6 +1558,41 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                         rows={4}
                         className="resize-y w-full"
                       />
+
+                      {/* ── FRASES RÁPIDAS / MACROS CLÍNICOS ── */}
+                      {!readOnly && (
+                        <div className="pt-2 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
+                              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                              <span>Macros Clínicos y Frases Rápidas (1 Clic para insertar):</span>
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setCalculadorasModalOpen(true)}
+                              className="h-6 text-[11px] px-2 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 gap-1 cursor-pointer"
+                            >
+                              <Calculator className="h-3 w-3" />
+                              <span>Abrir Calculadora Clínica</span>
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-muted/30 border border-border/60">
+                            {SNIPPETS_EXAMEN_FISICO.map((snip, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => handleInsertarSnippetEnEvaluacion(snip)}
+                                className="text-[11px] px-2.5 py-1 rounded-lg bg-background hover:bg-primary/10 hover:text-primary border border-border hover:border-primary/40 transition-all text-left font-medium cursor-pointer shadow-2xs"
+                                title={snip.texto}
+                              >
+                                + {snip.titulo}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1737,8 +1941,10 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 <EstudiosSolicitadosWidget
                   estudios={estudios}
                   onAdd={(est) => setEstudios((prev) => [...prev, est])}
+                  onAddBatch={(batch) => setEstudios((prev) => [...prev, ...batch])}
                   onRemove={(idx) => setEstudios((prev) => prev.filter((_, i) => i !== idx))}
                   readOnly={readOnly}
+                  especialidadNombre={consulta.especialidad?.nombre}
                 />
               </TabsContent>
             </Tabs>
@@ -1760,8 +1966,10 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                   toast.success(`${meds.length} medicamento(s) importados de la consulta previa`);
                 }}
                 onAdd={(med) => setMedicamentos((prev) => [...prev, med])}
+                onAddBatch={(batch) => setMedicamentos((prev) => [...prev, ...batch])}
                 onRemove={(idx) => setMedicamentos((prev) => prev.filter((_, i) => i !== idx))}
                 readOnly={readOnly}
+                especialidadNombre={consulta.especialidad?.nombre}
               />
             </div>
 
@@ -1892,25 +2100,151 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                         className="h-10 text-sm font-semibold"
                       />
 
-                      {/* Sugerencias Rápidas CIE-10 */}
+                      {/* ── CATÁLOGO INTELIGENTE DE CIE-10 POR ESPECIALIDAD ── */}
                       {!readOnly && (
-                        <div className="pt-2 space-y-1.5">
-                          <span className="text-[11px] font-semibold text-muted-foreground">
-                            CIE-10 Frecuentes:
-                          </span>
-                          <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 rounded-lg border border-border/60 bg-muted/20">
-                            {CIE10_FRECUENTES.map((cie) => (
-                              <button
-                                key={cie.codigo}
-                                type="button"
-                                onClick={() =>
-                                  setDiagnosticoPrincipal(`${cie.codigo} - ${cie.descripcion}`)
-                                }
-                                className="text-xs px-2.5 py-1 rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/70 transition-all text-left truncate max-w-full cursor-pointer"
-                              >
-                                <strong>{cie.codigo}</strong>: {cie.descripcion}
-                              </button>
-                            ))}
+                        <div className="pt-3 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                              <Sparkles className="size-3.5 text-amber-500" />
+                              <span>Catálogo Clínico CIE-10 por Especialidad:</span>
+                            </span>
+                            {consulta.especialidad?.nombre && (
+                              <Badge variant="secondary" className="text-[10px] font-medium">
+                                {consulta.especialidad.nombre}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Buscador y Categorías de Filtro */}
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                              <Input
+                                placeholder="Filtrar por código CIE-10 o nombre (ej: Hipertensión, J00, Caries)..."
+                                value={cieBusqueda}
+                                onChange={(e) => setCieBusqueda(e.target.value)}
+                                className="h-8 pl-8 text-xs bg-background"
+                              />
+                              {cieBusqueda && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCieBusqueda('')}
+                                  className="absolute right-2 top-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                                >
+                                  &times;
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                { id: 'especialidad', label: `⭐ Sugeridos` },
+                                { id: 'todos', label: 'Todos' },
+                                { id: 'General', label: 'General' },
+                                { id: 'Cardiología', label: 'Cardio' },
+                                { id: 'Pediatría', label: 'Pediatría' },
+                                { id: 'Ginecología', label: 'Gineco / Obst' },
+                                { id: 'Traumatología', label: 'Trauma' },
+                                { id: 'Dermatología', label: 'Dermato' },
+                                { id: 'Odontología', label: 'Odonto' },
+                                { id: 'Oftalmología', label: 'Oftalmo' },
+                              ].map((cat) => (
+                                <button
+                                  key={cat.id}
+                                  type="button"
+                                  onClick={() => setCieFiltroCategoria(cat.id)}
+                                  className={`text-[10.5px] px-2 py-0.5 rounded-full font-medium transition-colors cursor-pointer border ${
+                                    cieFiltroCategoria === cat.id
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background hover:bg-muted text-muted-foreground border-border/70'
+                                  }`}
+                                >
+                                  {cat.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Lista Filtrada de Códigos CIE-10 */}
+                          <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto p-2 rounded-xl border border-border/80 bg-muted/20">
+                            {(() => {
+                              const espNombre = (consulta.especialidad?.nombre || '').toLowerCase();
+                              let lista = CIE10_CATALOGO_ESPECIALIDADES;
+
+                              if (cieFiltroCategoria === 'especialidad') {
+                                const filtrados = lista.filter(
+                                  (item) =>
+                                    item.especialidad.toLowerCase().includes(espNombre) ||
+                                    espNombre.includes(item.especialidad.toLowerCase().split(' ')[0])
+                                );
+                                lista = filtrados.length > 0 ? filtrados : lista.filter((i) => i.especialidad === 'General');
+                              } else if (cieFiltroCategoria !== 'todos') {
+                                lista = lista.filter((item) => item.especialidad === cieFiltroCategoria);
+                              }
+
+                              if (cieBusqueda.trim()) {
+                                const q = cieBusqueda.toLowerCase().trim();
+                                lista = CIE10_CATALOGO_ESPECIALIDADES.filter(
+                                  (item) =>
+                                    item.codigo.toLowerCase().includes(q) ||
+                                    item.descripcion.toLowerCase().includes(q)
+                                );
+                              }
+
+                              if (lista.length === 0) {
+                                return (
+                                  <div className="p-4 text-center text-xs text-muted-foreground">
+                                    No se encontraron diagnósticos CIE-10 para esta búsqueda.
+                                  </div>
+                                );
+                              }
+
+                              return lista.map((cie) => (
+                                <div
+                                  key={cie.codigo}
+                                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-background border border-border/60 hover:border-primary/40 transition-colors shadow-2xs"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-xs text-primary shrink-0">
+                                        {cie.codigo}
+                                      </span>
+                                      <span className="text-xs text-foreground font-medium truncate">
+                                        {cie.descripcion}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground block mt-0.5">
+                                      {cie.especialidad}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setDiagnosticoPrincipal(`${cie.codigo} - ${cie.descripcion}`)
+                                      }
+                                      className="text-[10.5px] px-2 py-1 rounded bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground font-semibold transition-colors cursor-pointer"
+                                      title="Establecer como Diagnóstico Principal"
+                                    >
+                                      Principal
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleAgregarDiagSecundarioConTexto(
+                                          `${cie.codigo} - ${cie.descripcion}`
+                                        )
+                                      }
+                                      className="text-[10.5px] px-1.5 py-1 rounded border border-border hover:bg-muted text-muted-foreground hover:text-foreground font-medium transition-colors cursor-pointer"
+                                      title="Añadir a Diagnósticos Secundarios"
+                                    >
+                                      + Secundario
+                                    </button>
+                                  </div>
+                                </div>
+                              ));
+                            })()}
                           </div>
                         </div>
                       )}
@@ -2359,6 +2693,15 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         open={drawerHistorialOpen}
         onOpenChange={setDrawerHistorialOpen}
         paciente={consulta.paciente as any}
+      />
+
+      {/* ── MODAL DE CALCULADORAS Y UTILIDADES CLÍNICAS POR ESPECIALIDAD ── */}
+      <CalculadorasClinicasModal
+        open={calculadorasModalOpen}
+        onOpenChange={setCalculadorasModalOpen}
+        signosVitales={signosVitales}
+        especialidadNombre={consulta.especialidad?.nombre}
+        onInsertarEnEvaluacion={handleInsertarCalculoEnEvaluacion}
       />
     </div>
   );
