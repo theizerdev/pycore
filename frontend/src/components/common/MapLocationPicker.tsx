@@ -298,7 +298,7 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
         navigator.geolocation.getCurrentPosition(
           (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
           (err) => reject(err),
-          { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
       });
     };
@@ -382,8 +382,8 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
 
         toast.success(
           cityName
-            ? `Ubicación encontrada: ${cityName} (${locationSource})`
-            : `Ubicación detectada correctamente (${locationSource})`,
+            ? `Ubicación encontrada: ${cityName} (${locationSource}) - [${finalLat}, ${finalLng}]`
+            : `Ubicación detectada (${locationSource}): ${finalLat}, ${finalLng}`,
           { id: toastId }
         );
       } else {
