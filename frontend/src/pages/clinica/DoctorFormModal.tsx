@@ -55,6 +55,8 @@ import {
   Check,
   Eye,
   EyeOff,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface DoctorFormModalProps {
@@ -472,17 +474,91 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
     }
   };
 
+  const selectedEspecialidad = especialidades.find((e) => e.id === especialidadId);
+  const doctorInitials =
+    `${nombres?.trim().charAt(0) || ''}${apellidos?.trim().charAt(0) || ''}`.toUpperCase() || 'DR';
+
+type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' | 'acceso';
+
+  const STEPS: Array<{
+    id: DoctorTab;
+    label: string;
+    shortTitle: string;
+    subtitle: string;
+    titleDetail: string;
+    descriptionDetail: string;
+    icon: any;
+    isComplete: boolean;
+    badge?: string;
+  }> = [
+    {
+      id: 'personal',
+      label: '1. Identificación',
+      shortTitle: 'Identificación',
+      subtitle: 'Datos personales y contacto',
+      titleDetail: 'Identificación y Canales de Contacto',
+      descriptionDetail: 'Información oficial de identidad, colegiatura y canales directos del médico.',
+      icon: UserCheck,
+      isComplete: Boolean(nombres.trim() && apellidos.trim() && documentoIdentidad.trim() && email.trim()),
+    },
+    {
+      id: 'especialidad',
+      label: '2. Especialidad',
+      shortTitle: 'Especialidad',
+      subtitle: 'Licencia, color y sedes',
+      titleDetail: 'Especialidad Médica y Sedes Asistenciales',
+      descriptionDetail: 'Especialidad principal, número de colegiatura médica y sedes hospitalarias.',
+      icon: Stethoscope,
+      isComplete: Boolean(especialidadId),
+    },
+    {
+      id: 'subespecialidades',
+      label: '3. Subespecialidades',
+      shortTitle: 'Subespecialidades',
+      subtitle: 'Acreditaciones médicas',
+      titleDetail: 'Subespecialidades y Acreditaciones',
+      descriptionDetail: 'Agrega subramas, diplomados, años de práctica y folios de certificados.',
+      icon: ShoppingCart,
+      isComplete: subespecialidadesCarrito.length > 0,
+      badge: subespecialidadesCarrito.length > 0 ? String(subespecialidadesCarrito.length) : undefined,
+    },
+    {
+      id: 'horario',
+      label: '4. Horarios',
+      shortTitle: 'Horarios',
+      subtitle: 'Jornada semanal de atención',
+      titleDetail: 'Jornada y Horario de Atención Semanal',
+      descriptionDetail: 'Días habilitados y franjas horarias habituales para citas médicas.',
+      icon: Clock,
+      isComplete: horarioAtencion.some((h) => h.activo),
+      badge: `${horarioAtencion.filter((h) => h.activo).length}d`,
+    },
+    {
+      id: 'acceso',
+      label: '5. Acceso al Sistema',
+      shortTitle: 'Acceso',
+      subtitle: 'Cuenta de usuario y rol',
+      titleDetail: 'Acceso al Sistema y Credenciales',
+      descriptionDetail: 'Configura las credenciales de inicio de sesión para el portal médico.',
+      icon: Key,
+      isComplete: !crearUsuario || Boolean(password || isEditing),
+    },
+  ];
+
+  const currentStepIndex = Math.max(0, STEPS.findIndex((s) => s.id === activeTab));
+  const currentStep = STEPS[currentStepIndex] || STEPS[0];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[94vh] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] h-[670px] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl rounded-2xl border-border/70">
         {/* Cabecera del Modal */}
-        <DialogHeader className="p-5 pb-3 border-b border-border/80 bg-muted/20">
+        <DialogHeader className="p-4 px-6 border-b border-border/80 bg-muted/20 flex-row items-center justify-between space-y-0 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/30 shadow-xs">
-              <UserCheck className="size-6" />
+            <div className="flex size-10 items-center justify-center rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/30 shadow-xs shrink-0">
+              <UserCheck className="size-5" />
             </div>
             <div>
-              <DialogTitle className="text-lg font-bold text-foreground flex items-center gap-2">
+              <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <span>{isEditing ? `Editar Dr(a). ${medicoToEdit?.nombres} ${medicoToEdit?.apellidos}` : 'Registrar Nuevo Médico / Especialista'}</span>
                 <Badge variant="outline" className="text-[10px] font-mono border-teal-500/30 text-teal-600 bg-teal-500/5">
                   MEDISOFT Clínico
@@ -495,69 +571,152 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
           </div>
         </DialogHeader>
 
-        {/* Formulario con Pestañas */}
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-          {/* Barra de Pestañas */}
-          <div className="px-5 pt-3 border-b border-border/80 bg-background">
-            <Tabs
-              value={activeTab}
-              onValueChange={(val: any) => setActiveTab(val)}
-              className="w-full"
-            >
-              <TabsList className="w-full justify-start h-9 p-0 bg-transparent gap-2 border-b-0">
-                <TabsTrigger
-                  value="personal"
-                  className="data-[state=active]:bg-teal-500/10 data-[state=active]:text-teal-700 dark:data-[state=active]:text-teal-300 data-[state=active]:border-teal-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5 cursor-pointer"
-                >
-                  <UserCheck className="size-3.5" />
-                  <span>1. Identificación y Contacto</span>
-                </TabsTrigger>
+        {/* Formulario y Distribución Master-Detail */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+            {/* ── BARRA LATERAL DE PASOS (STEPPER) ── */}
+            <div className="w-full md:w-64 lg:w-72 border-b md:border-b-0 md:border-r border-border/70 bg-muted/20 dark:bg-muted/10 p-3 md:p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
+              <div className="space-y-1.5">
+                <div className="hidden md:block px-2 pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Pasos de Configuración
+                  </span>
+                </div>
 
-                <TabsTrigger
-                  value="especialidad"
-                  className="data-[state=active]:bg-teal-500/10 data-[state=active]:text-teal-700 dark:data-[state=active]:text-teal-300 data-[state=active]:border-teal-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5 cursor-pointer"
-                >
-                  <Stethoscope className="size-3.5" />
-                  <span>2. Especialidad y Licencia</span>
-                </TabsTrigger>
+                <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible pb-1 md:pb-0">
+                  {STEPS.map((step) => {
+                    const IconComponent = step.icon;
+                    const isActive = activeTab === step.id;
+                    const isCompleted = step.isComplete;
 
-                <TabsTrigger
-                  value="subespecialidades"
-                  className="data-[state=active]:bg-teal-500/10 data-[state=active]:text-teal-700 dark:data-[state=active]:text-teal-300 data-[state=active]:border-teal-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5 cursor-pointer"
-                >
-                  <ShoppingCart className="size-3.5 text-teal-600 dark:text-teal-400" />
-                  <span>3. Subespecialidades</span>
-                  {subespecialidadesCarrito.length > 0 && (
-                    <Badge className="size-4.5 p-0 flex items-center justify-center rounded-full bg-teal-600 text-[10px] text-white ml-1">
-                      {subespecialidadesCarrito.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
+                    return (
+                      <button
+                        key={step.id}
+                        type="button"
+                        onClick={() => setActiveTab(step.id)}
+                        className={`w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-3 border ${
+                          isActive
+                            ? 'bg-teal-500/10 border-teal-500/40 text-foreground shadow-xs'
+                            : 'border-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <div
+                          className={`size-8 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold transition-all ${
+                            isActive
+                              ? 'bg-teal-600 text-white shadow-xs'
+                              : isCompleted
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                              : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {isCompleted && !isActive ? (
+                            <Check className="size-4" />
+                          ) : (
+                            <IconComponent className="size-4" />
+                          )}
+                        </div>
 
-                <TabsTrigger
-                  value="horario"
-                  className="data-[state=active]:bg-teal-500/10 data-[state=active]:text-teal-700 dark:data-[state=active]:text-teal-300 data-[state=active]:border-teal-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5 cursor-pointer"
-                >
-                  <Clock className="size-3.5" />
-                  <span>4. Horario de Atención</span>
-                </TabsTrigger>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <span
+                              className={`text-xs font-semibold truncate block ${
+                                isActive ? 'text-teal-600 dark:text-teal-400 font-bold' : ''
+                              }`}
+                            >
+                              {step.label}
+                            </span>
+                            {step.id === 'subespecialidades' && subespecialidadesCarrito.length > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-teal-600 text-white font-bold shrink-0">
+                                {subespecialidadesCarrito.length}
+                              </span>
+                            )}
+                            {step.id === 'horario' && (
+                              <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
+                                {horarioAtencion.filter((h) => h.activo).length}d
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-muted-foreground truncate block">
+                            {step.subtitle}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-                <TabsTrigger
-                  value="acceso"
-                  className="data-[state=active]:bg-teal-500/10 data-[state=active]:text-teal-700 dark:data-[state=active]:text-teal-300 data-[state=active]:border-teal-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5 cursor-pointer"
-                >
-                  <Key className="size-3.5" />
-                  <span>5. Acceso al Sistema</span>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+              {/* Tarjeta de Resumen en Vivo del Médico (Sidebar Footer) */}
+              <div className="hidden md:block pt-3 border-t border-border/60 mt-3">
+                <div className="p-3 rounded-xl bg-card border border-border/80 shadow-2xs space-y-2">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="size-9 rounded-lg flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-2xs"
+                      style={{ backgroundColor: color || '#0d9488' }}
+                    >
+                      {doctorInitials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-bold text-foreground truncate block">
+                        {nombres || apellidos ? `Dr(a). ${nombres} ${apellidos}`.trim() : 'Dr(a). Nuevo Médico'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground truncate block">
+                        {selectedEspecialidad ? selectedEspecialidad.nombre : 'Sin especialidad'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 text-[10px]">
+                    <span className="text-muted-foreground">Estado agenda:</span>
+                    <span
+                      className={`font-semibold px-1.5 py-0.5 rounded-full ${
+                        activo
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {activo ? '● Activo' : '○ Inactivo'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          {/* Contenido de Pestañas con Scroll */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-4">
-            {/* ── PESTAÑA 1: IDENTIFICACIÓN Y CONTACTO ──────────────────────── */}
-            {activeTab === 'personal' && (
-              <div className="space-y-4 max-w-3xl">
+            {/* ── PANEL DE CONTENIDO DERECHO ── */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
+              {/* Banner Superior del Paso Activo */}
+              <div className="px-6 py-3.5 border-b border-border/60 bg-card/40 flex items-center justify-between shrink-0">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                      Paso {currentStepIndex + 1} de 5
+                    </span>
+                    <h3 className="text-xs sm:text-sm font-bold text-foreground">
+                      {currentStep.titleDetail}
+                    </h3>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {currentStep.descriptionDetail}
+                  </p>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-2">
+                  <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden border border-border/50">
+                    <div
+                      className="h-full bg-teal-500 transition-all duration-300 rounded-full"
+                      style={{ width: `${((currentStepIndex + 1) / 5) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 font-mono">
+                    {Math.round(((currentStepIndex + 1) / 5) * 100)}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Contenedor scrolleable del contenido del formulario */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+                {/* ── PESTAÑA 1: IDENTIFICACIÓN Y CONTACTO ──────────────────────── */}
+                {activeTab === 'personal' && (
+                  <div className="space-y-4 max-w-3xl">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">
@@ -653,26 +812,14 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-border/60 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Switch checked={activo} onCheckedChange={setActivo} />
-                    <div>
-                      <Label className="text-xs font-bold">Médico Activo en Servicio</Label>
-                      <p className="text-[11px] text-muted-foreground">
-                        Permite que el médico esté disponible para asignación de turnos y citas
-                      </p>
-                    </div>
+                <div className="p-3.5 rounded-xl border border-border/80 bg-muted/15 flex items-center justify-between">
+                  <div>
+                    <Label className="text-xs font-bold text-foreground">Médico Activo en Servicio</Label>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Permite que el médico esté disponible para asignación de turnos, citas y turnero
+                    </p>
                   </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTab('especialidad')}
-                    className="text-xs h-8 cursor-pointer"
-                  >
-                    <span>Siguiente: Especialidad</span>
-                  </Button>
+                  <Switch checked={activo} onCheckedChange={setActivo} className="cursor-pointer" />
                 </div>
               </div>
             )}
@@ -812,27 +959,6 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                   />
                 </div>
 
-                <div className="pt-3 border-t border-border/60 flex items-center justify-between">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setActiveTab('personal')}
-                    className="text-xs h-8 cursor-pointer"
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTab('subespecialidades')}
-                    className="text-xs h-8 cursor-pointer gap-1.5"
-                  >
-                    <ShoppingCart className="size-3.5 text-teal-600" />
-                    <span>Siguiente: Subespecialidades</span>
-                  </Button>
-                </div>
               </div>
             )}
 
@@ -1020,26 +1146,6 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                   )}
                 </div>
 
-                <div className="pt-3 border-t border-border/60 flex items-center justify-between">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setActiveTab('especialidad')}
-                    className="text-xs h-8 cursor-pointer"
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTab('horario')}
-                    className="text-xs h-8 cursor-pointer"
-                  >
-                    <span>Siguiente: Horario de Atención</span>
-                  </Button>
-                </div>
               </div>
             )}
 
@@ -1154,26 +1260,6 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-border/60 flex items-center justify-between">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setActiveTab('subespecialidades')}
-                    className="text-xs h-8 cursor-pointer"
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTab('acceso')}
-                    className="text-xs h-8 cursor-pointer"
-                  >
-                    <span>Siguiente: Acceso al Sistema</span>
-                  </Button>
-                </div>
               </div>
             )}
 
@@ -1265,41 +1351,50 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                   )}
                 </div>
 
-                <div className="pt-3 border-t border-border/60 flex items-center justify-between">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setActiveTab('horario')}
-                    className="text-xs h-8 cursor-pointer"
-                  >
-                    Anterior
-                  </Button>
-                </div>
               </div>
             )}
           </div>
 
-          {/* Footer del Modal */}
-          <DialogFooter className="p-3.5 border-t border-border/80 bg-muted/10 flex items-center justify-between">
-            <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-              <span className="flex items-center gap-1">
-                <span className="size-2 rounded-full bg-teal-500 inline-block" />
-                {subespecialidadesCarrito.length} subespecialidades registradas
-              </span>
-            </div>
+          {/* Footer de navegación unificado */}
+          <div className="p-3.5 px-6 border-t border-border/70 bg-muted/10 flex items-center justify-between shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+              className="h-8 text-xs cursor-pointer"
+            >
+              Cancelar
+            </Button>
 
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onOpenChange(false)}
-                disabled={saving}
-                className="h-8 text-xs cursor-pointer"
-              >
-                Cancelar
-              </Button>
+              {currentStepIndex > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveTab(STEPS[currentStepIndex - 1].id)}
+                  className="h-8 text-xs cursor-pointer gap-1"
+                >
+                  <ChevronLeft className="size-3.5" />
+                  <span>Anterior</span>
+                </Button>
+              )}
+
+              {currentStepIndex < STEPS.length - 1 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveTab(STEPS[currentStepIndex + 1].id)}
+                  className="h-8 text-xs cursor-pointer gap-1 border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                >
+                  <span>Siguiente: {STEPS[currentStepIndex + 1].shortTitle}</span>
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              )}
+
               <Button
                 type="submit"
                 size="sm"
@@ -1310,11 +1405,13 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                 <span>{saving ? 'Guardando...' : isEditing ? 'Actualizar Ficha' : 'Guardar Médico'}</span>
               </Button>
             </div>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+          </div>
+        </div>
+      </div>
+    </form>
+  </DialogContent>
+</Dialog>
+);
 };
 
 export default DoctorFormModal;
