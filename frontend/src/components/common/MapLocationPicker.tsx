@@ -62,6 +62,7 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const accuracyCircleRef = useRef<L.Circle | null>(null);
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -70,6 +71,8 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [detectedAddress, setDetectedAddress] = useState<string | null>(null);
   const [mapLayerType, setMapLayerType] = useState<'streets' | 'satellite'>('streets');
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
+  const [locationSource, setLocationSource] = useState<string | null>(null);
 
   const numLat = lat !== '' && lat !== null && lat !== undefined ? Number(lat) : null;
   const numLng = lng !== '' && lng !== null && lng !== undefined ? Number(lng) : null;
@@ -218,6 +221,10 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
     }, 200);
 
     return () => {
+      if (accuracyCircleRef.current) {
+        accuracyCircleRef.current.remove();
+        accuracyCircleRef.current = null;
+      }
       if (markerRef.current) {
         markerRef.current.remove();
         markerRef.current = null;
@@ -284,84 +291,119 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
     }
   }, [countryLat, countryLng, mapLoaded]);
 
-  // Estrategia de Geolocalización Robusta: Navegador -> IP Fallback
+  // Dibujar/actualizar el círculo de precisión en el mapa
+  const drawAccuracyCircle = (lat: number, lng: number, accuracyMeters: number) => {
+    if (!mapInstanceRef.current) return;
+    if (accuracyCircleRef.current) {
+      accuracyCircleRef.current.remove();
+    }
+    accuracyCircleRef.current = L.circle([lat, lng], {
+      radius: accuracyMeters,
+      color: '#0d9488',
+      fillColor: '#0d9488',
+      fillOpacity: 0.08,
+      weight: 1.5,
+      dashArray: '4 4',
+    }).addTo(mapInstanceRef.current);
+  };
+
+  // Estrategia de Geolocalización Robusta: GPS nativo (alta precisión) -> IP Fallback
   const handleLocateMe = async () => {
     setLocating(true);
-    const toastId = toast.loading('Detectando tu ubicación geográfica...');
+    setLocationAccuracy(null);
+    setLocationSource(null);
+    const toastId = toast.loading('Solicitando acceso a tu ubicación GPS...');
 
-    // 1. Intentar geolocalización por hardware / navegador
-    const tryBrowserLocation = (): Promise<{ lat: number; lng: number }> => {
+    // 1. GPS nativo del navegador con alta precisión
+    const tryBrowserLocation = (): Promise<GeolocationPosition> => {
       return new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
-          return reject(new Error('Navegador no soporta geolocalización'));
+          return reject(new Error('El navegador no soporta geolocalización'));
         }
         navigator.geolocation.getCurrentPosition(
-          (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          (pos) => resolve(pos),
           (err) => reject(err),
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+          { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
         );
       });
     };
 
-    // 2. Intentar geolocalización por IP si el navegador falla o está denegado
+    // 2. Fallback por IP (solo precisión de ciudad)
     const tryIpLocation = async (): Promise<{ lat: number; lng: number; city?: string } | null> => {
       try {
         const res = await fetch('https://ipwho.is/');
         if (res.ok) {
           const data = await res.json();
-          if (data && data.success && data.latitude && data.longitude) {
-            return {
-              lat: Number(data.latitude),
-              lng: Number(data.longitude),
-              city: data.city || data.region,
-            };
+          if (data?.success && data.latitude && data.longitude) {
+            return { lat: Number(data.latitude), lng: Number(data.longitude), city: data.city || data.region };
           }
         }
       } catch {}
-
       try {
         const res = await fetch('https://get.geojs.io/v1/ip/geo.json');
         if (res.ok) {
           const data = await res.json();
-          if (data && data.latitude && data.longitude) {
-            return {
-              lat: Number(data.latitude),
-              lng: Number(data.longitude),
-              city: data.city,
-            };
+          if (data?.latitude && data.longitude) {
+            return { lat: Number(data.latitude), lng: Number(data.longitude), city: data.city };
           }
         }
       } catch {}
-
       return null;
     };
 
     try {
       let finalLat: number | null = null;
       let finalLng: number | null = null;
-      let locationSource = 'GPS';
+      let accuracyM: number | null = null;
+      let src = 'GPS';
       let cityName: string | undefined;
 
       try {
-        const browserPos = await tryBrowserLocation();
-        finalLat = Number(browserPos.lat.toFixed(6));
-        finalLng = Number(browserPos.lng.toFixed(6));
+        toast.loading('Obteniendo posición GPS precisa...', { id: toastId });
+        const pos = await tryBrowserLocation();
+        finalLat = Number(pos.coords.latitude.toFixed(6));
+        finalLng = Number(pos.coords.longitude.toFixed(6));
+        accuracyM = Math.round(pos.coords.accuracy);
+        // Determinar fuente según precisión
+        if (accuracyM <= 50) src = 'GPS';
+        else if (accuracyM <= 500) src = 'Red/WiFi';
+        else src = 'IP/Torre';
       } catch (browserErr: any) {
-        console.warn('Geolocalización por navegador no disponible, usando fallback IP:', browserErr.message);
+        toast.loading('GPS no disponible, usando ubicación por red...', { id: toastId });
+        console.warn('GPS falló, fallback IP:', browserErr.message);
         const ipPos = await tryIpLocation();
         if (ipPos) {
           finalLat = Number(ipPos.lat.toFixed(6));
           finalLng = Number(ipPos.lng.toFixed(6));
-          locationSource = 'Red';
+          accuracyM = 5000; // IP es solo precisión de ciudad (~5 km)
+          src = 'IP (ciudad)';
           cityName = ipPos.city;
         }
       }
 
       if (finalLat !== null && finalLng !== null) {
+        setLocationAccuracy(accuracyM);
+        setLocationSource(src);
+
+        // Zoom adaptativo según precisión
+        const zoomLevel = accuracyM !== null
+          ? accuracyM <= 50 ? 18
+          : accuracyM <= 200 ? 17
+          : accuracyM <= 1000 ? 15
+          : accuracyM <= 5000 ? 13
+          : 11
+          : 15;
+
         if (mapInstanceRef.current) {
-          mapInstanceRef.current.flyTo([finalLat, finalLng], 16, { duration: 1.2 });
+          mapInstanceRef.current.flyTo([finalLat, finalLng], zoomLevel, { duration: 1.2 });
         }
 
+        // Dibujar círculo de precisión
+        if (accuracyM !== null && accuracyM < 50000) {
+          drawAccuracyCircle(finalLat, finalLng, accuracyM);
+        }
+
+        // Actualizar/crear marcador
         if (markerRef.current) {
           markerRef.current.setLatLng([finalLat, finalLng]);
         } else if (mapInstanceRef.current) {
@@ -369,34 +411,35 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
             draggable: !disabled,
             icon: createCustomMarkerIcon(),
           }).addTo(mapInstanceRef.current);
-
           marker.on('dragend', () => {
             const coords = marker.getLatLng();
             handleUpdateCoordinates(Number(coords.lat.toFixed(6)), Number(coords.lng.toFixed(6)));
           });
-
           markerRef.current = marker;
         }
 
         handleUpdateCoordinates(finalLat, finalLng);
 
-        toast.success(
-          cityName
-            ? `Ubicación encontrada: ${cityName} (${locationSource}) - [${finalLat}, ${finalLng}]`
-            : `Ubicación detectada (${locationSource}): ${finalLat}, ${finalLng}`,
-          { id: toastId }
-        );
+        // Toast con info de precisión
+        if (accuracyM !== null && accuracyM > 2000) {
+          toast.warning(
+            cityName
+              ? `Ubicación aproximada: ${cityName} (precisión ~${(accuracyM / 1000).toFixed(1)} km). Ajusta el pin manualmente si es necesario.`
+              : `Ubicación aproximada (precisión ~${(accuracyM / 1000).toFixed(1)} km). Ajusta el pin en el mapa.`,
+            { id: toastId, duration: 6000 }
+          );
+        } else {
+          toast.success(
+            `Ubicación detectada (${src}) — Precisión: ±${accuracyM ?? '?'} m`,
+            { id: toastId }
+          );
+        }
       } else {
-        toast.error(
-          'No se pudo detectar tu ubicación automáticamente. Por favor haz clic en el mapa para marcarla.',
-          { id: toastId }
-        );
+        toast.error('No se pudo detectar tu ubicación. Haz clic en el mapa para marcarla manualmente.', { id: toastId });
       }
     } catch (err: any) {
-      console.error('Error general de geolocalización:', err);
-      toast.error('No fue posible detectar la ubicación. Selecciona el punto en el mapa.', {
-        id: toastId,
-      });
+      console.error('Error de geolocalización:', err);
+      toast.error('No fue posible detectar la ubicación. Selecciona el punto en el mapa.', { id: toastId });
     } finally {
       setLocating(false);
     }
@@ -586,6 +629,16 @@ export const MapLocationPicker: React.FC<MapLocationPickerProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {locationAccuracy !== null && locationSource !== null && (
+            <span className={`text-[11px] font-medium flex items-center gap-1 ${
+              locationAccuracy <= 50 ? 'text-emerald-600 dark:text-emerald-400'
+              : locationAccuracy <= 500 ? 'text-teal-600 dark:text-teal-400'
+              : 'text-amber-600 dark:text-amber-400'
+            }`}>
+              <Navigation className="w-3 h-3 shrink-0" />
+              <span>{locationSource} — ±{locationAccuracy < 1000 ? `${locationAccuracy} m` : `${(locationAccuracy/1000).toFixed(1)} km`}</span>
+            </span>
+          )}
           {geocoding && (
             <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 animate-pulse font-medium">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
