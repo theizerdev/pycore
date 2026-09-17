@@ -123,6 +123,7 @@ export const AgendaCalendarioPage: React.FC = () => {
       setSelectedMedico(String(currentDoctor.id));
       setNewCitaInitialMedicoId(currentDoctor.id);
       setBloqueoMedicoId(currentDoctor.id);
+      fetchCitas(currentDoctor.id);
     }
   }, [currentDoctor]);
 
@@ -167,12 +168,14 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [enviandoRecordatorios, setEnviandoRecordatorios] = useState(false);
 
   // Cargar Citas y Bloqueos
-  const fetchCitas = async () => {
+  const fetchCitas = async (docIdOverride?: number) => {
     try {
       setLoading(true);
+      const targetDoctorId = docIdOverride ?? (isDoctorUser && currentDoctor ? currentDoctor.id : undefined);
+      const params = targetDoctorId ? { medico_id: targetDoctorId } : undefined;
       const [dataCitas, dataBloqueos] = await Promise.all([
-        citasApi.list(),
-        citasApi.listarBloqueos(),
+        citasApi.list(params),
+        citasApi.listarBloqueos(params),
       ]);
       setCitas(dataCitas);
       setBloqueos(dataBloqueos);
@@ -288,8 +291,11 @@ export const AgendaCalendarioPage: React.FC = () => {
   // Citas de hoy para el panel asistencial
   const todayStr = new Date().toISOString().split('T')[0];
   const citasHoy = useMemo(() => {
-    return citas.filter((c) => c.fecha === todayStr && c.estado !== 'cancelada');
-  }, [citas, todayStr]);
+    return citas.filter((c) => {
+      if (isDoctorUser && currentDoctor && c.medico_id !== currentDoctor.id) return false;
+      return c.fecha === todayStr && c.estado !== 'cancelada';
+    });
+  }, [citas, todayStr, isDoctorUser, currentDoctor]);
 
   // Resumen reactivo de puntualidad del día en curso (recalculado cada 30 segundos)
   const resumenPuntualidadHoy = useMemo(() => {
@@ -315,6 +321,10 @@ export const AgendaCalendarioPage: React.FC = () => {
   // Filtrado reactivo en memoria
   const filteredCitas = useMemo(() => {
     return citas.filter((c) => {
+      // Si el usuario autenticado es médico especialista, sólo ver sus propias citas
+      if (isDoctorUser && currentDoctor && c.medico_id !== currentDoctor.id) {
+        return false;
+      }
       if (selectedSucursal !== 'all' && c.sucursal_id !== Number(selectedSucursal)) {
         return false;
       }
@@ -353,23 +363,37 @@ export const AgendaCalendarioPage: React.FC = () => {
     selectedEstado,
     filtroPuntualidad,
     currentTime,
+    isDoctorUser,
+    currentDoctor,
   ]);
 
   const pacientesEnEspera = useMemo(() => {
-    return citas.filter((c) => c.fecha === todayStr && c.estado === 'sala_espera');
-  }, [citas, todayStr]);
+    return citas.filter((c) => {
+      if (isDoctorUser && currentDoctor && c.medico_id !== currentDoctor.id) return false;
+      return c.fecha === todayStr && c.estado === 'sala_espera';
+    });
+  }, [citas, todayStr, isDoctorUser, currentDoctor]);
 
   const pacientesEnConsulta = useMemo(() => {
-    return citas.filter((c) => c.fecha === todayStr && c.estado === 'en_consulta');
-  }, [citas, todayStr]);
+    return citas.filter((c) => {
+      if (isDoctorUser && currentDoctor && c.medico_id !== currentDoctor.id) return false;
+      return c.fecha === todayStr && c.estado === 'en_consulta';
+    });
+  }, [citas, todayStr, isDoctorUser, currentDoctor]);
 
   const pacientesAtendidosHoy = useMemo(() => {
-    return citas.filter((c) => c.fecha === todayStr && c.estado === 'atendida');
-  }, [citas, todayStr]);
+    return citas.filter((c) => {
+      if (isDoctorUser && currentDoctor && c.medico_id !== currentDoctor.id) return false;
+      return c.fecha === todayStr && c.estado === 'atendida';
+    });
+  }, [citas, todayStr, isDoctorUser, currentDoctor]);
 
   // Filtrado reactivo de bloqueos de agenda
   const filteredBloqueos = useMemo(() => {
     return bloqueos.filter((b) => {
+      if (isDoctorUser && currentDoctor && b.medico_id !== currentDoctor.id) {
+        return false;
+      }
       if (selectedSucursal !== 'all' && b.sucursal_id && b.sucursal_id !== Number(selectedSucursal)) {
         return false;
       }
@@ -378,7 +402,7 @@ export const AgendaCalendarioPage: React.FC = () => {
       }
       return true;
     });
-  }, [bloqueos, selectedSucursal, selectedMedico]);
+  }, [bloqueos, selectedSucursal, selectedMedico, isDoctorUser, currentDoctor]);
 
   // Formateador a formato de 12 Horas con AM/PM (Ej: 08:00 AM - 08:20 AM)
   const format12Hour = (time24: string): string => {
@@ -471,7 +495,9 @@ export const AgendaCalendarioPage: React.FC = () => {
 
     setNewCitaInitialDate(fecha);
     setNewCitaInitialTime(hora);
-    if (selectedMedico !== 'all') {
+    if (isDoctorUser && currentDoctor) {
+      setNewCitaInitialMedicoId(currentDoctor.id);
+    } else if (selectedMedico !== 'all') {
       setNewCitaInitialMedicoId(Number(selectedMedico));
     } else {
       setNewCitaInitialMedicoId(undefined);
@@ -622,13 +648,18 @@ export const AgendaCalendarioPage: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Filtro Rápido de Médico */}
-          {isDoctorUser && currentDoctor ? (
+          {isDoctorUser ? (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-800 dark:text-teal-200 text-xs font-semibold h-9">
               <span
                 className="size-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: currentDoctor.color || '#0d9488' }}
+                style={{ backgroundColor: currentDoctor?.color || '#0d9488' }}
               />
-              <span className="truncate">Dr(a). {currentDoctor.nombres} {currentDoctor.apellidos}</span>
+              <span className="truncate">
+                {currentDoctor ? `Dr(a). ${currentDoctor.nombres} ${currentDoctor.apellidos}` : 'Mi Agenda Asistencial'}
+              </span>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-teal-500/30 text-teal-700 dark:text-teal-300 gap-1 bg-teal-50/70 dark:bg-teal-950/40 font-normal ml-1">
+                <Lock className="size-2.5" /> Mi Agenda
+              </Badge>
             </div>
           ) : (
             <Select value={selectedMedico} onValueChange={setSelectedMedico}>
@@ -674,7 +705,7 @@ export const AgendaCalendarioPage: React.FC = () => {
             type="button"
             variant="outline"
             size="sm"
-            onClick={fetchCitas}
+            onClick={() => fetchCitas()}
             disabled={loading}
             className="h-9 cursor-pointer gap-1.5"
             title="Sincronizar calendario"
@@ -736,6 +767,13 @@ export const AgendaCalendarioPage: React.FC = () => {
               setNewCitaInitialDate(new Date().toISOString().split('T')[0]);
               setNewCitaInitialTime('08:00');
               setNewCitaInitialPacienteId(undefined);
+              if (isDoctorUser && currentDoctor) {
+                setNewCitaInitialMedicoId(currentDoctor.id);
+              } else if (selectedMedico !== 'all') {
+                setNewCitaInitialMedicoId(Number(selectedMedico));
+              } else {
+                setNewCitaInitialMedicoId(undefined);
+              }
               setFormModalOpen(true);
             }}
             className="h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer shadow-xs gap-1.5"
@@ -1311,7 +1349,7 @@ export const AgendaCalendarioPage: React.FC = () => {
         initialMedicoId={newCitaInitialMedicoId}
         initialPacienteId={newCitaInitialPacienteId}
         existingCitas={citas}
-        onSaved={fetchCitas}
+        onSaved={() => fetchCitas()}
       />
 
       {/* ── MODAL REGISTRO RÁPIDO DE PACIENTE QUE LLEGA A LA CLÍNICA ── */}
@@ -1330,6 +1368,13 @@ export const AgendaCalendarioPage: React.FC = () => {
                     setNewCitaInitialDate(new Date().toISOString().split('T')[0]);
                     setNewCitaInitialTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
                     setNewCitaInitialPacienteId(savedPatient.id);
+                    if (isDoctorUser && currentDoctor) {
+                      setNewCitaInitialMedicoId(currentDoctor.id);
+                    } else if (selectedMedico !== 'all') {
+                      setNewCitaInitialMedicoId(Number(selectedMedico));
+                    } else {
+                      setNewCitaInitialMedicoId(undefined);
+                    }
                     setFormModalOpen(true);
                   },
                 },
@@ -1344,7 +1389,7 @@ export const AgendaCalendarioPage: React.FC = () => {
         open={quickActionOpen}
         onOpenChange={setQuickActionOpen}
         cita={selectedCitaForAction}
-        onUpdated={fetchCitas}
+        onUpdated={() => fetchCitas()}
         onEdit={(c) => {
           setCitaToEdit(c);
           setFormModalOpen(true);
@@ -1357,7 +1402,7 @@ export const AgendaCalendarioPage: React.FC = () => {
         open={statusModalOpen}
         onOpenChange={setStatusModalOpen}
         cita={selectedCitaForStatus}
-        onUpdated={fetchCitas}
+        onUpdated={() => fetchCitas()}
       />
 
       {/* ── FICHA CLÍNICA DEL PACIENTE (Si se solicita) ────────────── */}

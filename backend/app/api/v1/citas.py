@@ -469,6 +469,10 @@ async def get_cita(
     if not current_user.es_superadmin:
         query = query.where(CitaMedica.empresa_id == current_user.empresa_id)
 
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        query = query.where(CitaMedica.medico_id == doctor_auto_id)
+
     result = await db.execute(query)
     cita = result.scalar_one_or_none()
     if not cita:
@@ -501,6 +505,10 @@ async def create_cita(
             detail="No es permitido registrar citas en horas anteriores"
         )
 
+    # Si el usuario es médico especialista, forzar que la cita se cree exclusivamente en su propia agenda
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    target_medico_id = doctor_auto_id if (doctor_auto_id is not None and doctor_auto_id > 0) else payload.medico_id
+
     # Validar existencia de entidades
     res_pac = await db.execute(
         select(Paciente).where(Paciente.id == payload.paciente_id, Paciente.empresa_id == empresa_id)
@@ -512,7 +520,7 @@ async def create_cita(
     res_med = await db.execute(
         select(Medico)
         .options(selectinload(Medico.usuario))
-        .where(Medico.id == payload.medico_id, Medico.empresa_id == empresa_id)
+        .where(Medico.id == target_medico_id, Medico.empresa_id == empresa_id)
     )
     medico = res_med.scalar_one_or_none()
     if not medico:
@@ -546,7 +554,7 @@ async def create_cita(
     if not payload.es_sobreturno:
         # 1. Validar contra bloqueos de agenda activos del médico
         bloqueo_query = select(BloqueoAgenda).where(
-            BloqueoAgenda.medico_id == payload.medico_id,
+            BloqueoAgenda.medico_id == target_medico_id,
             BloqueoAgenda.fecha == payload.fecha,
             and_(
                 BloqueoAgenda.hora_inicio < payload.hora_fin,
@@ -563,7 +571,7 @@ async def create_cita(
 
         # 2. Validar contra citas existentes
         conflicto_query = select(CitaMedica).where(
-            CitaMedica.medico_id == payload.medico_id,
+            CitaMedica.medico_id == target_medico_id,
             CitaMedica.fecha == payload.fecha,
             CitaMedica.estado != "cancelada",
             and_(
@@ -583,7 +591,7 @@ async def create_cita(
     nueva_cita = CitaMedica(
         empresa_id=empresa_id,
         sucursal_id=payload.sucursal_id,
-        medico_id=payload.medico_id,
+        medico_id=target_medico_id,
         especialidad_id=payload.especialidad_id,
         servicio_id=payload.servicio_id,
         paciente_id=payload.paciente_id,
@@ -702,8 +710,16 @@ async def update_cita(
     if not cita:
         raise HTTPException(status_code=404, detail="Cita médica no encontrada")
 
+    # Si el usuario es médico especialista, solo puede modificar sus propias citas
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None and doctor_auto_id > 0:
+        if cita.medico_id != doctor_auto_id:
+            raise HTTPException(status_code=403, detail="No tiene permisos para modificar citas de otros especialistas")
+        target_medico_id = doctor_auto_id
+    else:
+        target_medico_id = payload.medico_id or cita.medico_id
+
     target_fecha = payload.fecha or cita.fecha
-    target_medico_id = payload.medico_id or cita.medico_id
     target_hora_inicio = payload.hora_inicio or cita.hora_inicio
     target_hora_fin = payload.hora_fin or cita.hora_fin
 

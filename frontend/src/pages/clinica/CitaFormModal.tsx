@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import { useAuth } from '../../context/AuthContext';
 import {
   Calendar,
   Clock,
@@ -47,6 +48,7 @@ import {
   ShieldAlert,
   CalendarClock,
   UserPlus,
+  Lock,
 } from 'lucide-react';
 
 interface CitaFormModalProps {
@@ -119,6 +121,19 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [motivoSobreturno, setMotivoSobreturno] = useState<string>('');
   const [notificarWhatsApp, setNotificarWhatsApp] = useState<boolean>(true);
 
+  const { user } = useAuth();
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+
+  // Identificar el perfil médico del usuario logueado
+  const currentDoctor = React.useMemo(() => {
+    if (!isDoctorUser || !user) return null;
+    return medicos.find(
+      (m) =>
+        m.usuario_id === user.id ||
+        (m.email && m.email.toLowerCase() === user.email.toLowerCase())
+    );
+  }, [isDoctorUser, user, medicos]);
+
   // Cargar catálogos
   useEffect(() => {
     if (!open) return;
@@ -135,6 +150,14 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
         setPacientes(pacs);
         setSucursales(sucs);
         setServicios(servs);
+
+        const loggedDoctor = isDoctorUser && user
+          ? meds.find(
+              (m) =>
+                m.usuario_id === user.id ||
+                (m.email && m.email.toLowerCase() === user.email.toLowerCase())
+            )
+          : null;
 
         if (citaToEdit) {
           setPacienteId(citaToEdit.paciente_id);
@@ -163,20 +186,38 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
           if (initialTime) {
             setHoraInicio(initialTime);
           }
-          if (initialMedicoId) {
-            setMedicoId(initialMedicoId);
-            const med = meds.find((m) => m.id === initialMedicoId);
-            if (med) setEspecialidadId(med.especialidad_id);
+
+          // Si el usuario es doctor, SIEMPRE preseleccionar su médico e impedir que se pierda
+          let targetMedId: number | null = null;
+          if (loggedDoctor) {
+            targetMedId = loggedDoctor.id;
+          } else if (initialMedicoId) {
+            targetMedId = initialMedicoId;
           } else if (meds.length > 0) {
-            setMedicoId(meds[0].id);
-            setEspecialidadId(meds[0].especialidad_id);
+            targetMedId = meds[0].id;
           }
+
+          setMedicoId(targetMedId);
+
+          if (targetMedId) {
+            const med = meds.find((m) => m.id === targetMedId);
+            if (med) {
+              setEspecialidadId(med.especialidad_id);
+              if (med.sucursal_defecto_id) {
+                setSucursalId(med.sucursal_defecto_id);
+              } else if (sucs.length > 0) {
+                setSucursalId(sucs[0].id);
+              }
+            }
+          } else if (sucs.length > 0) {
+            setSucursalId(sucs[0].id);
+          }
+
           if (initialPacienteId) {
             setPacienteId(initialPacienteId);
           } else {
             setPacienteId(null);
           }
-          if (sucs.length > 0) setSucursalId(sucs[0].id);
           setServicioId(null);
           setPrecioEstimado('');
           setEstadoPago('pendiente');
@@ -199,7 +240,22 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
     };
 
     loadData();
-  }, [open, citaToEdit, initialDate, initialTime, initialMedicoId, initialPacienteId]);
+  }, [open, citaToEdit, initialDate, initialTime, initialMedicoId, initialPacienteId, isDoctorUser, user]);
+
+  // Sincronización reactiva: si el usuario es doctor y el catálogo de médicos ya cargó, asegurar selección
+  useEffect(() => {
+    if (open && isDoctorUser && currentDoctor && !citaToEdit) {
+      if (medicoId !== currentDoctor.id) {
+        setMedicoId(currentDoctor.id);
+      }
+      if (especialidadId !== currentDoctor.especialidad_id) {
+        setEspecialidadId(currentDoctor.especialidad_id);
+      }
+      if (currentDoctor.sucursal_defecto_id && (!sucursalId || sucursalId !== currentDoctor.sucursal_defecto_id)) {
+        setSucursalId(currentDoctor.sucursal_defecto_id);
+      }
+    }
+  }, [open, isDoctorUser, currentDoctor, citaToEdit, medicoId, especialidadId, sucursalId]);
 
   // Al cambiar médico, asignar su especialidad y sucursal por defecto
   const handleMedicoChange = (medIdStr: string) => {
@@ -713,15 +769,23 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Médico */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Stethoscope className="size-3.5 text-teal-600" />
-                <span>Médico Especialista *</span>
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Stethoscope className="size-3.5 text-teal-600" />
+                  <span>Médico Especialista *</span>
+                </Label>
+                {isDoctorUser && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-teal-500/30 text-teal-700 dark:text-teal-300 gap-1 bg-teal-50/70 dark:bg-teal-950/40 font-normal">
+                    <Lock className="size-2.5" /> Su agenda
+                  </Badge>
+                )}
+              </div>
               <Select
                 value={medicoId ? String(medicoId) : ''}
                 onValueChange={handleMedicoChange}
+                disabled={isDoctorUser}
               >
-                <SelectTrigger className="text-xs h-9">
+                <SelectTrigger className="text-xs h-9 disabled:opacity-95 disabled:bg-muted/40 disabled:cursor-not-allowed">
                   <SelectValue placeholder="Seleccionar médico..." />
                 </SelectTrigger>
                 <SelectContent>
