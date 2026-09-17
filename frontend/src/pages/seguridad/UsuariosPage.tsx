@@ -25,7 +25,10 @@ import {
   Globe,
   Eye,
   EyeOff,
-  Sparkles
+  Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  Check,
 } from 'lucide-react';
 import { ModuleHeader } from '../../components/common/ModuleHeader';
 import { StatCard } from '../../components/common/StatCard';
@@ -58,6 +61,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import { Badge } from '../../components/ui/badge';
 import { cn } from '../../lib/utils';
 
 export const UsuariosPage: React.FC = () => {
@@ -724,252 +728,475 @@ export const UsuariosPage: React.FC = () => {
         emptyMessage="No se encontraron usuarios registrados con los filtros aplicados."
       />
 
-      {/* ── Modal de Creación / Edición con shadcn/ui ────────────────── */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
-          <form onSubmit={handleSubmit}>
-            <DialogHeader>
-              <DialogTitle>
-                {editingUser ? `Editar Usuario: ${editingUser.nombre}` : 'Registrar Nuevo Usuario'}
-              </DialogTitle>
-              <DialogDescription>
-                Completa los datos del colaborador y sus permisos de acceso en las sedes.
-              </DialogDescription>
-            </DialogHeader>
+      {/* ── Modal de Creación / Edición Master-Detail Stepper ────────────────── */}
+      {(() => {
+        const USUARIO_STEPS = [
+          {
+            id: 'general',
+            label: '1. Datos & Acceso',
+            shortTitle: 'Datos & Acceso',
+            subtitle: 'Nombre, email y credenciales',
+            titleDetail: 'Datos Personales y Credenciales de Acceso',
+            descriptionDetail: 'Información básica del colaborador, contacto y contraseña de inicio de sesión.',
+            icon: UserCheck,
+            isComplete: Boolean(formData.nombre.trim() && formData.apellido.trim() && formData.email.trim()),
+          },
+          {
+            id: 'roles_sedes',
+            label: '2. Rol & Sede Asignada',
+            shortTitle: 'Rol & Sede',
+            subtitle: 'Permisos y sucursal física',
+            titleDetail: 'Nivel de Seguridad, Rol y Sede Médica Asignada',
+            descriptionDetail: 'Define las responsabilidades del usuario y la sede hospitalaria donde prestará servicio.',
+            icon: Shield,
+            isComplete: Boolean(formData.rol_id && formData.sucursal_defecto_id),
+          },
+        ];
 
-            {errorMsg && (
-              <div className="p-3 my-2 rounded-md bg-destructive/15 border border-destructive/30 text-destructive text-xs">
-                {errorMsg}
-              </div>
-            )}
+        const currentUsuarioStepIndex = Math.max(0, USUARIO_STEPS.findIndex((s) => s.id === activeTab));
+        const currentUsuarioStep = USUARIO_STEPS[currentUsuarioStepIndex] || USUARIO_STEPS[0];
+        const selectedRolObj = roles.find((r) => r.id === formData.rol_id);
+        const selectedSucursalObj = sucursales.find((s) => s.id === formData.sucursal_defecto_id);
+        const fullName = [formData.nombre, formData.apellido].filter(Boolean).join(' ');
+        const initials = ((formData.nombre.trim().charAt(0) || '') + (formData.apellido.trim().charAt(0) || '')).toUpperCase() || 'U';
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full mt-4">
-              {/* ── Navbar de tabs ── */}
-              <TabsList className="grid w-full mb-6 grid-cols-2">
-                <TabsTrigger value="general" className="flex items-center gap-2">
-                  <UserCheck className="h-4 w-4" />
-                  Datos Personales & Acceso
-                </TabsTrigger>
-                <TabsTrigger value="roles_sedes" className="flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Rol & Sede Asignada
-                </TabsTrigger>
-              </TabsList>
-
-              {/* ══ Tab 1: Datos Personales & Acceso ════════════════════════ */}
-              <TabsContent value="general" className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="usr_nombre">Nombres *</Label>
-                    <Input
-                      id="usr_nombre"
-                      required
-                      value={formData.nombre}
-                      onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                      placeholder="Ej. Roberto"
-                    />
+        return (
+          <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <DialogContent className="sm:max-w-5xl max-h-[92vh] h-[670px] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl rounded-2xl border-border/70">
+              {/* Encabezado */}
+              <DialogHeader className="p-4 px-6 border-b border-border/80 bg-muted/20 flex-row items-center justify-between space-y-0 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-teal-600/15 text-teal-600 dark:text-teal-400 border border-teal-500/30 shadow-xs shrink-0">
+                    <Users className="size-5" />
                   </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="usr_apellido">Apellidos *</Label>
-                    <Input
-                      id="usr_apellido"
-                      required
-                      value={formData.apellido}
-                      onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
-                      placeholder="Ej. Silva"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="usr_email">Correo Electrónico *</Label>
-                    <Input
-                      id="usr_email"
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="usuario@pycore.com"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="usr_telefono">Teléfono / WhatsApp</Label>
-                    <Input
-                      id="usr_telefono"
-                      value={formData.telefono}
-                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                      placeholder="+58 414 1234567"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2 space-y-1.5">
-                    <Label htmlFor="usr_password">
-                      {editingUser ? 'Nueva Contraseña (Dejar en blanco para conservar la actual)' : 'Contraseña de Acceso *'}
-                    </Label>
-                    <Input
-                      id="usr_password"
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="••••••••"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2 space-y-1.5">
-                    <Label htmlFor="usr_activo">Estado de Cuenta</Label>
-                    <div className="flex items-center space-x-2 pt-1">
-                      <Switch
-                        id="usr_activo"
-                        checked={formData.activo}
-                        disabled={editingUser?.id === currentUser?.id}
-                        onCheckedChange={(checked) => setFormData({ ...formData, activo: checked })}
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        {formData.activo ? 'Cuenta activa (Permite iniciar sesión)' : 'Cuenta bloqueada / inactiva'}
-                      </span>
-                    </div>
+                  <div>
+                    <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                      <span>{editingUser ? `Editar Usuario: ${editingUser.nombre} ${editingUser.apellido}` : 'Registrar Nuevo Usuario'}</span>
+                      <Badge variant="outline" className="text-[10px] font-mono border-teal-500/30 text-teal-600 bg-teal-500/5">
+                        MEDISOFT Seguridad
+                      </Badge>
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                      Completa los datos del colaborador y sus permisos de acceso en las sedes médicas.
+                    </DialogDescription>
                   </div>
                 </div>
-              </TabsContent>
+              </DialogHeader>
 
-              {/* ══ Tab 2: Rol & Sede Asignada ══════════════════════════════ */}
-              <TabsContent value="roles_sedes" className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="usr_rol">Rol de Seguridad *</Label>
-                    <Select
-                      value={String(formData.rol_id)}
-                      onValueChange={(val) => setFormData({ ...formData, rol_id: Number(val) })}
-                    >
-                      <SelectTrigger id="usr_rol" className="h-9 text-xs">
-                        <SelectValue placeholder="Seleccionar rol" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {roles.map((r) => (
-                          <SelectItem key={r.id} value={String(r.id)}>
-                            {r.nombre}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {currentUser?.es_superadmin && empresas.length > 0 && (
+              <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+                  {/* ── BARRA LATERAL DE PASOS (STEPPER) ── */}
+                  <div className="w-full md:w-64 lg:w-72 border-b md:border-b-0 md:border-r border-border/70 bg-muted/20 dark:bg-muted/10 p-3 md:p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
                     <div className="space-y-1.5">
-                      <Label htmlFor="usr_empresa">Empresa Perteneciente *</Label>
-                      <Select
-                        value={String(formData.empresa_id)}
-                        onValueChange={(val) => handleEmpresaChange(Number(val))}
-                      >
-                        <SelectTrigger id="usr_empresa" className="h-9 text-xs">
-                          <SelectValue placeholder="Seleccionar empresa" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {empresas.map((emp) => (
-                            <SelectItem key={emp.id} value={String(emp.id)}>
-                              {emp.nombre}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
+                      <div className="hidden md:block px-2 pb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Pasos de Registro
+                        </span>
+                      </div>
 
-                {/* Asignación de 1 Sede/Sucursal por Usuario */}
-                <div className="space-y-3 pt-3 border-t">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-                        <span>Sede Asignada a este Usuario:</span>
-                      </Label>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Selecciona la sucursal de la empresa a la que pertenecerá el usuario (1 por usuario).
-                      </p>
+                      <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible pb-1 md:pb-0">
+                        {USUARIO_STEPS.map((step) => {
+                          const IconComponent = step.icon;
+                          const isActive = activeTab === step.id;
+                          const isCompleted = step.isComplete;
+
+                          return (
+                            <button
+                              key={step.id}
+                              type="button"
+                              onClick={() => setActiveTab(step.id)}
+                              className={`w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-3 border ${
+                                isActive
+                                  ? 'bg-teal-500/10 border-teal-500/40 text-foreground shadow-xs'
+                                  : 'border-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground'
+                              }`}
+                            >
+                              <div
+                                className={`size-8 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold transition-all ${
+                                  isActive
+                                    ? 'bg-teal-600 text-white shadow-xs'
+                                    : isCompleted
+                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {isCompleted && !isActive ? (
+                                  <Check className="size-4" />
+                                ) : (
+                                  <IconComponent className="size-4" />
+                                )}
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <span
+                                  className={`text-xs font-semibold truncate block ${
+                                    isActive ? 'text-teal-600 dark:text-teal-400 font-bold' : ''
+                                  }`}
+                                >
+                                  {step.label}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground truncate block">
+                                  {step.subtitle}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <span className="text-[11px] text-muted-foreground font-mono">
-                      {sucursalesFiltradas.length} {sucursalesFiltradas.length === 1 ? 'sucursal disponible' : 'sucursales disponibles'}
-                    </span>
+
+                    {/* Tarjeta de Resumen en Vivo del Usuario (Sidebar Footer) */}
+                    <div className="hidden md:block pt-3 border-t border-border/60 mt-3">
+                      <div className="p-3 rounded-xl bg-card border border-border/80 shadow-2xs space-y-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="size-9 rounded-lg flex items-center justify-center font-bold text-xs text-white shrink-0 bg-teal-600 shadow-2xs font-mono">
+                            {initials}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="text-xs font-bold text-foreground truncate block">
+                              {fullName || 'Nuevo Usuario'}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground font-mono truncate block">
+                              {formData.email || 'correo@ejemplo.com'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 text-[10px] border-t border-border/50">
+                          <span className="text-muted-foreground truncate max-w-[110px]">
+                            {selectedRolObj?.nombre || 'Sin Rol'}
+                          </span>
+                          <span
+                            className={`font-semibold px-1.5 py-0.5 rounded-full ${
+                              formData.activo
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {formData.activo ? '● Activo' : '○ Inactivo'}
+                          </span>
+                        </div>
+                        {selectedSucursalObj && (
+                          <div className="text-[10px] text-muted-foreground flex items-center gap-1 pt-0.5 truncate">
+                            <MapPin className="size-3 text-teal-600 shrink-0" />
+                            <span className="truncate">{selectedSucursalObj.nombre}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  {sucursalesFiltradas.length === 0 ? (
-                    <div className="p-4 rounded-lg border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 text-center space-y-1">
-                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                        No hay sucursales registradas para esta empresa.
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Crea una sucursal en el módulo de Sucursales para poder asignarla a los usuarios.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {sucursalesFiltradas.map((s) => {
-                        const isSelected = formData.sucursal_defecto_id === s.id;
-
-                        return (
+                  {/* ── PANEL DE CONTENIDO DERECHO ── */}
+                  <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
+                    {/* Banner Superior del Paso Activo */}
+                    <div className="px-6 py-3.5 border-b border-border/60 bg-card/40 flex items-center justify-between shrink-0">
+                      <div>
+                        <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                          <span>{currentUsuarioStep.titleDetail}</span>
+                        </h4>
+                        <p className="text-[11px] text-muted-foreground">
+                          {currentUsuarioStep.descriptionDetail}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-muted-foreground hidden sm:inline">
+                          Paso {currentUsuarioStepIndex + 1} de {USUARIO_STEPS.length}
+                        </span>
+                        <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
                           <div
-                            key={s.id}
-                            onClick={() => handleSelectSucursal(s.id)}
-                            className={cn(
-                              'p-3 rounded-lg border flex items-center justify-between transition-all cursor-pointer select-none',
-                              isSelected
-                                ? 'bg-teal-50/90 border-teal-500 ring-1 ring-teal-500/50 dark:bg-teal-950/30 dark:border-teal-400 shadow-xs'
-                                : 'bg-background hover:bg-muted/40 border-input text-muted-foreground'
-                            )}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div
-                                className={cn(
-                                  'w-4 h-4 rounded-full border flex items-center justify-center transition-colors shrink-0',
-                                  isSelected
-                                    ? 'border-teal-600 bg-teal-600 text-white dark:border-teal-400 dark:bg-teal-400'
-                                    : 'border-muted-foreground/40 bg-background'
-                                )}
-                              >
-                                {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white dark:bg-slate-900" />}
-                              </div>
-                              <div className="truncate">
-                                <p className={cn('text-xs font-semibold truncate', isSelected ? 'text-foreground font-bold' : 'text-foreground/80')}>
-                                  {s.nombre}
-                                </p>
-                                {s.ciudad && (
-                                  <p className="text-[10px] text-muted-foreground truncate">{s.ciudad}</p>
-                                )}
-                              </div>
+                            className="h-full bg-teal-600 transition-all duration-300"
+                            style={{
+                              width: `${((currentUsuarioStepIndex + 1) / USUARIO_STEPS.length) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Contenedor de Formularios con Scroll */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                      {errorMsg && (
+                        <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2.5 shadow-2xs">
+                          <span className="font-medium">{errorMsg}</span>
+                        </div>
+                      )}
+
+                      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                        {/* ══ Tab 1: Datos Personales & Acceso ════════════════════════ */}
+                        <TabsContent value="general" className="mt-0 space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="usr_nombre" className="text-xs font-semibold">
+                                Nombres <span className="text-rose-500">*</span>
+                              </Label>
+                              <Input
+                                id="usr_nombre"
+                                required
+                                value={formData.nombre}
+                                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                                placeholder="Ej. Roberto"
+                                className="h-9 text-xs"
+                              />
                             </div>
 
-                            {isSelected && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-200 shrink-0">
-                                Sede Asignada ⭐
-                              </span>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="usr_apellido" className="text-xs font-semibold">
+                                Apellidos <span className="text-rose-500">*</span>
+                              </Label>
+                              <Input
+                                id="usr_apellido"
+                                required
+                                value={formData.apellido}
+                                onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
+                                placeholder="Ej. Silva"
+                                className="h-9 text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <Label htmlFor="usr_email" className="text-xs font-semibold">
+                                Correo Electrónico <span className="text-rose-500">*</span>
+                              </Label>
+                              <Input
+                                id="usr_email"
+                                type="email"
+                                required
+                                value={formData.email}
+                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                placeholder="usuario@pycore.com"
+                                className="h-9 text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <Label htmlFor="usr_telefono" className="text-xs font-semibold">
+                                Teléfono / WhatsApp
+                              </Label>
+                              <Input
+                                id="usr_telefono"
+                                value={formData.telefono}
+                                onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                                placeholder="+58 414 1234567"
+                                className="h-9 text-xs"
+                              />
+                            </div>
+
+                            <div className="md:col-span-2 space-y-1.5">
+                              <Label htmlFor="usr_password" className="text-xs font-semibold">
+                                {editingUser ? 'Nueva Contraseña (Dejar en blanco para conservar la actual)' : 'Contraseña de Acceso *'}
+                              </Label>
+                              <Input
+                                id="usr_password"
+                                type="password"
+                                value={formData.password}
+                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                placeholder="••••••••"
+                                className="h-9 text-xs font-mono"
+                              />
+                            </div>
+
+                            <div className="md:col-span-2 pt-2 flex items-center justify-between border-t border-border/60">
+                              <div className="space-y-0.5">
+                                <Label htmlFor="usr_activo" className="text-xs font-semibold cursor-pointer">
+                                  Estado de Cuenta
+                                </Label>
+                                <p className="text-[11px] text-muted-foreground">
+                                  {formData.activo ? 'Cuenta activa (Permite iniciar sesión en la plataforma)' : 'Cuenta bloqueada / inactiva'}
+                                </p>
+                              </div>
+                              <Switch
+                                id="usr_activo"
+                                checked={formData.activo}
+                                disabled={editingUser?.id === currentUser?.id}
+                                onCheckedChange={(checked) => setFormData({ ...formData, activo: checked })}
+                              />
+                            </div>
+                          </div>
+                        </TabsContent>
+
+                        {/* ══ Tab 2: Rol & Sede Asignada ══════════════════════════════ */}
+                        <TabsContent value="roles_sedes" className="mt-0 space-y-5">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="usr_rol" className="text-xs font-semibold">
+                                Rol de Seguridad <span className="text-rose-500">*</span>
+                              </Label>
+                              <Select
+                                value={String(formData.rol_id)}
+                                onValueChange={(val) => setFormData({ ...formData, rol_id: Number(val) })}
+                              >
+                                <SelectTrigger id="usr_rol" className="h-9 text-xs">
+                                  <SelectValue placeholder="Seleccionar rol" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {roles.map((r) => (
+                                    <SelectItem key={r.id} value={String(r.id)}>
+                                      {r.nombre}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {currentUser?.es_superadmin && empresas.length > 0 && (
+                              <div className="space-y-1.5">
+                                <Label htmlFor="usr_empresa" className="text-xs font-semibold">
+                                  Empresa Perteneciente <span className="text-rose-500">*</span>
+                                </Label>
+                                <Select
+                                  value={String(formData.empresa_id)}
+                                  onValueChange={(val) => handleEmpresaChange(Number(val))}
+                                >
+                                  <SelectTrigger id="usr_empresa" className="h-9 text-xs">
+                                    <SelectValue placeholder="Seleccionar empresa" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {empresas.map((emp) => (
+                                      <SelectItem key={emp.id} value={String(emp.id)}>
+                                        {emp.nombre}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
 
-            <DialogFooter className="mt-6 pt-4 border-t">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsModalOpen(false)}
-                disabled={saving}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? 'Guardando...' : editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+                          {/* Asignación de 1 Sede/Sucursal por Usuario */}
+                          <div className="space-y-3 pt-3 border-t border-border/60">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <Label className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                                  <MapPin className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                                  <span>Sede Asignada a este Usuario:</span>
+                                </Label>
+                                <p className="text-[11px] text-muted-foreground mt-0.5">
+                                  Selecciona la sucursal de la empresa a la que pertenecerá el usuario (1 por usuario).
+                                </p>
+                              </div>
+                              <span className="text-[11px] text-muted-foreground font-mono">
+                                {sucursalesFiltradas.length} {sucursalesFiltradas.length === 1 ? 'sucursal disponible' : 'sucursales disponibles'}
+                              </span>
+                            </div>
+
+                            {sucursalesFiltradas.length === 0 ? (
+                              <div className="p-4 rounded-lg border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 text-center space-y-1">
+                                <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                  No hay sucursales registradas para esta empresa.
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  Crea una sucursal en el módulo de Sucursales para poder asignarla a los usuarios.
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {sucursalesFiltradas.map((s) => {
+                                  const isSelected = formData.sucursal_defecto_id === s.id;
+
+                                  return (
+                                    <div
+                                      key={s.id}
+                                      onClick={() => handleSelectSucursal(s.id)}
+                                      className={cn(
+                                        'p-3 rounded-lg border flex items-center justify-between transition-all cursor-pointer select-none',
+                                        isSelected
+                                          ? 'bg-teal-50/90 border-teal-500 ring-1 ring-teal-500/50 dark:bg-teal-950/30 dark:border-teal-400 shadow-xs'
+                                          : 'bg-background hover:bg-muted/40 border-input text-muted-foreground'
+                                      )}
+                                    >
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <div
+                                          className={cn(
+                                            'w-4 h-4 rounded-full border flex items-center justify-center transition-colors shrink-0',
+                                            isSelected
+                                              ? 'border-teal-600 bg-teal-600 text-white dark:border-teal-400 dark:bg-teal-400'
+                                              : 'border-muted-foreground/40 bg-background'
+                                          )}
+                                        >
+                                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white dark:bg-slate-900" />}
+                                        </div>
+                                        <div className="truncate">
+                                          <p className={cn('text-xs font-semibold truncate', isSelected ? 'text-foreground font-bold' : 'text-foreground/80')}>
+                                            {s.nombre}
+                                          </p>
+                                          {s.ciudad && (
+                                            <p className="text-[10px] text-muted-foreground truncate">{s.ciudad}</p>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {isSelected && (
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-200 shrink-0">
+                                          Sede Asignada ⭐
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </TabsContent>
+                      </Tabs>
+                    </div>
+
+                    {/* Footer de navegación unificado */}
+                    <div className="p-3.5 px-6 border-t border-border/70 bg-muted/10 flex items-center justify-between shrink-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsModalOpen(false)}
+                        disabled={saving}
+                        className="h-8 text-xs cursor-pointer"
+                      >
+                        Cancelar
+                      </Button>
+
+                      <div className="flex items-center gap-2">
+                        {currentUsuarioStepIndex > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setActiveTab(USUARIO_STEPS[currentUsuarioStepIndex - 1].id)}
+                            className="h-8 text-xs cursor-pointer gap-1"
+                          >
+                            <ChevronLeft className="size-3.5" />
+                            <span>Anterior</span>
+                          </Button>
+                        )}
+
+                        {currentUsuarioStepIndex < USUARIO_STEPS.length - 1 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setActiveTab(USUARIO_STEPS[currentUsuarioStepIndex + 1].id)}
+                            className="h-8 text-xs cursor-pointer gap-1 border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                          >
+                            <span>Siguiente: {USUARIO_STEPS[currentUsuarioStepIndex + 1].shortTitle}</span>
+                            <ChevronRight className="size-3.5" />
+                          </Button>
+                        )}
+
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={saving}
+                          className="bg-teal-600 hover:bg-teal-700 text-white font-semibold h-8 text-xs cursor-pointer shadow-xs gap-1.5"
+                        >
+                          <Users className="size-3.5" />
+                          <span>{saving ? 'Guardando...' : editingUser ? 'Guardar Cambios' : 'Crear Usuario'}</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog

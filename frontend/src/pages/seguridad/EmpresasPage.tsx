@@ -29,7 +29,10 @@ import {
   CreditCard,
   Landmark,
   Smartphone,
-  Coins
+  Coins,
+  ChevronLeft,
+  ChevronRight,
+  Check,
 } from 'lucide-react';
 import { ModuleHeader } from '../../components/common/ModuleHeader';
 import { StatCard } from '../../components/common/StatCard';
@@ -558,27 +561,6 @@ export const EmpresasPage: React.FC = () => {
 
   const renderCompanyFormTabs = () => (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-      <TabsList className={`grid w-full mb-6 ${isSuperAdmin || editingEmpresa?.id === 1 ? 'grid-cols-4' : 'grid-cols-3'}`}>
-        <TabsTrigger value="general" className="flex items-center gap-2 text-xs">
-          <Building2 className="h-4 w-4" />
-          General y Contacto
-        </TabsTrigger>
-        <TabsTrigger value="logos" className="flex items-center gap-2 text-xs">
-          <ImageIcon className="h-4 w-4" />
-          Identidad & Logos
-        </TabsTrigger>
-        <TabsTrigger value="ubicacion" className="flex items-center gap-2 text-xs">
-          <MapPin className="h-4 w-4" />
-          Ubicación & Mapa
-        </TabsTrigger>
-        {(isSuperAdmin || editingEmpresa?.id === 1) && (
-          <TabsTrigger value="metodos_pago" className="flex items-center gap-2 text-xs">
-            <CreditCard className="h-4 w-4 text-amber-500" />
-            Métodos de Pago
-          </TabsTrigger>
-        )}
-      </TabsList>
-
       {/* Tab 1: General y Contacto */}
       <TabsContent value="general" className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1309,45 +1291,293 @@ export const EmpresasPage: React.FC = () => {
 
 
       {/* Modal de Creación / Edición */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
-          <form onSubmit={handleSubmit}>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                <span>{editingEmpresa ? 'Editar Empresa' : 'Nueva Empresa'}</span>
-              </DialogTitle>
-              <DialogDescription>
-                Completa la información corporativa y selecciona la ubicación en el mapa interactivo.
-              </DialogDescription>
-            </DialogHeader>
+      {(() => {
+        type EmpresaTab = 'general' | 'logos' | 'ubicacion' | 'metodos_pago';
 
-            {errorMsg && (
-              <div className="p-3 my-2 rounded-md bg-destructive/15 border border-destructive/30 text-destructive text-xs">
-                {errorMsg}
-              </div>
-            )}
+        const EMPRESA_STEPS: Array<{
+          id: EmpresaTab;
+          label: string;
+          shortTitle: string;
+          subtitle: string;
+          titleDetail: string;
+          descriptionDetail: string;
+          icon: any;
+          isComplete: boolean;
+        }> = [
+          {
+            id: 'general',
+            label: '1. General y Contacto',
+            shortTitle: 'General',
+            subtitle: 'Razón social, fiscal y moneda',
+            titleDetail: 'Información General y Canales de Contacto',
+            descriptionDetail: 'Datos jurídicos de la empresa, país de operación y moneda transaccional.',
+            icon: Building2,
+            isComplete: Boolean(formData.nombre.trim() && formData.identificacion_fiscal.trim() && formData.pais_id),
+          },
+          {
+            id: 'logos',
+            label: '2. Identidad & Logos',
+            shortTitle: 'Identidad',
+            subtitle: 'Logos claro/oscuro y eslogan',
+            titleDetail: 'Identidad Corporativa y Logotipos',
+            descriptionDetail: 'Sube las imágenes de marca para reportes, documentos médicos e interfaz.',
+            icon: ImageIcon,
+            isComplete: Boolean(formData.logo_url || formData.logo_mini_url),
+          },
+          {
+            id: 'ubicacion',
+            label: '3. Ubicación & Mapa',
+            shortTitle: 'Ubicación',
+            subtitle: 'Dirección física y MapTiler',
+            titleDetail: 'Ubicación Geográfica y Geolocalización',
+            descriptionDetail: 'Dirección fiscal, ciudad y coordenadas precisas en el mapa interactivo.',
+            icon: MapPin,
+            isComplete: Boolean(formData.direccion.trim() || formData.ciudad.trim()),
+          },
+          ...((isSuperAdmin || editingEmpresa?.id === 1) ? [{
+            id: 'metodos_pago' as EmpresaTab,
+            label: '4. Métodos de Pago',
+            shortTitle: 'Pagos',
+            subtitle: 'Bancos y pasarelas',
+            titleDetail: 'Cuentas Receptoras de Pago',
+            descriptionDetail: 'Configuración de cuentas bancarias y pago móvil para cobros.',
+            icon: CreditCard,
+            isComplete: Boolean(formData.banco_numero_cuenta.trim() || formData.pagomovil_telefono.trim()),
+          }] : [])
+        ];
 
-            <div className="mt-4">
-              {renderCompanyFormTabs()}
-            </div>
+        const currentEmpresaStepIndex = Math.max(0, EMPRESA_STEPS.findIndex((s) => s.id === activeTab));
+        const currentEmpresaStep = EMPRESA_STEPS[currentEmpresaStepIndex] || EMPRESA_STEPS[0];
+        const selectedPaisObj = paises.find((p) => p.id === formData.pais_id);
 
-            <DialogFooter className="mt-6 pt-4 border-t">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsModalOpen(false)}
-                disabled={saving}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white">
-                {saving ? 'Guardando...' : editingEmpresa ? 'Guardar Cambios' : 'Crear Empresa'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+        return (
+          <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <DialogContent className="sm:max-w-5xl max-h-[92vh] h-[670px] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl rounded-2xl border-border/70">
+              {/* Encabezado */}
+              <DialogHeader className="p-4 px-6 border-b border-border/80 bg-muted/20 flex-row items-center justify-between space-y-0 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-teal-600/15 text-teal-600 dark:text-teal-400 border border-teal-500/30 shadow-xs shrink-0">
+                    <Building2 className="size-5" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                      <span>{editingEmpresa ? `Editar Empresa: ${editingEmpresa.nombre}` : 'Registrar Nueva Empresa'}</span>
+                      <Badge variant="outline" className="text-[10px] font-mono border-teal-500/30 text-teal-600 bg-teal-500/5">
+                        MEDISOFT Core
+                      </Badge>
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                      Completa la información corporativa, identidad visual, moneda y geolocalización de la sede central.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+                  {/* ── BARRA LATERAL DE PASOS (STEPPER) ── */}
+                  <div className="w-full md:w-64 lg:w-72 border-b md:border-b-0 md:border-r border-border/70 bg-muted/20 dark:bg-muted/10 p-3 md:p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
+                    <div className="space-y-1.5">
+                      <div className="hidden md:block px-2 pb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Pasos de Registro
+                        </span>
+                      </div>
+
+                      <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible pb-1 md:pb-0">
+                        {EMPRESA_STEPS.map((step) => {
+                          const IconComponent = step.icon;
+                          const isActive = activeTab === step.id;
+                          const isCompleted = step.isComplete;
+
+                          return (
+                            <button
+                              key={step.id}
+                              type="button"
+                              onClick={() => setActiveTab(step.id)}
+                              className={`w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-3 border ${
+                                isActive
+                                  ? 'bg-teal-500/10 border-teal-500/40 text-foreground shadow-xs'
+                                  : 'border-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground'
+                              }`}
+                            >
+                              <div
+                                className={`size-8 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold transition-all ${
+                                  isActive
+                                    ? 'bg-teal-600 text-white shadow-xs'
+                                    : isCompleted
+                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {isCompleted && !isActive ? (
+                                  <Check className="size-4" />
+                                ) : (
+                                  <IconComponent className="size-4" />
+                                )}
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <span
+                                  className={`text-xs font-semibold truncate block ${
+                                    isActive ? 'text-teal-600 dark:text-teal-400 font-bold' : ''
+                                  }`}
+                                >
+                                  {step.label}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground truncate block">
+                                  {step.subtitle}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Tarjeta de Resumen en Vivo de la Empresa (Sidebar Footer) */}
+                    <div className="hidden md:block pt-3 border-t border-border/60 mt-3">
+                      <div className="p-3 rounded-xl bg-card border border-border/80 shadow-2xs space-y-2">
+                        <div className="flex items-center gap-2.5">
+                          {formData.logo_url ? (
+                            <img src={formData.logo_url} alt="Logo" className="size-9 rounded-lg object-contain bg-white border border-border/60 p-0.5 shrink-0" />
+                          ) : (
+                            <div className="size-9 rounded-lg flex items-center justify-center font-bold text-xs text-white shrink-0 bg-teal-600 shadow-2xs">
+                              {formData.nombre?.trim().charAt(0).toUpperCase() || 'E'}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <span className="text-xs font-bold text-foreground truncate block">
+                              {formData.nombre || 'Nueva Empresa'}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground font-mono truncate block">
+                              {formData.identificacion_fiscal || 'Sin identificación'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 text-[10px] border-t border-border/50">
+                          <span className="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 font-mono font-bold">
+                            {formData.moneda_principal || 'USD'}
+                          </span>
+                          {selectedPaisObj && (
+                            <span className="text-muted-foreground truncate max-w-[90px]">
+                              {selectedPaisObj.codigo_iso2}
+                            </span>
+                          )}
+                          <span
+                            className={`font-semibold px-1.5 py-0.5 rounded-full ${
+                              formData.activo
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {formData.activo ? '● Activa' : '○ Inactiva'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── PANEL DE CONTENIDO DERECHO ── */}
+                  <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
+                    {/* Banner Superior del Paso Activo */}
+                    <div className="px-6 py-3.5 border-b border-border/60 bg-card/40 flex items-center justify-between shrink-0">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                            Paso {currentEmpresaStepIndex + 1} de {EMPRESA_STEPS.length}
+                          </span>
+                          <h3 className="text-xs sm:text-sm font-bold text-foreground">
+                            {currentEmpresaStep.titleDetail}
+                          </h3>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {currentEmpresaStep.descriptionDetail}
+                        </p>
+                      </div>
+
+                      <div className="hidden sm:flex items-center gap-2">
+                        <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden border border-border/50">
+                          <div
+                            className="h-full bg-teal-500 transition-all duration-300 rounded-full"
+                            style={{ width: `${((currentEmpresaStepIndex + 1) / EMPRESA_STEPS.length) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 font-mono">
+                          {Math.round(((currentEmpresaStepIndex + 1) / EMPRESA_STEPS.length) * 100)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {errorMsg && (
+                      <div className="mx-6 mt-3 p-3 rounded-md bg-destructive/15 border border-destructive/30 text-destructive text-xs shrink-0">
+                        {errorMsg}
+                      </div>
+                    )}
+
+                    {/* Contenedor scrolleable del formulario */}
+                    <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+                      {renderCompanyFormTabs()}
+                    </div>
+
+                    {/* Footer de navegación unificado */}
+                    <div className="p-3.5 px-6 border-t border-border/70 bg-muted/10 flex items-center justify-between shrink-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsModalOpen(false)}
+                        disabled={saving}
+                        className="h-8 text-xs cursor-pointer"
+                      >
+                        Cancelar
+                      </Button>
+
+                      <div className="flex items-center gap-2">
+                        {currentEmpresaStepIndex > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setActiveTab(EMPRESA_STEPS[currentEmpresaStepIndex - 1].id)}
+                            className="h-8 text-xs cursor-pointer gap-1"
+                          >
+                            <ChevronLeft className="size-3.5" />
+                            <span>Anterior</span>
+                          </Button>
+                        )}
+
+                        {currentEmpresaStepIndex < EMPRESA_STEPS.length - 1 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setActiveTab(EMPRESA_STEPS[currentEmpresaStepIndex + 1].id)}
+                            className="h-8 text-xs cursor-pointer gap-1 border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                          >
+                            <span>Siguiente: {EMPRESA_STEPS[currentEmpresaStepIndex + 1].shortTitle}</span>
+                            <ChevronRight className="size-3.5" />
+                          </Button>
+                        )}
+
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={saving}
+                          className="bg-teal-600 hover:bg-teal-700 text-white font-semibold h-8 text-xs cursor-pointer shadow-xs gap-1.5"
+                        >
+                          <Building2 className="size-3.5" />
+                          <span>{saving ? 'Guardando...' : editingEmpresa ? 'Guardar Cambios' : 'Crear Empresa'}</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
