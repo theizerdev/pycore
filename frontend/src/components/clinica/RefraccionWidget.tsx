@@ -154,6 +154,7 @@ export interface RefraccionData {
 interface RefraccionWidgetProps {
   initialData?: RefraccionData;
   onChange?: (data: RefraccionData) => void;
+  onOpenInstilacionModal?: () => void;
   readOnly?: boolean;
 }
 
@@ -232,6 +233,7 @@ const MOTIVOS_DIVERGENCIA = [
 export const RefraccionWidget: React.FC<RefraccionWidgetProps> = ({
   initialData,
   onChange,
+  onOpenInstilacionModal,
   readOnly = false,
 }) => {
   const [data, setData] = useState<RefraccionData>(() => ({
@@ -1194,6 +1196,18 @@ ${data.motivo_divergencia ? `• Ajuste Clínico: ${data.motivo_divergencia} ${d
                   <span className="text-xs font-bold text-foreground">2. Bajo Cicloplejía</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {onOpenInstilacionModal && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onOpenInstilacionModal}
+                      className="h-6 text-[10px] gap-1 px-2 text-indigo-600 dark:text-indigo-400 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer"
+                    >
+                      <Droplet className="size-2.5" />
+                      <span>Registro / Temporizador</span>
+                    </Button>
+                  )}
                   <Label htmlFor="ciclo_toggle" className="text-[10px] cursor-pointer text-muted-foreground">
                     Gotas aplicadas:
                   </Label>

@@ -17,6 +17,7 @@ import PrescripcionRecetaWidget from '../../components/clinica/PrescripcionRecet
 import EstudiosSolicitadosWidget from '../../components/clinica/EstudiosSolicitadosWidget';
 import { EstudiosArchivosTab } from '../../components/clinica/EstudiosArchivosTab';
 import { PatientRecordDrawer } from './PatientRecordDrawer';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import { cn, getInitials } from '../../lib/utils';
 
@@ -45,6 +46,7 @@ import {
 } from '../../components/ui/dropdown-menu';
 import DocumentosImpresionModal, { type TipoDocumentoClinico } from '../../components/clinica/DocumentosImpresionModal';
 import CalculadorasClinicasModal from '../../components/clinica/CalculadorasClinicasModal';
+import InstilacionGotasModal, { type InstilacionGotasData } from '../../components/clinica/InstilacionGotasModal';
 
 // Icons
 import {
@@ -79,6 +81,7 @@ import {
   BookmarkPlus,
   Layers,
   Eye,
+  Droplet,
 } from 'lucide-react';
 
 interface ConsultaAtencionPageProps {
@@ -482,6 +485,11 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const isDetailRoute = location.pathname.includes('/detalle');
   const readOnly = propReadOnly || isDetailRoute;
 
+  const { user } = useAuth();
+  const currentUserNombre = user
+    ? `${user.nombre || ''} ${user.apellido || ''}`.trim() || user.email
+    : 'Médico Oftalmólogo';
+
   const [consulta, setConsulta] = useState<ConsultaMedica | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<number | string>(1);
@@ -550,8 +558,39 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
 
   // ── HERRAMIENTAS CLÍNICAS Y ASISTENTE DIAGNÓSTICO ──
   const [calculadorasModalOpen, setCalculadorasModalOpen] = useState<boolean>(false);
+  const [instilacionModalOpen, setInstilacionModalOpen] = useState<boolean>(false);
   const [cieFiltroCategoria, setCieFiltroCategoria] = useState<string>('especialidad');
   const [cieBusqueda, setCieBusqueda] = useState<string>('');
+
+  const isOftalmologia = useMemo(() => {
+    return (consulta?.especialidad?.nombre || '').toLowerCase().includes('oftalmo');
+  }, [consulta?.especialidad?.nombre]);
+
+  const handleSaveInstilacionGotas = (instData: InstilacionGotasData) => {
+    setDatosPlantilla((prev) => {
+      const updated: Record<string, any> = {
+        ...prev,
+        instilacion_gotas: instData,
+      };
+
+      if (instData.activo && (instData.tipo === 'Ciclopléjica' || instData.tipo === 'Midriática')) {
+        const refraccionActual = (prev.refraccion || {}) as RefraccionData;
+        updated.refraccion = {
+          ...refraccionActual,
+          cicloplejia_aplicada: true,
+          obj_con_ciclo_farmaco: instData.farmaco,
+        };
+
+        const estadoExploracion =
+          instData.estado_midriasis === 'midriasis_insuficiente'
+            ? 'midriasis insuficiente'
+            : 'bajo midriasis';
+        updated.condicion_midriasis = estadoExploracion;
+      }
+
+      return updated;
+    });
+  };
 
   const handleInsertarCalculoEnEvaluacion = (texto: string) => {
     setEnfermedadActual((prev) =>
@@ -1062,6 +1101,33 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
               <span className="hidden sm:inline">Calculadoras Clínicas</span>
               <span className="sm:hidden">Calc</span>
             </Button>
+
+            {isOftalmologia && (
+              <Button
+                variant={datosPlantilla.instilacion_gotas?.activo ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setInstilacionModalOpen(true)}
+                className={`gap-1.5 h-9 font-semibold cursor-pointer ${
+                  datosPlantilla.instilacion_gotas?.activo
+                    ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-xs'
+                    : 'text-sky-600 dark:text-sky-400 border-sky-500/30 hover:bg-sky-50 dark:hover:bg-sky-950/30'
+                }`}
+              >
+                <Droplet className={`h-4 w-4 ${datosPlantilla.instilacion_gotas?.activo ? 'animate-bounce' : ''}`} />
+                <span className="hidden sm:inline">
+                  {datosPlantilla.instilacion_gotas?.activo
+                    ? `Gotas: ${datosPlantilla.instilacion_gotas.farmaco} (${datosPlantilla.instilacion_gotas.ojo})`
+                    : 'Instilar Gotas'}
+                </span>
+                <span className="sm:hidden">Gotas</span>
+                {datosPlantilla.instilacion_gotas?.activo && (
+                  <Badge variant="secondary" className="text-[10px] ml-1 bg-white/20 text-white border-0">
+                    {datosPlantilla.instilacion_gotas.instilaciones?.length || 1}
+                    {datosPlantilla.instilacion_gotas.es_pediatrico ? '/3' : 'g'}
+                  </Badge>
+                )}
+              </Button>
+            )}
 
             {!readOnly && (
               <Button
@@ -2137,6 +2203,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                       }));
                     }
                   }}
+                  onOpenInstilacionModal={() => setInstilacionModalOpen(true)}
                   readOnly={readOnly}
                 />
               )}
@@ -2958,6 +3025,17 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         signosVitales={signosVitales}
         especialidadNombre={consulta.especialidad?.nombre}
         onInsertarEnEvaluacion={handleInsertarCalculoEnEvaluacion}
+      />
+
+      {/* ── MODAL DE INSTILACIÓN DE GOTAS OFTÁLMICAS (SECCIÓN 8) ── */}
+      <InstilacionGotasModal
+        open={instilacionModalOpen}
+        onOpenChange={setInstilacionModalOpen}
+        paciente={consulta.paciente as any}
+        currentUserNombre={currentUserNombre}
+        initialData={datosPlantilla.instilacion_gotas}
+        onSave={handleSaveInstilacionGotas}
+        readOnly={readOnly}
       />
     </div>
   );
