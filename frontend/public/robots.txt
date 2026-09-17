@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+Allow: /landing
+Allow: /login
+Allow: /register
+Allow: /verify-whatsapp
+Allow: /forgot-password
+
+# Prevenir indexación de rutas privadas o tokens médicos sensibles
+Disallow: /api/
+Disallow: /preconsulta/
+Disallow: /turnero/
+Disallow: /dashboard
+Disallow: /medico/
+Disallow: /clinica/
+Disallow: /seguridad/
+Disallow: /administracion/
+Disallow: /monitoreo/
+Disallow: /integraciones/
+Disallow: /planes/billing
+
+# Enlace al Sitemap XML
+Sitemap: https://medisoft.theizerdev.com/sitemap.xml

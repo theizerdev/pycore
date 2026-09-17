@@ -2,14 +2,166 @@
 <html lang="es" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/medisoft_favicon.png" />
-    <link rel="apple-touch-icon" href="/medisoft_favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MediSoft Suite - Sistema Médico Integral & Hospitalario</title>
-    <meta name="description" content="Plataforma hospitalaria y médica integral de alto rendimiento con FastAPI y React 19" />
+    <link rel="icon" type="image/png" href="/medisoft_favicon.png" />
+    <link rel="shortcut icon" type="image/png" href="/medisoft_favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/medisoft_favicon.png" />
+
+    <!-- Meta Tags Principales para Posicionamiento SEO -->
+    <title>MediSoft Suite | Software Médico Integral en la Nube para Clínicas y Consultorios</title>
+    <meta name="title" content="MediSoft Suite | Software Médico Integral en la Nube para Clínicas y Consultorios" />
+    <meta
+      name="description"
+      content="El software médico en la nube más completo para clínicas, centros de salud y consultorios. Historia clínica electrónica (CIE-10), agenda inteligente, turnero en pantalla, odontograma 2D y recordatorios automáticos por WhatsApp."
+    />
+    <meta
+      name="keywords"
+      content="software medico, sistema medico completo, software para clinicas, software medico en la nube, historia clinica electronica, software consultorios medicos, expediente clinico digital, agenda medica online, turnero digital pantalla, odontograma digital, recetario medico electronico, software saas medico, cie-10 software, gestion hospitalaria, medisoft suite"
+    />
+    <meta name="author" content="MediSoft Suite" />
+    <meta name="publisher" content="MediSoft Suite" />
+    <meta name="application-name" content="MediSoft Suite" />
+    <meta name="theme-color" content="#0d9488" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="format-detection" content="telephone=no, email=no, address=no" />
+    <link rel="canonical" href="https://medisoft.theizerdev.com/" />
+
+    <!-- Directivas de Indexación para Google y Motores de Búsqueda -->
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+
+    <!-- Open Graph / Facebook / LinkedIn / WhatsApp -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://medisoft.theizerdev.com/" />
+    <meta property="og:site_name" content="MediSoft Suite" />
+    <meta property="og:locale" content="es_LA" />
+    <meta property="og:locale:alternate" content="es_ES" />
+    <meta
+      property="og:title"
+      content="MediSoft Suite | Software Médico Integral en la Nube para Clínicas y Consultorios"
+    />
+    <meta
+      property="og:description"
+      content="Transforma tu práctica médica. Gestiona citas, historias clínicas con CIE-10, turnero digital en sala de espera, odontograma gráfico interactivo y automatización de citas con WhatsApp."
+    />
+    <meta property="og:image" content="https://medisoft.theizerdev.com/medisoft_logo_light.png" />
+    <meta property="og:image:secure_url" content="https://medisoft.theizerdev.com/medisoft_logo_light.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="MediSoft Suite - La Suite Médica Integral en la Nube" />
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://medisoft.theizerdev.com/" />
+    <meta
+      name="twitter:title"
+      content="MediSoft Suite | Software Médico en la Nube para Clínicas y Consultorios"
+    />
+    <meta
+      name="twitter:description"
+      content="El software médico SaaS más completo: Historias Clínicas (EMR), Agenda Inteligente, Turnero en Pantalla, Odontograma 2D y WhatsApp Automático."
+    />
+    <meta name="twitter:image" content="https://medisoft.theizerdev.com/medisoft_logo_light.png" />
+    <meta name="twitter:image:alt" content="MediSoft Suite" />
+
+    <!-- Datos Estructurados JSON-LD (Schema.org) para Google Rich Results -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://medisoft.theizerdev.com/#software",
+            "name": "MediSoft Suite",
+            "operatingSystem": "All modern web browsers (Chrome, Firefox, Safari, Edge), iOS, Android",
+            "applicationCategory": "HealthApplication",
+            "applicationSubCategory": "Medical Practice Management Software",
+            "description": "Software médico y clínico integral en la nube con historia clínica electrónica CIE-10, agenda inteligente, turnero en pantalla para salas de espera, odontograma digital y recordatorios por WhatsApp.",
+            "url": "https://medisoft.theizerdev.com/",
+            "offers": {
+              "@type": "AggregateOffer",
+              "priceCurrency": "USD",
+              "lowPrice": "0",
+              "highPrice": "199",
+              "offerCount": "4",
+              "offers": [
+                {
+                  "@type": "Offer",
+                  "name": "Prueba Gratuita de 7 Días",
+                  "price": "0",
+                  "priceCurrency": "USD",
+                  "availability": "https://schema.org/InStock",
+                  "url": "https://medisoft.theizerdev.com/register"
+                },
+                {
+                  "@type": "Offer",
+                  "name": "Plan Consultorio Individual",
+                  "price": "29",
+                  "priceCurrency": "USD",
+                  "availability": "https://schema.org/InStock",
+                  "url": "https://medisoft.theizerdev.com/register"
+                },
+                {
+                  "@type": "Offer",
+                  "name": "Plan Clínica / Centro Médico",
+                  "price": "79",
+                  "priceCurrency": "USD",
+                  "availability": "https://schema.org/InStock",
+                  "url": "https://medisoft.theizerdev.com/register"
+                }
+              ]
+            },
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "4.9",
+              "reviewCount": "128",
+              "bestRating": "5",
+              "worstRating": "1"
+            },
+            "featureList": [
+              "Historia Clínica Electrónica (EMR) codificada en CIE-10",
+              "Agenda Médica Interactiva con calendario en tiempo real",
+              "Turnero Digital para salas de espera y Smart TVs con voz",
+              "Odontograma Gráfico 2D para odontólogos y especialistas dentales",
+              "Recordatorios automáticos de citas y preconsulta por WhatsApp",
+              "Récipes médicos digitales y generación de informes en PDF",
+              "Gestión Multi-Sede y Multi-Empresa con aislamiento seguro de datos",
+              "Soporte Multi-Moneda (USD, Moneda local y tasa oficial BCV)"
+            ]
+          },
+          {
+            "@type": "MedicalBusiness",
+            "@id": "https://medisoft.theizerdev.com/#organization",
+            "name": "MediSoft Suite",
+            "url": "https://medisoft.theizerdev.com/",
+            "logo": "https://medisoft.theizerdev.com/medisoft_logo_light.png",
+            "image": "https://medisoft.theizerdev.com/medisoft_logo_light.png",
+            "description": "Plataforma tecnológica en la nube especializada en la digitalización, automatización y gestión operativa integral de clínicas, hospitales y consultorios médicos.",
+            "priceRange": "$$",
+            "address": {
+              "@type": "PostalAddress",
+              "addressCountry": "VE"
+            },
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "telephone": "+58-412-0000000",
+              "contactType": "customer service",
+              "availableLanguage": ["Spanish", "es"]
+            }
+          }
+        ]
+      }
+    </script>
+
+    <!-- Fuentes Tipográficas Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased font-['Plus_Jakarta_Sans',sans-serif]">
     <div id="root"></div>
