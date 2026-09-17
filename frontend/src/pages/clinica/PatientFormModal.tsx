@@ -45,7 +45,8 @@ interface PatientFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   patientToEdit?: Paciente | null;
-  onSaved: () => void;
+  onSaved: (savedPatient?: Paciente) => void;
+  initialSearch?: string;
 }
 
 const GRUPOS_SANGUINEOS = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
@@ -77,6 +78,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
   onOpenChange,
   patientToEdit,
   onSaved,
+  initialSearch,
 }) => {
   const { user } = useAuth();
   const regional = useRegional();
@@ -169,8 +171,19 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       setActiveTab('demograficos');
     } else {
       setTipoDocumento('V');
-      setDocumentoIdentidad('');
-      setNombres('');
+      if (initialSearch && initialSearch.trim()) {
+        const clean = initialSearch.trim();
+        if (/^\d+$/.test(clean)) {
+          setDocumentoIdentidad(clean);
+          setNombres('');
+        } else {
+          setNombres(clean);
+          setDocumentoIdentidad('');
+        }
+      } else {
+        setDocumentoIdentidad('');
+        setNombres('');
+      }
       setApellidos('');
       setFechaNacimiento('');
       setGenero('M');
@@ -293,15 +306,16 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
         activo,
       };
 
+      let savedResult: Paciente | undefined;
       if (patientToEdit) {
-        await pacientesApi.update(patientToEdit.id, payload);
+        savedResult = await pacientesApi.update(patientToEdit.id, payload);
         toast.success(`Paciente ${nombres} ${apellidos} actualizado con éxito`);
       } else {
-        await pacientesApi.create(payload as any);
+        savedResult = await pacientesApi.create(payload as any);
         toast.success(`Paciente ${nombres} ${apellidos} registrado exitosamente`);
       }
 
-      onSaved();
+      onSaved(savedResult);
       onOpenChange(false);
     } catch (err: any) {
       console.error('Error guardando paciente:', err);

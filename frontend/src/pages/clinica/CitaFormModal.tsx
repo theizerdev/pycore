@@ -6,6 +6,7 @@ import { sucursalesApi } from '../../api/sucursales';
 import { serviciosApi } from '../../api/servicios';
 import type { CitaMedica, Medico, Paciente, Sucursal, Servicio, CitaEstadoPago } from '../../types';
 import { formatCleanWhatsAppNumber } from './DoctorWelcomeModal';
+import { PatientFormModal } from './PatientFormModal';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -45,6 +46,7 @@ import {
   Zap,
   ShieldAlert,
   CalendarClock,
+  UserPlus,
 } from 'lucide-react';
 
 interface CitaFormModalProps {
@@ -54,6 +56,7 @@ interface CitaFormModalProps {
   initialDate?: string;
   initialTime?: string;
   initialMedicoId?: number;
+  initialPacienteId?: number;
   existingCitas?: CitaMedica[];
   onSaved: () => void;
 }
@@ -79,6 +82,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   initialDate,
   initialTime,
   initialMedicoId,
+  initialPacienteId,
   existingCitas,
   onSaved,
 }) => {
@@ -88,6 +92,9 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [servicios, setServicios] = useState<Servicio[]>([]);
   const [allCitas, setAllCitas] = useState<CitaMedica[]>([]);
+
+  // Modal para registrar nuevo paciente directamente desde la agenda
+  const [openNewPatientModal, setOpenNewPatientModal] = useState(false);
 
   // Buscador de pacientes
   const [pacienteSearch, setPacienteSearch] = useState('');
@@ -164,6 +171,11 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
             setMedicoId(meds[0].id);
             setEspecialidadId(meds[0].especialidad_id);
           }
+          if (initialPacienteId) {
+            setPacienteId(initialPacienteId);
+          } else {
+            setPacienteId(null);
+          }
           if (sucs.length > 0) setSucursalId(sucs[0].id);
           setServicioId(null);
           setPrecioEstimado('');
@@ -187,7 +199,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
     };
 
     loadData();
-  }, [open, citaToEdit, initialDate, initialTime, initialMedicoId]);
+  }, [open, citaToEdit, initialDate, initialTime, initialMedicoId, initialPacienteId]);
 
   // Al cambiar médico, asignar su especialidad y sucursal por defecto
   const handleMedicoChange = (medIdStr: string) => {
@@ -520,11 +532,26 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
                 <User className="size-3.5 text-teal-600" />
                 <span>Paciente *</span>
               </Label>
-              {selectedPaciente && (
-                <Badge variant="outline" className="text-[10px] text-teal-700 dark:text-teal-300 border-teal-500/30">
-                  {selectedPaciente.tipo_documento}-{selectedPaciente.documento_identidad}
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {!selectedPaciente && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setOpenNewPatientModal(true)}
+                    className="h-6 px-2 text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 gap-1 cursor-pointer"
+                    title="Registrar nuevo paciente que llega a la clínica"
+                  >
+                    <UserPlus className="size-3.5" />
+                    <span>+ Registrar Nuevo Paciente</span>
+                  </Button>
+                )}
+                {selectedPaciente && (
+                  <Badge variant="outline" className="text-[10px] text-teal-700 dark:text-teal-300 border-teal-500/30">
+                    {selectedPaciente.tipo_documento}-{selectedPaciente.documento_identidad}
+                  </Badge>
+                )}
+              </div>
             </div>
 
             {/* Buscador de paciente si aún no se seleccionó */}
@@ -540,11 +567,32 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
                   />
                 </div>
 
-                <div className="max-h-36 overflow-y-auto space-y-1 border border-border/60 rounded-lg p-1">
+                <div className="max-h-40 overflow-y-auto space-y-1 border border-border/60 rounded-lg p-1">
                   {filteredPacientes.length === 0 ? (
-                    <p className="p-2 text-center text-muted-foreground text-[11px]">
-                      No se encontraron pacientes.
-                    </p>
+                    <div className="p-3.5 text-center space-y-2.5 bg-muted/20 rounded-lg border border-dashed border-border/80 my-1">
+                      <div className="flex size-9 items-center justify-center rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 mx-auto">
+                        <UserPlus className="size-4" />
+                      </div>
+                      <div>
+                        <p className="text-foreground font-semibold text-xs">
+                          {pacienteSearch.trim()
+                            ? `No se encontró ningún paciente con "${pacienteSearch}"`
+                            : 'No hay pacientes registrados con ese criterio'}
+                        </p>
+                        <p className="text-muted-foreground text-[11px] mt-0.5">
+                          Puedes registrar a la persona que va llegando en un instante.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => setOpenNewPatientModal(true)}
+                        className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold gap-1.5 cursor-pointer shadow-xs mx-auto"
+                      >
+                        <UserPlus className="size-3.5" />
+                        <span>Registrar Paciente Nuevo</span>
+                      </Button>
+                    </div>
                   ) : (
                     filteredPacientes.slice(0, 5).map((p) => (
                       <div
@@ -1097,6 +1145,32 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Modal para registrar nuevo paciente directamente sin perder la cita en curso */}
+      {openNewPatientModal && (
+        <PatientFormModal
+          open={openNewPatientModal}
+          onOpenChange={setOpenNewPatientModal}
+          onSaved={async (savedPatient) => {
+            try {
+              const updatedList = await pacientesApi.list();
+              setPacientes(updatedList);
+              if (savedPatient) {
+                setPacienteId(savedPatient.id);
+                setPacienteSearch('');
+              }
+            } catch {
+              if (savedPatient) {
+                setPacientes((prev) => [savedPatient, ...prev]);
+                setPacienteId(savedPatient.id);
+                setPacienteSearch('');
+              }
+            }
+            setOpenNewPatientModal(false);
+          }}
+          initialSearch={pacienteSearch}
+        />
+      )}
     </Dialog>
   );
 };

@@ -27,6 +27,7 @@ import { CitaFormModal } from './CitaFormModal';
 import { CitaQuickActionDialog } from './CitaQuickActionDialog';
 import { PatientRecordDrawer } from './PatientRecordDrawer';
 import { CitaStatusModal } from './CitaStatusModal';
+import { PatientFormModal } from './PatientFormModal';
 import { evaluarPuntualidadCita, type EvaluacionPuntualidad } from '../../utils/punctuality';
 import { toast } from 'sonner';
 
@@ -75,6 +76,7 @@ import {
   Zap,
   DollarSign,
   MessageCircle,
+  UserPlus,
 } from 'lucide-react';
 
 export const AgendaCalendarioPage: React.FC = () => {
@@ -130,6 +132,8 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [newCitaInitialDate, setNewCitaInitialDate] = useState<string | undefined>(undefined);
   const [newCitaInitialTime, setNewCitaInitialTime] = useState<string | undefined>(undefined);
   const [newCitaInitialMedicoId, setNewCitaInitialMedicoId] = useState<number | undefined>(undefined);
+  const [newCitaInitialPacienteId, setNewCitaInitialPacienteId] = useState<number | undefined>(undefined);
+  const [quickPatientModalOpen, setQuickPatientModalOpen] = useState(false);
 
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [selectedCitaForAction, setSelectedCitaForAction] = useState<CitaMedica | null>(null);
@@ -710,6 +714,19 @@ export const AgendaCalendarioPage: React.FC = () => {
             <span className="hidden sm:inline">Bloquear Horario</span>
           </Button>
 
+          {/* Botón Registrar Paciente que va llegando */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setQuickPatientModalOpen(true)}
+            className="h-9 cursor-pointer gap-1.5 border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 font-medium"
+            title="Registrar nuevo paciente que va llegando a la clínica sin cita previa"
+          >
+            <UserPlus className="size-3.5 text-teal-600 dark:text-teal-400" />
+            <span>Nuevo Paciente</span>
+          </Button>
+
           {/* Botón Agendar Cita */}
           <Button
             type="button"
@@ -718,6 +735,7 @@ export const AgendaCalendarioPage: React.FC = () => {
               setCitaToEdit(null);
               setNewCitaInitialDate(new Date().toISOString().split('T')[0]);
               setNewCitaInitialTime('08:00');
+              setNewCitaInitialPacienteId(undefined);
               setFormModalOpen(true);
             }}
             className="h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer shadow-xs gap-1.5"
@@ -1283,14 +1301,43 @@ export const AgendaCalendarioPage: React.FC = () => {
       {/* ── MODAL DE AGENDAMIENTO / EDICIÓN ────────────────────────── */}
       <CitaFormModal
         open={formModalOpen}
-        onOpenChange={setFormModalOpen}
+        onOpenChange={(isOpen) => {
+          setFormModalOpen(isOpen);
+          if (!isOpen) setNewCitaInitialPacienteId(undefined);
+        }}
         citaToEdit={citaToEdit}
         initialDate={newCitaInitialDate}
         initialTime={newCitaInitialTime}
         initialMedicoId={newCitaInitialMedicoId}
+        initialPacienteId={newCitaInitialPacienteId}
         existingCitas={citas}
         onSaved={fetchCitas}
       />
+
+      {/* ── MODAL REGISTRO RÁPIDO DE PACIENTE QUE LLEGA A LA CLÍNICA ── */}
+      {quickPatientModalOpen && (
+        <PatientFormModal
+          open={quickPatientModalOpen}
+          onOpenChange={setQuickPatientModalOpen}
+          onSaved={(savedPatient) => {
+            setQuickPatientModalOpen(false);
+            if (savedPatient) {
+              toast.success(`Paciente ${savedPatient.nombres} ${savedPatient.apellidos} registrado con éxito`, {
+                action: {
+                  label: 'Agendar Cita',
+                  onClick: () => {
+                    setCitaToEdit(null);
+                    setNewCitaInitialDate(new Date().toISOString().split('T')[0]);
+                    setNewCitaInitialTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+                    setNewCitaInitialPacienteId(savedPatient.id);
+                    setFormModalOpen(true);
+                  },
+                },
+              });
+            }
+          }}
+        />
+      )}
 
       {/* ── MODAL DE ACCIÓN RÁPIDA Y ESTADOS ───────────────────────── */}
       <CitaQuickActionDialog
