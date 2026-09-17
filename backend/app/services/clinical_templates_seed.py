@@ -150,6 +150,13 @@ CATALOGO_ESPECIALIDADES_OFICIALES: List[Dict[str, Any]] = [
         "descripcion": "Salud bucodental, periodoncia, endodoncia, ortodoncia, cirugía oral y odontograma interactivo",
         "color": "#06b6d4",
         "icono": "Smile"
+    },
+    {
+        "nombre": "Oftalmología",
+        "codigo": "OFTAL-01",
+        "descripcion": "Salud visual, agudeza visual Snellen, refracción ocular, tonometría, biomicroscopía y fondo de ojo",
+        "color": "#0284c7",
+        "icono": "Eye"
     }
 ]
 
@@ -779,29 +786,50 @@ DEFAULT_CLINICAL_TEMPLATES: Dict[str, Dict[str, Any]] = {
 
     "oftalmologia": {
         "widgets_activos": ["refraccion"],
+        "flujo_pasos": [1, 3, 4, 5, 6],
+        "paso_inicial": 1,
         "esquema_preconsulta": [
             {
                 "id": "pre_oftalmo_historia",
-                "titulo": "Salud Ocular y Uso de Corrección",
-                "descripcion": "Antecedentes visuales y síntomas reportados",
+                "titulo": "Salud Ocular y Antecedentes Visuales",
+                "descripcion": "Antecedentes visuales, uso de lentes y síntomas reportados por el paciente",
                 "icono": "Eye",
                 "campos": [
-                    {"key": "usa_lentes_actualmente", "label": "¿Utiliza lentes actualmente?", "tipo": "select", "opciones": ["No uso", "Para ver de lejos", "Para lectura / cerca", "Bifocales / Progresivos"], "requerido": True, "grid_cols": 6},
-                    {"key": "sintomas_oculares", "label": "Síntomas oculares principales", "tipo": "multiselect", "opciones": ["Visión borrosa", "Cansancio visual en pantallas", "Ojo rojo o inflamado", "Ardor o arenilla"], "requerido": True, "grid_cols": 6}
+                    {"key": "usa_lentes_actualmente", "label": "¿Utiliza lentes o corrección óptica actualmente?", "tipo": "select", "opciones": ["No uso lentes", "Lentes para ver de lejos (Miopía/Astigmatismo)", "Lentes para lectura / cerca (Presbicia)", "Bifocales / Progresivos", "Lentes de contacto blandos", "Lentes de contacto tóricos / gas permeables"], "requerido": True, "grid_cols": 6},
+                    {"key": "tiempo_ultima_graduacion", "label": "Tiempo desde su última graduación / revisión", "tipo": "select", "opciones": ["Menos de 6 meses", "Entre 6 meses y 1 año", "Entre 1 y 2 años", "Más de 2 años", "Nunca se ha revisado"], "requerido": True, "grid_cols": 6},
+                    {"key": "sintomas_oculares", "label": "Síntomas oculares principales", "tipo": "multiselect", "opciones": ["Visión borrosa lejana", "Dificultad de lectura / visión cercana", "Fatiga visual en pantallas (Astenopía)", "Ojo rojo / Ardor o sensación de arenilla", "Miodesopsias (moscas volantes)", "Fotofobia (sensibilidad a la luz)", "Dolor ocular o cefalea frontal"], "requerido": True, "grid_cols": 12},
+                    {"key": "antecedentes_oculares_familiares", "label": "Antecedentes personales o familiares de patología ocular", "tipo": "select", "opciones": ["Ninguno relevante", "Glaucoma familiar (Madre/Padre)", "Catarata precoz", "Desprendimiento de retina", "Queratocono", "Retinopatía diabética / Hipertensiva", "Cirugía refractiva previa (LASIK/PRK)"], "requerido": False, "grid_cols": 12}
                 ]
             }
         ],
         "esquema_consulta": [
             {
-                "id": "con_oftalmo_agudeza",
-                "titulo": "Agudeza Visual y Presión Intraocular",
-                "descripcion": "Cartilla de Snellen y tonometría",
+                "id": "con_oftalmo_refraccion",
+                "titulo": "Refracción y Agudeza Visual",
+                "descripcion": "Gabinete optométrico, cartilla Snellen OD/OI, tonometría intraocular y corrección óptica",
                 "icono": "Eye",
+                "es_paso_independiente": True,
+                "orden_posicion": "antes_evaluacion",
                 "campos": [
-                    {"key": "agudeza_od_sin_lentes", "label": "Agudeza Visual Ojo Derecho (OD)", "tipo": "select", "opciones": ["20/20", "20/25", "20/30", "20/40", "20/50", "20/70", "20/100", "20/200"], "requerido": True, "grid_cols": 6},
-                    {"key": "agudeza_oi_sin_lentes", "label": "Agudeza Visual Ojo Izquierdo (OI)", "tipo": "select", "opciones": ["20/20", "20/25", "20/30", "20/40", "20/50", "20/70", "20/100", "20/200"], "requerido": True, "grid_cols": 6},
+                    {"key": "agudeza_od_sin_lentes", "label": "Agudeza Visual OD (Sin Corrección)", "tipo": "select", "opciones": ["20/20 (Normal)", "20/25", "20/30", "20/40", "20/50", "20/70", "20/100", "20/200", "Cuenta Dedos", "Movimiento Manos", "Percepción Luz"], "requerido": True, "grid_cols": 6},
+                    {"key": "agudeza_oi_sin_lentes", "label": "Agudeza Visual OI (Sin Corrección)", "tipo": "select", "opciones": ["20/20 (Normal)", "20/25", "20/30", "20/40", "20/50", "20/70", "20/100", "20/200", "Cuenta Dedos", "Movimiento Manos", "Percepción Luz"], "requerido": True, "grid_cols": 6},
                     {"key": "pio_od", "label": "Presión Intraocular OD (PIO)", "tipo": "number", "unidad": "mmHg", "min_val": 4, "max_val": 60, "requerido": True, "grid_cols": 6},
-                    {"key": "pio_oi", "label": "Presión Intraocular OI (PIO)", "tipo": "number", "unidad": "mmHg", "min_val": 4, "max_val": 60, "requerido": True, "grid_cols": 6}
+                    {"key": "pio_oi", "label": "Presión Intraocular OI (PIO)", "tipo": "number", "unidad": "mmHg", "min_val": 4, "max_val": 60, "requerido": True, "grid_cols": 6},
+                    {"key": "refraccion_resumen", "label": "Prescripción / Diagnóstico Refractivo", "tipo": "select", "opciones": ["Emétrope (Visión 20/20 sin corrección)", "Miopía simple", "Astigmatismo miópico", "Astigmatismo hipermetrópico", "Astigmatismo mixto", "Hipermetropía simple", "Presbicia", "Anisometropía"], "requerido": True, "grid_cols": 12}
+                ]
+            },
+            {
+                "id": "con_oftalmo_hallazgos",
+                "titulo": "Biomicroscopía y Hallazgos Clínicos",
+                "descripcion": "Lámpara de hendidura, córnea, cámara anterior, cristalino, nervio óptico y retina",
+                "icono": "Eye",
+                "es_paso_independiente": False,
+                "campos": [
+                    {"key": "parpados_anexos", "label": "Párpados, Pestañas y Aparato Lagrimal", "tipo": "select", "opciones": ["Sin alteraciones / Normal", "Blefaritis anterior / posterior", "Chalazión / Orzuelo", "Disfunción de glándulas de Meibomio (DGM)", "Ptosis palpebral", "Ectropión / Entropión"], "requerido": True, "grid_cols": 6},
+                    {"key": "conjuntiva_cornea", "label": "Conjuntiva y Córnea (Lámpara de Hendidura)", "tipo": "select", "opciones": ["Córnea transparente, conjuntiva clara", "Hiperemia conjuntival / Ojo rojo", "Pterigión nasal grado I-II", "Pterigión grado III avanzado", "Queratitis punteada superficial", "Úlcera corneal activa", "Edema o leucoma corneal"], "requerido": True, "grid_cols": 6},
+                    {"key": "cristalino", "label": "Cristalino / Transparencia Ocular", "tipo": "select", "opciones": ["Transparente / Sin opacidades", "Facoesclerosis nuclear fisiológica", "Catarata nuclear incipiente", "Catarata nuclear madura", "Catarata subcapsular posterior", "Pseudofáquico con LIO en saco", "Opacidad de cápsula posterior (OCP)"], "requerido": True, "grid_cols": 6},
+                    {"key": "fondo_ojo_papila", "label": "Fondo de Ojo: Papila y Nervio Óptico", "tipo": "select", "opciones": ["Papila de bordes netos, color normal (E/P 0.2 - 0.3)", "Excavación papilar aumentada (E/P ≥ 0.6 - Sospecha Glaucoma)", "Palidez papilar temporal", "Edema de papila", "Drusas de papila"], "requerido": True, "grid_cols": 6},
+                    {"key": "macula_retina", "label": "Mácula, Vasos y Retina Periférica", "tipo": "textarea", "placeholder": "Brillo foveolar conservado, emergencia vascular de trayecto normal (relación A/V 2:3), retina aplicada en 360°, sin microaneurismas ni hemorragias...", "requerido": False, "grid_cols": 12}
                 ]
             }
         ]

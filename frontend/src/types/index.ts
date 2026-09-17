@@ -412,6 +412,7 @@ export interface SeccionClinica {
   icono?: string | null;
   campos: CampoClinico[];
   es_paso_independiente?: boolean;
+  orden_posicion?: 'antes_evaluacion' | 'despues_evaluacion';
 }
 
 export interface EspecialidadPlantilla {

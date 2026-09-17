@@ -10,6 +10,7 @@ import {
 import { especialidadesApi } from '../../api/especialidades';
 import type { PlantillaEfectiva, SeccionClinica, CampoClinico } from '../../types';
 import OdontogramaWidget, { type OdontogramaData } from '../../components/clinica/OdontogramaWidget';
+import RefraccionWidget, { type RefraccionData } from '../../components/clinica/RefraccionWidget';
 import SignosVitalesWidget from '../../components/clinica/SignosVitalesWidget';
 import PrescripcionRecetaWidget from '../../components/clinica/PrescripcionRecetaWidget';
 import EstudiosSolicitadosWidget from '../../components/clinica/EstudiosSolicitadosWidget';
@@ -76,6 +77,7 @@ import {
   Search,
   BookmarkPlus,
   Layers,
+  Eye,
 } from 'lucide-react';
 
 interface ConsultaAtencionPageProps {
@@ -804,21 +806,51 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       seccion?: SeccionClinica;
     }> = [];
 
+    // Separar secciones autónomas según su ubicación:
+    // Previas a la evaluación (ej. Refracción Ocular como Paso 2) vs Posteriores a la evaluación
+    const seccionesPrevias = seccionesAutonomas.filter(
+      (s) =>
+        s.orden_posicion === 'antes_evaluacion' ||
+        (s.id || '').toLowerCase().includes('refraccion') ||
+        (s.titulo || '').toLowerCase().includes('refracci') ||
+        (s.titulo || '').toLowerCase().includes('agudeza')
+    );
+    const seccionesPosteriores = seccionesAutonomas.filter(
+      (s) => !seccionesPrevias.some((sp) => sp.id === s.id)
+    );
+
     // Paso 1: Preconsulta y Motivo
     if (pasosHabilitados.includes(1)) {
       list.push({ num: 1, label: 'Preconsulta y Motivo', icon: ClipboardList });
     }
+
+    // Pasos Autónomos Previos a la Evaluación (Ej: Paso 2 Refracción en Oftalmología)
+    seccionesPrevias.forEach((sec) => {
+      const isRefrac =
+        (sec.id || '').toLowerCase().includes('refraccion') ||
+        (sec.titulo || '').toLowerCase().includes('refracci') ||
+        (sec.titulo || '').toLowerCase().includes('agudeza');
+      list.push({
+        num: `sec_${sec.id}`,
+        label: sec.titulo,
+        icon: isRefrac ? Eye : Stethoscope,
+        isSeccionAutonoma: true,
+        seccion: sec,
+      });
+    });
+
     // Paso 2: Signos Vitales
     if (pasosHabilitados.includes(2)) {
       list.push({ num: 2, label: 'Signos Vitales', icon: HeartPulse });
     }
-    // Paso 3: Evaluación y Anamnesis
+
+    // Paso 3: Evaluación y Anamnesis / Hallazgos Clínicos
     if (pasosHabilitados.includes(3)) {
       list.push({ num: 3, label: 'Evaluación y Hallazgos', icon: Stethoscope });
     }
 
-    // Pasos Autónomos Dinámicos de la Especialidad
-    seccionesAutonomas.forEach((sec) => {
+    // Pasos Autónomos Dinámicos Posteriores de la Especialidad
+    seccionesPosteriores.forEach((sec) => {
       list.push({
         num: `sec_${sec.id}`,
         label: sec.titulo,
@@ -2017,12 +2049,21 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         {/* ======================================================== */}
         {seccionesAutonomas.map((sec) => {
           if (currentStep !== `sec_${sec.id}`) return null;
+          const isRefrac =
+            (sec.id || '').toLowerCase().includes('refraccion') ||
+            (sec.titulo || '').toLowerCase().includes('refracci') ||
+            (plantillaEfectiva?.widgets_activos || []).includes('refraccion');
+
           return (
             <div key={sec.id} className="space-y-6 animate-in fade-in duration-200">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
                 <div>
                   <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                    <Stethoscope className="h-5 w-5 text-primary" />
+                    {isRefrac ? (
+                      <Eye className="h-5 w-5 text-sky-500" />
+                    ) : (
+                      <Stethoscope className="h-5 w-5 text-primary" />
+                    )}
                     <span>{sec.titulo}</span>
                     <Badge variant="secondary" className="text-xs font-semibold bg-primary/10 text-primary">
                       Paso Autónomo: {consulta?.especialidad?.nombre || 'Especialidad'}
@@ -2034,6 +2075,23 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 </div>
               </div>
 
+              {/* Si es sección de refracción o la especialidad tiene widget de refracción */}
+              {isRefrac && (
+                <RefraccionWidget
+                  initialData={datosPlantilla.refraccion as RefraccionData}
+                  onChange={(refData) => {
+                    if (!readOnly) {
+                      setDatosPlantilla((prev) => ({
+                        ...prev,
+                        refraccion: refData,
+                      }));
+                    }
+                  }}
+                  readOnly={readOnly}
+                />
+              )}
+
+              {/* Render de campos configurados para la sección */}
               <SeccionCamposRender
                 seccion={sec}
                 datosPlantilla={datosPlantilla}

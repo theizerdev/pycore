@@ -73,6 +73,7 @@ import {
   Scale,
 } from 'lucide-react';
 import OdontogramaWidget from '../../components/clinica/OdontogramaWidget';
+import RefraccionWidget from '../../components/clinica/RefraccionWidget';
 import { PASOS_WIZARD_INFO } from './EspecialidadesPage';
 
 interface EspecialidadPlantillaModalProps {
@@ -172,11 +173,13 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
     descripcion: string;
     icono: string;
     es_paso_independiente?: boolean;
+    orden_posicion?: 'antes_evaluacion' | 'despues_evaluacion';
   }>({
     titulo: '',
     descripcion: '',
     icono: 'ClipboardList',
     es_paso_independiente: false,
+    orden_posicion: 'despues_evaluacion',
   });
 
   // Cargar datos al abrir modal
@@ -338,6 +341,7 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
       descripcion: '',
       icono: scope === 'preconsulta' ? 'ClipboardList' : 'Stethoscope',
       es_paso_independiente: false,
+      orden_posicion: 'despues_evaluacion',
     });
     setSectionModalOpen(true);
   };
@@ -350,6 +354,7 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
       descripcion: sec.descripcion || '',
       icono: sec.icono || 'ClipboardList',
       es_paso_independiente: Boolean(sec.es_paso_independiente),
+      orden_posicion: sec.orden_posicion || 'despues_evaluacion',
     });
     setSectionModalOpen(true);
   };
@@ -374,6 +379,10 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                 icono: sectionFormData.icono,
                 es_paso_independiente:
                   sectionScope === 'consulta' ? Boolean(sectionFormData.es_paso_independiente) : false,
+                orden_posicion:
+                  sectionScope === 'consulta' && sectionFormData.es_paso_independiente
+                    ? sectionFormData.orden_posicion || 'despues_evaluacion'
+                    : undefined,
               }
             : s
         )
@@ -386,6 +395,10 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
         icono: sectionFormData.icono,
         es_paso_independiente:
           sectionScope === 'consulta' ? Boolean(sectionFormData.es_paso_independiente) : false,
+        orden_posicion:
+          sectionScope === 'consulta' && sectionFormData.es_paso_independiente
+            ? sectionFormData.orden_posicion || 'despues_evaluacion'
+            : undefined,
         campos: [],
       };
       updater((prev) => [...prev, newSec]);
@@ -1499,6 +1512,18 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                         >
                           🦷 Preset Odontología
                         </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPasosActivos([1, 3, 4, 5, 6]);
+                            setPasoInicial(1);
+                          }}
+                          className="h-7 text-xs px-2.5 border-sky-500/30 text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 cursor-pointer font-medium"
+                        >
+                          👁️ Preset Oftalmología
+                        </Button>
                       </div>
                     </div>
 
@@ -1781,6 +1806,13 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                           </div>
                         )}
 
+                        {/* WIDGET INTERACTIVO DE REFRACCIÓN VISUAL SI ESTÁ ACTIVO */}
+                        {(plantillaEfectiva?.widgets_activos || activeWidgets || []).includes('refraccion') && (
+                          <div className="mb-4">
+                            <RefraccionWidget />
+                          </div>
+                        )}
+
                         {(plantillaEfectiva?.consulta_secciones || []).length === 0 ? (
                           <p className="text-xs text-muted-foreground italic text-center py-6">
                             No hay campos de examen clínico para previsualizar.
@@ -1885,27 +1917,58 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
 
             {/* Promover a paso autónomo en el Wizard */}
             {sectionScope === 'consulta' && (
-              <div className="p-3 rounded-xl border border-primary/25 bg-primary/5 flex items-center justify-between gap-3">
-                <div className="space-y-0.5">
-                  <Label
-                    htmlFor="sec-paso-independiente"
-                    className="text-xs font-semibold cursor-pointer text-foreground flex items-center gap-1.5"
-                  >
-                    <Sliders className="size-3.5 text-primary" />
-                    <span>Mostrar como Paso Independiente en el Wizard</span>
-                  </Label>
-                  <p className="text-[11px] text-muted-foreground">
-                    Si se activa, esta sección tendrá su propia pestaña y número de paso exclusivo en el flujo de la consulta para avanzar paso a paso.
-                  </p>
+              <>
+                <div className="p-3 rounded-xl border border-primary/25 bg-primary/5 flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label
+                      htmlFor="sec-paso-independiente"
+                      className="text-xs font-semibold cursor-pointer text-foreground flex items-center gap-1.5"
+                    >
+                      <Sliders className="size-3.5 text-primary" />
+                      <span>Mostrar como Paso Independiente en el Wizard</span>
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Si se activa, esta sección tendrá su propia pestaña y número de paso exclusivo en el flujo de la consulta para avanzar paso a paso.
+                    </p>
+                  </div>
+                  <Switch
+                    id="sec-paso-independiente"
+                    checked={Boolean(sectionFormData.es_paso_independiente)}
+                    onCheckedChange={(checked) =>
+                      setSectionFormData((prev) => ({ ...prev, es_paso_independiente: checked }))
+                    }
+                  />
                 </div>
-                <Switch
-                  id="sec-paso-independiente"
-                  checked={Boolean(sectionFormData.es_paso_independiente)}
-                  onCheckedChange={(checked) =>
-                    setSectionFormData((prev) => ({ ...prev, es_paso_independiente: checked }))
-                  }
-                />
-              </div>
+
+                {sectionFormData.es_paso_independiente && (
+                  <div className="p-3 rounded-lg border border-border/70 bg-muted/20 space-y-1.5">
+                    <Label className="text-xs font-semibold text-foreground">
+                      Posición en el Wizard de Consulta
+                    </Label>
+                    <Select
+                      value={sectionFormData.orden_posicion || 'despues_evaluacion'}
+                      onValueChange={(val: any) =>
+                        setSectionFormData((prev) => ({ ...prev, orden_posicion: val }))
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="antes_evaluacion" className="text-xs">
+                          Paso previo a la Evaluación (Ej: Paso 2 Refracción Ocular)
+                        </SelectItem>
+                        <SelectItem value="despues_evaluacion" className="text-xs">
+                          Paso posterior a la Evaluación (Ej: Paso 4 Procedimientos)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10.5px] text-muted-foreground">
+                      Define si este paso autónomo se ejecuta antes del examen clínico general o después.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
 
             <DialogFooter className="pt-2">
