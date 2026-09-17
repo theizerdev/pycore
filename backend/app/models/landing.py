@@ -13,6 +13,7 @@ class LandingPageConfig(Base, TimestampMixin):
     benefits = Column(JSON, nullable=False)
     testimonials = Column(JSON, nullable=False)
     faqs = Column(JSON, nullable=False)
+    clients = Column(JSON, nullable=True)
     contact = Column(JSON, nullable=False)
     cta_banner = Column(JSON, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)

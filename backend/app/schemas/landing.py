@@ -61,6 +61,15 @@ class FaqItem(BaseModel):
     category: str = "General"
     enabled: bool = True
 
+class ClientItem(BaseModel):
+    id: str
+    name: str
+    category: str = "Clínica"
+    logo_url: Optional[str] = None
+    description: Optional[str] = None
+    rating: Optional[float] = 5.0
+    enabled: bool = True
+
 class SocialLinks(BaseModel):
     instagram: Optional[str] = "https://instagram.com"
     facebook: Optional[str] = "https://facebook.com"
@@ -89,6 +98,7 @@ class LandingContentSchema(BaseModel):
     benefits: List[BenefitItem]
     testimonials: List[TestimonialItem]
     faqs: List[FaqItem]
+    clients: Optional[List[ClientItem]] = Field(default_factory=list)
     contact: ContactInfo
     cta_banner: CtaBanner
     is_active: bool = True

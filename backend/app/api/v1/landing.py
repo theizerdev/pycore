@@ -263,6 +263,62 @@ DEFAULT_LANDING_DATA: Dict[str, Any] = {
             "enabled": True
         }
     ],
+    "clients": [
+        {
+            "id": "c1",
+            "name": "Centro Médico Las Mercedes",
+            "category": "Policlínica Integral",
+            "logo_url": "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=150&auto=format&fit=crop&q=80",
+            "description": "Red de atención médica con más de 15 especialidades y turnero en 4 sedes.",
+            "rating": 5.0,
+            "enabled": True
+        },
+        {
+            "id": "c2",
+            "name": "Unidad Pediátrica San José",
+            "category": "Centro Pediátrico",
+            "logo_url": "https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=150&auto=format&fit=crop&q=80",
+            "description": "Control de vacunas, curvas percentiles y recordatorios de citas vía WhatsApp.",
+            "rating": 5.0,
+            "enabled": True
+        },
+        {
+            "id": "c3",
+            "name": "Clínica Dental Sonrisas & Ortodoncia",
+            "category": "Odontología Especializada",
+            "logo_url": "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=150&auto=format&fit=crop&q=80",
+            "description": "Gestión visual 2D de piezas dentales, presupuestos y tratamientos por paciente.",
+            "rating": 4.9,
+            "enabled": True
+        },
+        {
+            "id": "c4",
+            "name": "Instituto Cardiológico Metropolitano",
+            "category": "Alta Especialidad",
+            "logo_url": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=150&auto=format&fit=crop&q=80",
+            "description": "Expediente digital seguro, signos vitales y análisis evolutivo cardiovascular.",
+            "rating": 5.0,
+            "enabled": True
+        },
+        {
+            "id": "c5",
+            "name": "Centro Ginecológico Materno-Infantil",
+            "category": "Maternidad & Ecografía",
+            "logo_url": "https://images.unsplash.com/photo-1516549655169-df83a0774514?w=150&auto=format&fit=crop&q=80",
+            "description": "Monitoreo obstétrico, cálculo gestacional y emisión de récipes membretados.",
+            "rating": 5.0,
+            "enabled": True
+        },
+        {
+            "id": "c6",
+            "name": "Grupo Médico Quirúrgico Titanium",
+            "category": "Centro Ambulatorio",
+            "logo_url": "https://images.unsplash.com/photo-1538108149393-fbbd81895907?w=150&auto=format&fit=crop&q=80",
+            "description": "Control multi-sucursal y gestión automatizada de pagos multimoneda con tasa BCV.",
+            "rating": 4.8,
+            "enabled": True
+        }
+    ],
     "contact": {
         "whatsapp": "+58 412 1234567",
         "phone": "+58 212 555-0199",
@@ -301,11 +357,16 @@ async def get_or_create_landing_config(db: AsyncSession) -> LandingPageConfig:
             benefits=DEFAULT_LANDING_DATA["benefits"],
             testimonials=DEFAULT_LANDING_DATA["testimonials"],
             faqs=DEFAULT_LANDING_DATA["faqs"],
+            clients=DEFAULT_LANDING_DATA["clients"],
             contact=DEFAULT_LANDING_DATA["contact"],
             cta_banner=DEFAULT_LANDING_DATA["cta_banner"],
             is_active=True
         )
         db.add(config)
+        await db.commit()
+        await db.refresh(config)
+    elif config.clients is None:
+        config.clients = DEFAULT_LANDING_DATA["clients"]
         await db.commit()
         await db.refresh(config)
     
@@ -323,6 +384,7 @@ async def get_landing_content(db: AsyncSession = Depends(get_db)):
         benefits=config.benefits,
         testimonials=config.testimonials,
         faqs=config.faqs,
+        clients=config.clients or DEFAULT_LANDING_DATA["clients"],
         contact=config.contact,
         cta_banner=config.cta_banner,
         is_active=config.is_active
@@ -354,6 +416,7 @@ async def update_landing_content(
     config.benefits = [b.model_dump() for b in payload.benefits]
     config.testimonials = [t.model_dump() for t in payload.testimonials]
     config.faqs = [f.model_dump() for f in payload.faqs]
+    config.clients = [c.model_dump() for c in (payload.clients or [])]
     config.contact = payload.contact.model_dump()
     config.cta_banner = payload.cta_banner.model_dump()
     config.is_active = payload.is_active
@@ -405,6 +468,7 @@ async def reset_landing_content(
     config.benefits = DEFAULT_LANDING_DATA["benefits"]
     config.testimonials = DEFAULT_LANDING_DATA["testimonials"]
     config.faqs = DEFAULT_LANDING_DATA["faqs"]
+    config.clients = DEFAULT_LANDING_DATA["clients"]
     config.contact = DEFAULT_LANDING_DATA["contact"]
     config.cta_banner = DEFAULT_LANDING_DATA["cta_banner"]
     config.is_active = True
@@ -429,6 +493,7 @@ async def reset_landing_content(
         benefits=config.benefits,
         testimonials=config.testimonials,
         faqs=config.faqs,
+        clients=config.clients or DEFAULT_LANDING_DATA["clients"],
         contact=config.contact,
         cta_banner=config.cta_banner,
         is_active=config.is_active

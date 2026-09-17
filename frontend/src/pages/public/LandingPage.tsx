@@ -152,6 +152,7 @@ export const LandingPage: React.FC = () => {
   const specialties = (content?.specialties || []).filter((s) => s.enabled);
   const benefits = content?.benefits || [];
   const testimonials = (content?.testimonials || []).filter((t) => t.enabled);
+  const clients = (content?.clients || []).filter((c) => c.enabled);
   const faqs = (content?.faqs || []).filter((f) => f.enabled);
   const contact = content?.contact;
   const ctaBanner = content?.cta_banner;
@@ -197,6 +198,9 @@ export const LandingPage: React.FC = () => {
             </a>
             <a href="#planes" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
               Planes
+            </a>
+            <a href="#clientes" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+              Clientes
             </a>
             <a href="#testimonios" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
               Testimonios
@@ -294,6 +298,20 @@ export const LandingPage: React.FC = () => {
               className="py-2 text-sm font-medium text-slate-700 dark:text-slate-300"
             >
               Planes
+            </a>
+            <a
+              href="#clientes"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-2 text-sm font-medium text-slate-700 dark:text-slate-300"
+            >
+              Nuestros Clientes
+            </a>
+            <a
+              href="#testimonios"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-2 text-sm font-medium text-slate-700 dark:text-slate-300"
+            >
+              Testimonios
             </a>
             <a
               href="#faq"
@@ -867,10 +885,125 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* ========================================================================= */}
-      {/* 7. TESTIMONIOS MÉDICOS                                                   */}
+      {/* 7. NUESTROS CLIENTES & CENTROS MÉDICOS ALIADOS                           */}
       {/* ========================================================================= */}
+      {clients.length > 0 && (
+        <section id="clientes" className="py-24 bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-900/40 dark:to-slate-950 border-t border-slate-200/80 dark:border-slate-800/80 relative overflow-hidden">
+          {/* Luz ambiental sutil */}
+          <div className="absolute top-1/3 -right-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -z-10 animate-pulse-glow" />
+          <div className="absolute bottom-10 -left-20 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none -z-10 animate-float-slow" />
+
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Encabezado */}
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 uppercase tracking-wider mb-4 shadow-sm">
+                <Building2 className="size-4 text-teal-600 dark:text-teal-400" />
+                <span>Nuestros Clientes & Centros Aliados</span>
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                Instituciones Médicas que <span className="shimmer-text">Transforman su Gestión</span> con MediSoft
+              </h2>
+              <p className="mt-4 text-slate-600 dark:text-slate-300 text-base sm:text-lg">
+                Clínicas, policlínicas, consultorios privados y centros de diagnóstico confían a diario en nuestra infraestructura para brindar una atención médica de excelencia.
+              </p>
+            </div>
+
+            {/* Grid de Centros Médicos */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {clients.map((c) => (
+                <div
+                  key={c.id}
+                  className="group relative p-6 rounded-3xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 shadow-md hover:shadow-2xl hover:border-teal-500/50 transition-all duration-300 flex flex-col justify-between hover:-translate-y-2 glass-card-glow"
+                >
+                  <div>
+                    {/* Header: Logo / Avatar + Category badge */}
+                    <div className="flex items-start justify-between gap-4 mb-5">
+                      <div className="relative">
+                        {c.logo_url ? (
+                          <div className="size-16 rounded-2xl overflow-hidden border-2 border-teal-500/20 bg-slate-50 dark:bg-slate-800 shadow-inner group-hover:scale-105 group-hover:border-teal-500/60 transition-all duration-300">
+                            <img
+                              src={c.logo_url}
+                              alt={c.name}
+                              className="size-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="size-16 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white flex items-center justify-center font-bold text-xl shadow-md group-hover:scale-105 transition-all">
+                            {c.name.substring(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="absolute -bottom-1 -right-1 size-5 rounded-full bg-emerald-500 text-white flex items-center justify-center border-2 border-white dark:border-slate-900 shadow-sm" title="Centro Verificado">
+                          <CheckCircle2 className="size-3.5" />
+                        </span>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60">
+                          {c.category}
+                        </span>
+                        <div className="flex items-center justify-end gap-1 mt-2 text-amber-400">
+                          {[...Array(Math.floor(c.rating || 5))].map((_, i) => (
+                            <Star key={i} className="size-3.5 fill-amber-400" />
+                          ))}
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 ml-1">
+                            {(c.rating || 5).toFixed(1)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Nombre y descripción */}
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                      {c.name}
+                    </h3>
+                    {c.description && (
+                      <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                        {c.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Footer card: Estado de Implementación / Verified */}
+                  <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
+                    <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                      <span className="size-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                      Activo en MediSoft Cloud
+                    </span>
+                    <span className="font-semibold text-slate-400">
+                      Multi-Especialidad
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Banner de invitación para nuevas clínicas */}
+            <div className="mt-12 p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-teal-900 via-slate-900 to-slate-950 text-white border border-teal-500/30 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+              <div className="flex items-center gap-4 text-left">
+                <div className="size-14 rounded-2xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-400 shrink-0">
+                  <Building2 className="size-7" />
+                </div>
+                <div>
+                  <h4 className="text-lg font-bold text-white">¿Diriges un Centro Médico o Grupo Hospitalario?</h4>
+                  <p className="text-sm text-teal-100/80 mt-1">
+                    Únete a la red de salud moderna. Gestionamos la migración de tus historias clínicas sin costo de bienvenida.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="#contacto"
+                className="shrink-0 px-6 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-teal-500 to-emerald-500 text-white hover:from-teal-600 hover:to-emerald-600 shadow-lg shadow-teal-500/20 transition-all hover:scale-105"
+              >
+                Solicitar Demostración Institucional
+              </a>
+            </div>
+          </div>
+        </section>
+      )}
+
+
       {/* ========================================================================= */}
-      {/* 7. TESTIMONIOS MÉDICOS                                                   */}
+      {/* 8. TESTIMONIOS MÉDICOS                                                   */}
       {/* ========================================================================= */}
       <section id="testimonios" className="py-24 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-200 dark:border-slate-800 relative overflow-hidden">
         {/* Luz ambiental sutil */}

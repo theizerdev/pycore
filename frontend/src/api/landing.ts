@@ -66,6 +66,16 @@ export interface FaqItem {
   enabled: boolean;
 }
 
+export interface ClientItem {
+  id: string;
+  name: string;
+  category: string;
+  logo_url?: string;
+  description?: string;
+  rating?: number;
+  enabled: boolean;
+}
+
 export interface SocialLinks {
   instagram?: string;
   facebook?: string;
@@ -97,6 +107,7 @@ export interface LandingContent {
   benefits: BenefitItem[];
   testimonials: TestimonialItem[];
   faqs: FaqItem[];
+  clients?: ClientItem[];
   contact: ContactInfo;
   cta_banner: CtaBanner;
   is_active: boolean;
