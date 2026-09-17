@@ -102,6 +102,25 @@ export interface LandingContent {
   is_active: boolean;
 }
 
+export interface ContactMessagePayload {
+  nombre: string;
+  email: string;
+  telefono?: string;
+  institucion?: string;
+  mensaje: string;
+}
+
+export interface ContactMessageItem {
+  id: number;
+  nombre: string;
+  email: string;
+  telefono?: string;
+  institucion?: string;
+  mensaje: string;
+  leido: boolean;
+  created_at: string;
+}
+
 export const landingApi = {
   getLandingContent: async (): Promise<LandingContent> => {
     const response = await api.get<LandingContent>('/landing');
@@ -115,6 +134,21 @@ export const landingApi = {
 
   resetLandingContent: async (): Promise<LandingContent> => {
     const response = await api.post<LandingContent>('/landing/reset');
+    return response.data;
+  },
+
+  sendContactMessage: async (payload: ContactMessagePayload): Promise<{ status: string; message: string; id: number }> => {
+    const response = await api.post('/landing/contacto', payload);
+    return response.data;
+  },
+
+  getContactMessages: async (): Promise<ContactMessageItem[]> => {
+    const response = await api.get<ContactMessageItem[]>('/landing/mensajes');
+    return response.data;
+  },
+
+  toggleMessageRead: async (mensajeId: number): Promise<{ status: string; leido: boolean }> => {
+    const response = await api.patch(`/landing/mensajes/${mensajeId}/leido`);
     return response.data;
   },
 };

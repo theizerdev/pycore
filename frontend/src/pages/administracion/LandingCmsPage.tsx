@@ -18,6 +18,9 @@ import {
   Star,
   Phone,
   Settings,
+  Inbox,
+  Mail,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { landingApi } from '../../api/landing';
@@ -27,6 +30,7 @@ import type {
   SpecialtyItem,
   TestimonialItem,
   FaqItem,
+  ContactMessageItem,
 } from '../../api/landing';
 import { ModuleHeader } from '../../components/common/ModuleHeader';
 import {
@@ -52,8 +56,12 @@ export const LandingCmsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'hero' | 'features' | 'specialties' | 'benefits' | 'testimonials' | 'faqs' | 'contact'
+    'hero' | 'features' | 'specialties' | 'benefits' | 'testimonials' | 'faqs' | 'contact' | 'messages'
   >('hero');
+
+  // Mensajes de contacto recibidos
+  const [contactMessages, setContactMessages] = useState<ContactMessageItem[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
   // Modales
   const [featureModalOpen, setFeatureModalOpen] = useState(false);
@@ -72,7 +80,32 @@ export const LandingCmsPage: React.FC = () => {
 
   useEffect(() => {
     fetchContent();
+    fetchMessages();
   }, []);
+
+  const fetchMessages = async () => {
+    setLoadingMessages(true);
+    try {
+      const data = await landingApi.getContactMessages();
+      setContactMessages(data);
+    } catch {
+      // Si no tiene permisos o error, silencioso
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const handleToggleMessageRead = async (id: number) => {
+    try {
+      const res = await landingApi.toggleMessageRead(id);
+      setContactMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, leido: res.leido } : m))
+      );
+      toast.success(res.leido ? 'Marcado como leído' : 'Marcado como no leído');
+    } catch {
+      toast.error('Error al actualizar estado del mensaje');
+    }
+  };
 
   const fetchContent = async () => {
     setLoading(true);
@@ -282,15 +315,20 @@ export const LandingCmsPage: React.FC = () => {
           { id: 'benefits', label: '4. Ventajas & Métricas', icon: CheckCircle2 },
           { id: 'testimonials', label: '5. Testimonios Médicos', icon: Star },
           { id: 'faqs', label: '6. Preguntas FAQ', icon: HelpCircle },
-          { id: 'contact', label: '7. Contacto & Footer', icon: Phone },
+          { id: 'contact', label: '7. Configuración Contacto', icon: Phone },
+          { id: 'messages', label: '8. Mensajes Recibidos', icon: Inbox },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
+          const unreadCount = contactMessages.filter((m) => !m.leido).length;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              onClick={() => {
+                setActiveTab(tab.id as any);
+                if (tab.id === 'messages') fetchMessages();
+              }}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all relative ${
                 isActive
                   ? 'bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -298,6 +336,11 @@ export const LandingCmsPage: React.FC = () => {
             >
               <Icon className="size-4 shrink-0" />
               <span>{tab.label}</span>
+              {tab.id === 'messages' && unreadCount > 0 && (
+                <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
+                  {unreadCount}
+                </span>
+              )}
             </button>
           );
         })}
@@ -938,6 +981,123 @@ export const LandingCmsPage: React.FC = () => {
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* PESTAÑA 8: MENSAJES DE CONTACTO RECIBIDOS                                 */}
+      {/* ========================================================================= */}
+      {activeTab === 'messages' && (
+        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Inbox className="size-5 text-teal-600" />
+                <span>Bandeja de Mensajes de la Landing Page</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Médicos, especialistas y clínicas que han completado el formulario de contacto público.
+              </p>
+            </div>
+            <button
+              onClick={fetchMessages}
+              disabled={loadingMessages}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            >
+              <RotateCcw className={`size-3.5 ${loadingMessages ? 'animate-spin' : ''}`} />
+              <span>Actualizar Bandeja</span>
+            </button>
+          </div>
+
+          {loadingMessages ? (
+            <div className="py-12 text-center text-xs text-slate-500">Cargando mensajes recibidos...</div>
+          ) : contactMessages.length === 0 ? (
+            <div className="py-16 text-center">
+              <Mail className="size-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+              <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300">
+                No hay mensajes aún
+              </h4>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                Cuando los visitantes de la landing page envíen una consulta, aparecerán listados aquí en tiempo real.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {contactMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`p-5 rounded-2xl border transition-all ${
+                    msg.leido
+                      ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 opacity-80'
+                      : 'bg-teal-500/5 dark:bg-teal-500/10 border-teal-500/30 shadow-sm'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={`size-2.5 rounded-full ${
+                          msg.leido ? 'bg-slate-400' : 'bg-teal-500 animate-ping'
+                        }`}
+                      />
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                        {msg.nombre}
+                      </h4>
+                      {msg.institucion && (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          {msg.institucion}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] text-slate-400">
+                        {msg.created_at ? new Date(msg.created_at).toLocaleString() : 'Reciente'}
+                      </span>
+                      <button
+                        onClick={() => handleToggleMessageRead(msg.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors ${
+                          msg.leido
+                            ? 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                            : 'bg-teal-600 text-white hover:bg-teal-700'
+                        }`}
+                      >
+                        <Check className="size-3" />
+                        <span>{msg.leido ? 'Marcar No Leído' : 'Marcar Leído'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Datos de contacto */}
+                  <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 mb-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-1.5">
+                      <Mail className="size-3.5 text-teal-600" />
+                      <a href={`mailto:${msg.email}`} className="hover:underline text-teal-600 dark:text-teal-400 font-medium">
+                        {msg.email}
+                      </a>
+                    </div>
+                    {msg.telefono && (
+                      <div className="flex items-center gap-1.5">
+                        <Phone className="size-3.5 text-emerald-600" />
+                        <a
+                          href={`https://wa.me/${msg.telefono.replace(/[^0-9]/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline text-emerald-600 dark:text-emerald-400 font-medium"
+                        >
+                          {msg.telefono} (WhatsApp)
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mensaje */}
+                  <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-line bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800/60">
+                    {msg.mensaje}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

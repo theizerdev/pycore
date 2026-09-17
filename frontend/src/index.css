@@ -286,6 +286,106 @@
   }
 }
 
+/* ── ANIMACIONES Y EFECTOS FLOTANTES PARA LANDING PAGE ── */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(1deg);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(10px) rotate(-1deg);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes badge-beam {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 7s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float-slow 8s ease-in-out 2s infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 5s ease-in-out infinite;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, #0d9488 0%, #06b6d4 25%, #10b981 50%, #06b6d4 75%, #0d9488 100%);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 4s linear infinite;
+}
+
+.glass-card-glow {
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-glow:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 35px -10px rgba(6, 182, 212, 0.2), 0 0 15px 0 rgba(13, 148, 136, 0.15);
+}
+
+.badge-beam-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.badge-beam-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: skewX(-20deg);
+  animation: badge-beam 3.5s infinite;
+}
+
 /* ── Custom Sleek Scrollbar (Estilo moderno sin flechas nativas) ── */
 .custom-scrollbar {
   scrollbar-width: thin;

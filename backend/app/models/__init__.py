@@ -24,6 +24,7 @@ from app.models.turnero import TurnoLlamado
 from app.models.estudio import EstudioAdjunto
 from app.models.chat import ChatCanal, ChatParticipante, ChatMensaje
 from app.models.landing import LandingPageConfig
+from app.models.landing_contacto import MensajeContactoLanding
 
 __all__ = [
     "Base",
@@ -59,5 +60,6 @@ __all__ = [
     "ChatParticipante",
     "ChatMensaje",
     "LandingPageConfig",
+    "MensajeContactoLanding",
 ]
 

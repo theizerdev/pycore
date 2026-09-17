@@ -35,9 +35,20 @@ import {
   Layers,
   Check,
   Zap,
+  Send,
+  Loader2,
+  Award,
+  BellRing,
+  Laptop,
+  Play,
+  FileText,
+  CheckCheck,
+  Lock,
+  HelpCircle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { landingApi } from '../../api/landing';
-import type { LandingContent } from '../../api/landing';
+import type { LandingContent, ContactMessagePayload } from '../../api/landing';
 import { planesApi } from '../../api/planes';
 import type { Plan } from '../../types';
 
@@ -80,6 +91,43 @@ export const LandingPage: React.FC = () => {
   const [openFaqId, setOpenFaqId] = useState<string | null>('faq-1');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTabPreview, setActiveTabPreview] = useState<'agenda' | 'consulta' | 'turnero'>('agenda');
+
+  // Estado del Formulario de Contacto
+  const [contactForm, setContactForm] = useState<ContactMessagePayload>({
+    nombre: '',
+    email: '',
+    telefono: '',
+    institucion: '',
+    mensaje: '',
+  });
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [contactSuccess, setContactSuccess] = useState(false);
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactForm.nombre.trim() || !contactForm.email.trim() || !contactForm.mensaje.trim()) {
+      toast.error('Por favor completa todos los campos obligatorios (nombre, correo y mensaje).');
+      return;
+    }
+
+    setContactSubmitting(true);
+    try {
+      const res = await landingApi.sendContactMessage(contactForm);
+      toast.success(res.message || 'Mensaje enviado con éxito');
+      setContactSuccess(true);
+      setContactForm({
+        nombre: '',
+        email: '',
+        telefono: '',
+        institucion: '',
+        mensaje: '',
+      });
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error al enviar el mensaje. Intenta nuevamente.');
+    } finally {
+      setContactSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -275,119 +323,166 @@ export const LandingPage: React.FC = () => {
       {/* ========================================================================= */}
       {/* 2. HERO SECTION CON GRÁFICOS Y MÉTRICAS                                  */}
       {/* ========================================================================= */}
-      <header className="relative pt-12 pb-20 lg:pt-20 lg:pb-32 overflow-hidden">
-        {/* Luces de fondo ambientales */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[500px] pointer-events-none opacity-40 dark:opacity-20 blur-3xl">
-          <div className="w-[600px] h-[350px] bg-gradient-to-tr from-teal-400 to-emerald-500 rounded-full mx-auto" />
+      <header className="relative pt-10 pb-20 lg:pt-16 lg:pb-32 overflow-hidden">
+        {/* Luces de fondo ambientales y esferas de brillo */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[600px] pointer-events-none opacity-50 dark:opacity-30 blur-3xl -z-10">
+          <div className="w-[650px] h-[400px] bg-gradient-to-tr from-cyan-400 via-teal-500 to-emerald-400 rounded-full mx-auto animate-pulse-glow" />
         </div>
+        <div className="absolute top-1/3 left-10 w-72 h-72 bg-teal-500/20 rounded-full blur-3xl pointer-events-none -z-10 animate-float-slow" />
+        <div className="absolute top-1/2 right-10 w-80 h-80 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none -z-10 animate-float-reverse" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-4xl mx-auto">
-            {/* Badge Píldora */}
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-teal-50 dark:bg-teal-950/70 border border-teal-200 dark:border-teal-800/80 text-teal-700 dark:text-teal-300 text-xs sm:text-sm font-semibold mb-6 shadow-sm">
+            {/* Badge Píldora con haz de luz (Beam) */}
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-teal-50/90 dark:bg-teal-950/80 border border-teal-300/80 dark:border-teal-700/80 text-teal-800 dark:text-teal-200 text-xs sm:text-sm font-bold mb-6 shadow-sm badge-beam-container">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+              </span>
               <Sparkles className="size-4 text-teal-600 dark:text-teal-400" />
               <span>{hero?.badge || '✨ Suite Médica Todo-en-Uno para Clínicas y Consultorios'}</span>
             </div>
 
-            {/* Título Principal H1 */}
+            {/* Título Principal H1 con Shimmer degradado */}
             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.1] mb-6">
               {hero?.title || 'La Plataforma Médica en la Nube que Impulsa tu'}{' '}
-              <span className="bg-gradient-to-r from-teal-600 via-emerald-500 to-teal-500 bg-clip-text text-transparent">
+              <span className="shimmer-text">
                 {hero?.title_highlight || 'Práctica Clínica y Hospitalaria'}
               </span>
             </h1>
 
             {/* Subtítulo Descriptivo */}
-            <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto leading-relaxed mb-10">
+            <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto leading-relaxed mb-10 font-normal">
               {hero?.subtitle ||
                 'Digitaliza tus consultas médicas, agenda inteligente, turnero en pantalla, odontograma y recordatorios por WhatsApp con la plataforma SaaS más avanzada y segura.'}
             </p>
 
-            {/* Botones de Llamada a la Acción (CTA) */}
+            {/* Botones de Llamada a la Acción (CTA) interactivos */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
               <Link
                 to={hero?.cta_primary_link || '/register'}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl text-base font-bold text-white bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-800 shadow-xl shadow-teal-500/25 transition-all hover:scale-[1.02]"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl text-base font-bold text-white bg-gradient-to-r from-teal-600 via-cyan-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-xl shadow-teal-500/25 transition-all hover:scale-105 active:scale-95 group"
               >
                 <span>{hero?.cta_primary_text || 'Comenzar Prueba Gratis'}</span>
-                <ArrowRight className="size-5" />
+                <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />
               </Link>
               <a
                 href={hero?.cta_secondary_link || '#modulos'}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl text-base font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-colors"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl text-base font-semibold text-slate-700 dark:text-slate-200 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800/90 shadow-sm transition-all hover:scale-[1.02]"
               >
                 <span>{hero?.cta_secondary_text || 'Explorar Módulos'}</span>
                 <ChevronDown className="size-5" />
               </a>
             </div>
 
-            {/* Métricas / Estadísticas Clave */}
+            {/* Métricas / Estadísticas Clave con Efecto Glass & Hover */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
               {[
-                { val: hero?.stat_1_val || '+50,000', label: hero?.stat_1_label || 'Pacientes Atendidos' },
-                { val: hero?.stat_2_val || '99.9%', label: hero?.stat_2_label || 'Disponibilidad Cloud' },
-                { val: hero?.stat_3_val || '-65%', label: hero?.stat_3_label || 'Inasistencias con WhatsApp' },
-                { val: hero?.stat_4_val || '+120', label: hero?.stat_4_label || 'Centros Médicos Activos' },
-              ].map((stat, idx) => (
-                <div
-                  key={idx}
-                  className="p-5 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-md shadow-sm text-center"
-                >
-                  <div className="text-2xl sm:text-3xl font-extrabold text-teal-600 dark:text-teal-400">
-                    {stat.val}
+                { val: hero?.stat_1_val || '+50,000', label: hero?.stat_1_label || 'Pacientes Atendidos', icon: Users },
+                { val: hero?.stat_2_val || '99.9%', label: hero?.stat_2_label || 'Disponibilidad Cloud', icon: ShieldCheck },
+                { val: hero?.stat_3_val || '-65%', label: hero?.stat_3_label || 'Inasistencias con WhatsApp', icon: TrendingDown },
+                { val: hero?.stat_4_val || '+120', label: hero?.stat_4_label || 'Centros Médicos Activos', icon: Building2 },
+              ].map((stat, idx) => {
+                const StatIcon = stat.icon;
+                return (
+                  <div
+                    key={idx}
+                    className="p-5 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-md shadow-sm text-center glass-card-glow group"
+                  >
+                    <div className="size-8 mx-auto mb-2 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <StatIcon className="size-4" />
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-teal-600 dark:text-teal-400">
+                      {stat.val}
+                    </div>
+                    <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
+                      {stat.label}
+                    </div>
                   </div>
-                  <div className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">
-                    {stat.label}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
-          {/* Maqueta Interactiva del Panel Clínico (Preview) */}
-          <div className="mt-16 max-w-5xl mx-auto rounded-3xl p-3 sm:p-4 bg-gradient-to-b from-slate-200 via-slate-100 to-transparent dark:from-slate-800 dark:via-slate-900 dark:to-transparent border border-slate-200 dark:border-slate-800 shadow-2xl">
-            <div className="rounded-2xl overflow-hidden bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-inner">
-              {/* Barra de cabecera de la maqueta */}
-              <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="size-3 rounded-full bg-rose-500" />
-                  <div className="size-3 rounded-full bg-amber-500" />
-                  <div className="size-3 rounded-full bg-emerald-500" />
-                  <span className="text-xs font-mono text-slate-400 ml-2">medisoft.theizerdev.com/clinica</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setActiveTabPreview('agenda')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                      activeTabPreview === 'agenda'
-                        ? 'bg-teal-600 text-white'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    Agenda Médica
-                  </button>
-                  <button
-                    onClick={() => setActiveTabPreview('consulta')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                      activeTabPreview === 'consulta'
-                        ? 'bg-teal-600 text-white'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    Expediente EMR
-                  </button>
-                  <button
-                    onClick={() => setActiveTabPreview('turnero')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                      activeTabPreview === 'turnero'
-                        ? 'bg-teal-600 text-white'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    Turnero Sala
-                  </button>
-                </div>
+          {/* Maqueta Interactiva del Panel Clínico con Tarjetas Flotantes */}
+          <div className="mt-16 max-w-5xl mx-auto relative">
+            
+            {/* Widget Flotante 1: Notificación WhatsApp en vivo */}
+            <div className="hidden lg:flex items-center gap-3 p-3.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 border border-emerald-500/40 shadow-2xl backdrop-blur-md absolute -left-12 top-20 z-20 animate-float-slow max-w-[260px]">
+              <div className="size-10 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center shrink-0">
+                <MessageSquare className="size-5" />
               </div>
+              <div className="text-left">
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] font-bold text-slate-900 dark:text-white">Recordatorio Automático</span>
+                  <span className="size-1.5 rounded-full bg-emerald-500" />
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                  "Sr. Morales, su cita de Cardiología está confirmada para las 08:30 AM."
+                </p>
+              </div>
+            </div>
+
+            {/* Widget Flotante 2: Diagnóstico CIE-10 Instantáneo */}
+            <div className="hidden lg:flex items-center gap-3 p-3.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 border border-cyan-500/40 shadow-2xl backdrop-blur-md absolute -right-12 bottom-12 z-20 animate-float-reverse max-w-[260px]">
+              <div className="size-10 rounded-xl bg-cyan-500/20 text-cyan-600 flex items-center justify-center shrink-0">
+                <Activity className="size-5" />
+              </div>
+              <div className="text-left">
+                <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1">
+                  <span>Diagnóstico CIE-10</span>
+                  <CheckCheck className="size-3 text-cyan-500" />
+                </span>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                  Búsqueda rápida y récipe digital firmado en segundos.
+                </p>
+              </div>
+            </div>
+
+            {/* Contenedor Principal de la Maqueta */}
+            <div className="rounded-3xl p-3 sm:p-4 bg-gradient-to-b from-slate-200/90 via-slate-100/60 to-transparent dark:from-slate-800 dark:via-slate-900/80 dark:to-transparent border border-slate-200 dark:border-slate-800 shadow-2xl">
+              <div className="rounded-2xl overflow-hidden bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-inner">
+                {/* Barra de cabecera de la maqueta */}
+                <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="size-3 rounded-full bg-rose-500" />
+                    <div className="size-3 rounded-full bg-amber-500" />
+                    <div className="size-3 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-mono text-slate-400 ml-2">medisoft.theizerdev.com/clinica</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveTabPreview('agenda')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        activeTabPreview === 'agenda'
+                          ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      Agenda Médica
+                    </button>
+                    <button
+                      onClick={() => setActiveTabPreview('consulta')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        activeTabPreview === 'consulta'
+                          ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      Expediente EMR
+                    </button>
+                    <button
+                      onClick={() => setActiveTabPreview('turnero')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        activeTabPreview === 'turnero'
+                          ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      Turnero Sala
+                    </button>
+                  </div>
+                </div>
 
               {/* Vista previa simulada según pestaña */}
               <div className="p-6 sm:p-8 bg-slate-50/50 dark:bg-slate-950 min-h-[320px] flex flex-col justify-center">
@@ -491,7 +586,8 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </header>
+      </div>
+    </header>
 
       {/* ========================================================================= */}
       {/* 3. MÓDULOS Y FUNCIONALIDADES CLÍNICAS                                     */}
@@ -532,22 +628,25 @@ export const LandingPage: React.FC = () => {
             {filteredFeatures.map((feat) => (
               <div
                 key={feat.id}
-                className="group relative p-6 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-teal-500/50 dark:hover:border-teal-500/50 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl"
+                className="group relative p-6 rounded-3xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800/80 hover:border-teal-500/60 dark:hover:border-teal-400/50 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl hover:shadow-teal-500/10 glass-card-glow overflow-hidden"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 group-hover:scale-110 transition-transform">
+                {/* Acento sutil en la esquina superior */}
+                <div className="absolute -top-12 -right-12 size-24 bg-gradient-to-br from-teal-500/10 to-cyan-500/20 rounded-full blur-xl group-hover:scale-150 transition-transform" />
+
+                <div className="flex items-center justify-between mb-5 relative z-10">
+                  <div className="size-12 rounded-2xl bg-gradient-to-br from-teal-500/15 to-cyan-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center group-hover:scale-110 group-hover:bg-teal-600 group-hover:text-white transition-all duration-300 shadow-sm">
                     {getDynamicIcon(feat.icon)}
                   </div>
                   {feat.badge && (
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 shadow-xs">
                       {feat.badge}
                     </span>
                   )}
                 </div>
-                <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors relative z-10">
                   {feat.title}
                 </h4>
-                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed relative z-10">
                   {feat.description}
                 </p>
               </div>
@@ -577,16 +676,18 @@ export const LandingPage: React.FC = () => {
             {specialties.map((spec) => (
               <div
                 key={spec.id}
-                className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow"
+                className="group p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-xl hover:border-emerald-500/50 dark:hover:border-emerald-500/40 transition-all duration-300 hover:-translate-y-1.5 glass-card-glow"
               >
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                  <div className="size-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:bg-emerald-600 group-hover:text-white transition-all duration-300">
                     {getDynamicIcon(spec.icon)}
                   </div>
                   <div>
-                    <h4 className="text-base font-bold text-slate-900 dark:text-white">{spec.name}</h4>
+                    <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      {spec.name}
+                    </h4>
                     {spec.badge && (
-                      <span className="text-[11px] font-semibold text-teal-600 dark:text-teal-400">
+                      <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100/70 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
                         {spec.badge}
                       </span>
                     )}
@@ -619,19 +720,23 @@ export const LandingPage: React.FC = () => {
             {benefits.map((b) => (
               <div
                 key={b.id}
-                className="p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between text-center"
+                className="group p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-2xl hover:border-teal-500/50 transition-all duration-300 flex flex-col justify-between text-center hover:-translate-y-2 glass-card-glow"
               >
                 <div>
-                  <div className="size-14 mx-auto mb-4 rounded-2xl bg-teal-50 dark:bg-teal-950/70 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+                  <div className="size-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-teal-500/10 to-cyan-500/20 text-teal-600 dark:text-teal-400 flex items-center justify-center group-hover:scale-110 group-hover:bg-teal-600 group-hover:text-white transition-all duration-300">
                     {getDynamicIcon(b.icon)}
                   </div>
-                  <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{b.title}</h4>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                    {b.title}
+                  </h4>
                   <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                     {b.description}
                   </p>
                 </div>
                 <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-                  <div className="text-3xl font-black text-teal-600 dark:text-teal-400">{b.stat}</div>
+                  <div className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-600 to-emerald-500 dark:from-teal-400 dark:to-emerald-400">
+                    {b.stat}
+                  </div>
                   <div className="text-xs font-semibold text-slate-400 mt-1">{b.stat_label}</div>
                 </div>
               </div>
@@ -764,12 +869,19 @@ export const LandingPage: React.FC = () => {
       {/* ========================================================================= */}
       {/* 7. TESTIMONIOS MÉDICOS                                                   */}
       {/* ========================================================================= */}
-      <section id="testimonios" className="py-24 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-200 dark:border-slate-800">
+      {/* ========================================================================= */}
+      {/* 7. TESTIMONIOS MÉDICOS                                                   */}
+      {/* ========================================================================= */}
+      <section id="testimonios" className="py-24 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-200 dark:border-slate-800 relative overflow-hidden">
+        {/* Luz ambiental sutil */}
+        <div className="absolute top-1/2 -left-20 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-xs sm:text-sm font-bold text-teal-600 dark:text-teal-400 tracking-wider uppercase mb-2">
-              Opiniones Reales
-            </h2>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 uppercase tracking-wider mb-3">
+              <Award className="size-3.5" />
+              <span>Opiniones Reales</span>
+            </span>
             <h3 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
               Lo que dicen los médicos que usan MediSoft Suite
             </h3>
@@ -779,7 +891,7 @@ export const LandingPage: React.FC = () => {
             {testimonials.map((t) => (
               <div
                 key={t.id}
-                className="p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between"
+                className="group p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-2xl hover:border-teal-500/50 transition-all duration-300 flex flex-col justify-between hover:-translate-y-1.5 glass-card-glow"
               >
                 <div>
                   <div className="flex items-center gap-1 mb-4 text-amber-400">
@@ -791,14 +903,16 @@ export const LandingPage: React.FC = () => {
                     "{t.content}"
                   </p>
                 </div>
-                <div className="flex items-center gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-3.5 pt-4 border-t border-slate-100 dark:border-slate-800">
                   <img
                     src={t.avatar_url || 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=100'}
                     alt={t.author}
-                    className="size-11 rounded-full object-cover border border-teal-500/30"
+                    className="size-12 rounded-full object-cover border-2 border-teal-500/40 shadow-sm group-hover:scale-105 transition-transform"
                   />
                   <div>
-                    <h5 className="font-bold text-sm text-slate-900 dark:text-white">{t.author}</h5>
+                    <h5 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                      {t.author}
+                    </h5>
                     <p className="text-xs text-slate-500">
                       {t.role} • {t.clinic}
                     </p>
@@ -813,12 +927,13 @@ export const LandingPage: React.FC = () => {
       {/* ========================================================================= */}
       {/* 8. PREGUNTAS FRECUENTES (FAQ)                                            */}
       {/* ========================================================================= */}
-      <section id="faq" className="py-24">
+      <section id="faq" className="py-24 relative overflow-hidden">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-xs sm:text-sm font-bold text-teal-600 dark:text-teal-400 tracking-wider uppercase mb-2">
-              Resuelve tus Dudas
-            </h2>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 uppercase tracking-wider mb-3">
+              <HelpCircle className="size-3.5" />
+              <span>Resuelve tus Dudas</span>
+            </span>
             <h3 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
               Preguntas Frecuentes
             </h3>
@@ -830,17 +945,21 @@ export const LandingPage: React.FC = () => {
               return (
                 <div
                   key={faq.id}
-                  className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors"
+                  className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
+                    isOpen
+                      ? 'bg-white dark:bg-slate-900 border-teal-500/50 shadow-md ring-2 ring-teal-500/10'
+                      : 'bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                  }`}
                 >
                   <button
                     onClick={() => setOpenFaqId(isOpen ? null : faq.id)}
                     className="w-full px-6 py-5 flex items-center justify-between text-left gap-4"
                   >
-                    <span className="font-bold text-base text-slate-900 dark:text-white">
+                    <span className={`font-bold text-base transition-colors ${isOpen ? 'text-teal-600 dark:text-teal-400' : 'text-slate-900 dark:text-white'}`}>
                       {faq.question}
                     </span>
                     <ChevronDown
-                      className={`size-5 text-slate-400 transition-transform duration-200 shrink-0 ${
+                      className={`size-5 text-slate-400 transition-transform duration-300 shrink-0 ${
                         isOpen ? 'rotate-180 text-teal-600' : ''
                       }`}
                     />
@@ -858,36 +977,242 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* ========================================================================= */}
-      {/* 9. BANNER CTA FINAL                                                       */}
+      {/* 9. BANNER CTA FINAL CON BEAM DE LUZ & RESPLANDOR                         */}
       {/* ========================================================================= */}
-      <section className="py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="rounded-3xl p-10 sm:p-16 bg-gradient-to-r from-teal-700 via-emerald-600 to-teal-800 text-white text-center shadow-2xl relative overflow-hidden">
+      <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+        <div className="rounded-3xl p-10 sm:p-16 bg-gradient-to-r from-teal-700 via-cyan-700 to-emerald-700 text-white text-center shadow-2xl relative overflow-hidden border border-teal-400/30">
+          {/* Ondas decorativas de fondo */}
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-cyan-400/15 rounded-full blur-2xl pointer-events-none" />
+
           <div className="relative z-10 max-w-2xl mx-auto">
-            <span className="inline-block px-4 py-1.5 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-4">
-              {ctaBanner?.badge || '🚀 Comienza Hoy Mismo'}
+            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white/20 text-xs font-bold uppercase tracking-wider mb-5 backdrop-blur-md badge-beam-container">
+              <span>{ctaBanner?.badge || '🚀 Comienza Hoy Mismo'}</span>
             </span>
-            <h3 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">
+            <h3 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-5 leading-tight">
               {ctaBanner?.title || '¿Listo para modernizar la gestión de tu centro médico?'}
             </h3>
-            <p className="text-teal-100 text-base sm:text-lg mb-8 leading-relaxed">
+            <p className="text-teal-100 text-base sm:text-lg mb-8 leading-relaxed font-normal">
               {ctaBanner?.subtitle ||
                 'Únete a cientos de profesionales de la salud que ya optimizan su tiempo, reducen ausencias y brindan una mejor experiencia a sus pacientes.'}
             </p>
             <Link
               to={ctaBanner?.button_link || '/register'}
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl text-base font-bold text-teal-900 bg-white hover:bg-teal-50 shadow-xl transition-all hover:scale-105"
+              className="inline-flex items-center gap-2.5 px-9 py-4 rounded-2xl text-base font-bold text-teal-900 bg-white hover:bg-teal-50 shadow-2xl transition-all hover:scale-105 active:scale-95 group"
             >
               <span>{ctaBanner?.button_text || 'Registrar mi Clínica Gratis'}</span>
-              <ArrowRight className="size-5" />
+              <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
         </div>
       </section>
 
       {/* ========================================================================= */}
-      {/* 10. FOOTER CORPORATIVO                                                    */}
+      {/* 10. SECCIÓN: FORMULARIO DE CONTACTO & ASESORÍA CLÍNICA                    */}
       {/* ========================================================================= */}
-      <footer id="contacto" className="bg-slate-900 text-slate-400 py-16 border-t border-slate-800">
+      <section id="contacto" className="py-24 bg-white dark:bg-slate-950 border-t border-slate-200/80 dark:border-slate-800/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+            
+            {/* Información y Beneficios de Contacto */}
+            <div className="lg:col-span-5 space-y-6">
+              <div>
+                <span className="text-xs sm:text-sm font-bold text-teal-600 dark:text-teal-400 tracking-wider uppercase">
+                  Atención Directa
+                </span>
+                <h3 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-2">
+                  ¿Tienes dudas o deseas una demostración personalizada?
+                </h3>
+                <p className="text-slate-600 dark:text-slate-300 mt-4 leading-relaxed text-sm sm:text-base">
+                  Nuestro equipo de especialistas en tecnología médica está listo para asesorarte en la implementación de MediSoft Suite en tu consultorio o clínica.
+                </p>
+              </div>
+
+              {/* Canales Rápidos */}
+              <div className="space-y-4 pt-2">
+                <a
+                  href={`https://wa.me/${(contact?.whatsapp || '+584121234567').replace(/[^0-9]/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 hover:border-emerald-500/50 transition-colors group"
+                >
+                  <div className="size-12 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <MessageSquare className="size-6" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-sm text-slate-900 dark:text-white">Chat Inmediato por WhatsApp</h5>
+                    <p className="text-xs text-slate-500">{contact?.whatsapp || '+58 412 1234567'} • Respuesta en minutos</p>
+                  </div>
+                </a>
+
+                <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
+                  <div className="size-12 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                    <Mail className="size-6" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-sm text-slate-900 dark:text-white">Correo Oficial</h5>
+                    <p className="text-xs text-slate-500">{contact?.email || 'contacto@medisoft.theizerdev.com'}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
+                  <div className="size-12 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
+                    <Phone className="size-6" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-sm text-slate-900 dark:text-white">Línea Telefónica</h5>
+                    <p className="text-xs text-slate-500">{contact?.phone || '+58 212 555-0199'} • {contact?.schedule || 'Lun - Vie 8am-6pm'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Distintivos de confianza */}
+              <div className="p-4 rounded-2xl bg-teal-500/5 border border-teal-500/20 text-xs text-teal-800 dark:text-teal-300 flex items-center gap-3">
+                <ShieldCheck className="size-5 text-teal-600 shrink-0" />
+                <span>Tratamiento confidencial de datos y acompañamiento técnico continuo para tu personal médico.</span>
+              </div>
+            </div>
+
+            {/* Formulario Interactivo */}
+            <div className="lg:col-span-7">
+              <div className="p-8 sm:p-10 rounded-3xl bg-slate-50/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none backdrop-blur-sm">
+                <div className="mb-6">
+                  <h4 className="text-xl font-bold text-slate-900 dark:text-white">
+                    Envíanos tu consulta
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Completa el formulario y te contactaremos en menos de 24 horas con toda la información requerida.
+                  </p>
+                </div>
+
+                {contactSuccess ? (
+                  <div className="p-8 rounded-2xl bg-teal-500/10 border border-teal-500/30 text-center space-y-4">
+                    <div className="size-14 rounded-full bg-teal-500/20 text-teal-600 dark:text-teal-400 mx-auto flex items-center justify-center">
+                      <CheckCircle2 className="size-8" />
+                    </div>
+                    <h4 className="text-lg font-bold text-teal-900 dark:text-teal-200">
+                      ¡Mensaje enviado con éxito!
+                    </h4>
+                    <p className="text-sm text-teal-700 dark:text-teal-300 max-w-md mx-auto">
+                      Hemos recibido tu solicitud. Nuestro equipo de soporte y asesores médicos revisará tu requerimiento y se pondrá en contacto contigo pronto.
+                    </p>
+                    <button
+                      onClick={() => setContactSuccess(false)}
+                      className="px-5 py-2.5 rounded-xl text-xs font-bold bg-teal-600 text-white hover:bg-teal-700 transition-colors inline-block"
+                    >
+                      Enviar otro mensaje
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleContactSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Nombre */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                          Nombre y Apellido <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={contactForm.nombre}
+                          onChange={(e) => setContactForm({ ...contactForm, nombre: e.target.value })}
+                          placeholder="Dr. Juan Pérez"
+                          className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                        />
+                      </div>
+
+                      {/* Email */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                          Correo Electrónico <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={contactForm.email}
+                          onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                          placeholder="doctor@miclinica.com"
+                          className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Teléfono / WhatsApp */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                          Teléfono o WhatsApp
+                        </label>
+                        <input
+                          type="tel"
+                          value={contactForm.telefono || ''}
+                          onChange={(e) => setContactForm({ ...contactForm, telefono: e.target.value })}
+                          placeholder="+58 412 0000000"
+                          className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                        />
+                      </div>
+
+                      {/* Centro Médico / Especialidad */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                          Clínica o Especialidad
+                        </label>
+                        <input
+                          type="text"
+                          value={contactForm.institucion || ''}
+                          onChange={(e) => setContactForm({ ...contactForm, institucion: e.target.value })}
+                          placeholder="Ej. Centro Médico San José / Odontología"
+                          className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Mensaje */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Mensaje o Consulta <span className="text-rose-500">*</span>
+                      </label>
+                      <textarea
+                        required
+                        rows={4}
+                        value={contactForm.mensaje}
+                        onChange={(e) => setContactForm({ ...contactForm, mensaje: e.target.value })}
+                        placeholder="Escribe aquí tus dudas, requerimientos específicos para tu centro médico o solicita una demostración guiada..."
+                        className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all resize-none"
+                      />
+                    </div>
+
+                    {/* Botón de Enviar */}
+                    <button
+                      type="submit"
+                      disabled={contactSubmitting}
+                      className="w-full py-3.5 px-6 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-teal-600 via-cyan-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-lg shadow-teal-500/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+                    >
+                      {contactSubmitting ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          <span>Enviando consulta...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="size-4" />
+                          <span>Enviar Mensaje de Contacto</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 11. FOOTER CORPORATIVO                                                    */}
+      {/* ========================================================================= */}
+      <footer className="bg-slate-900 text-slate-400 py-16 border-t border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
             {/* Columna Marca */}

@@ -92,3 +92,23 @@ class LandingContentSchema(BaseModel):
     contact: ContactInfo
     cta_banner: CtaBanner
     is_active: bool = True
+
+class ContactMessageCreate(BaseModel):
+    nombre: str
+    email: str
+    telefono: Optional[str] = None
+    institucion: Optional[str] = None
+    mensaje: str
+
+class ContactMessageOut(BaseModel):
+    id: int
+    nombre: str
+    email: str
+    telefono: Optional[str] = None
+    institucion: Optional[str] = None
+    mensaje: str
+    leido: bool
+    created_at: Optional[Any] = None
+
+    class Config:
+        from_attributes = True

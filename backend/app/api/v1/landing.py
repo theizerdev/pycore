@@ -1,13 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from typing import Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import Dict, Any
+from sqlalchemy import desc
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user, require_permission, require_superadmin, registrar_auditoria
 from app.models.landing import LandingPageConfig
+from app.models.landing_contacto import MensajeContactoLanding
 from app.models.usuario import Usuario
-from app.schemas.landing import LandingContentSchema
+from app.schemas.landing import (
+    LandingContentSchema,
+    ContactMessageCreate,
+    ContactMessageOut,
+)
 
 router = APIRouter(prefix="/landing", tags=["Landing Page CMS"])
 
@@ -427,3 +433,80 @@ async def reset_landing_content(
         cta_banner=config.cta_banner,
         is_active=config.is_active
     )
+
+
+@router.post("/contacto", response_model=Dict[str, Any])
+async def submit_contact_form(
+    payload: ContactMessageCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Permite a cualquier visitante o médico enviar un mensaje desde la Landing Page."""
+    if not payload.nombre.strip() or not payload.email.strip() or not payload.mensaje.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nombre, correo electrónico y mensaje son obligatorios."
+        )
+
+    nuevo_mensaje = MensajeContactoLanding(
+        nombre=payload.nombre.strip(),
+        email=payload.email.strip(),
+        telefono=payload.telefono.strip() if payload.telefono else None,
+        institucion=payload.institucion.strip() if payload.institucion else None,
+        mensaje=payload.mensaje.strip(),
+        leido=False
+    )
+    db.add(nuevo_mensaje)
+    await db.commit()
+    await db.refresh(nuevo_mensaje)
+
+    return {
+        "status": "success",
+        "message": "¡Gracias por comunicarte con nosotros! Nuestro equipo médico-técnico te responderá a la brevedad.",
+        "id": nuevo_mensaje.id
+    }
+
+
+@router.get("/mensajes", response_model=List[ContactMessageOut])
+async def get_contact_messages(
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_active_user)
+):
+    """Permite al administrador ver todos los mensajes recibidos desde la Landing Page."""
+    if not current_user.es_superadmin:
+        permisos = [p.slug for p in current_user.rol.permisos] if current_user.rol else []
+        if "empresas.ver" not in permisos and "empresas.editar" not in permisos:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para ver los mensajes de contacto."
+            )
+
+    stmt = select(MensajeContactoLanding).order_by(desc(MensajeContactoLanding.created_at))
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.patch("/mensajes/{mensaje_id}/leido")
+async def toggle_message_read(
+    mensaje_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_active_user)
+):
+    """Marca un mensaje como leído/no leído."""
+    if not current_user.es_superadmin:
+        permisos = [p.slug for p in current_user.rol.permisos] if current_user.rol else []
+        if "empresas.editar" not in permisos:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para actualizar mensajes."
+            )
+
+    stmt = select(MensajeContactoLanding).where(MensajeContactoLanding.id == mensaje_id)
+    result = await db.execute(stmt)
+    msg = result.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+
+    msg.leido = not msg.leido
+    await db.commit()
+    return {"status": "success", "leido": msg.leido}
+
