@@ -369,11 +369,6 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
     }
   };
 
-  const handleDemoLogin = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-  };
-
   return (
     <div className="grid min-h-svh lg:grid-cols-2 bg-background text-foreground font-sans selection:bg-primary/20 selection:text-primary">
       
@@ -437,7 +432,7 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="admin@pycore.com"
+                        placeholder="doctor@miclinica.com"
                         className="pl-9 h-10 text-xs"
                       />
                     </div>
@@ -449,64 +444,66 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                         <Label htmlFor="login-password" className="text-xs font-semibold">Contraseña *</Label>
                         <Link
                           to="/forgot-password"
-                          className="text-xs text-primary hover:underline font-semibold cursor-pointer"
+                          className="text-xs text-primary hover:underline font-medium"
                         >
                           ¿Olvidaste tu contraseña?
                         </Link>
                       </div>
-                    </div>
-                    <div className="relative">
-                      <Lock className="size-4 text-muted-foreground absolute left-3 top-3 pointer-events-none" />
-                      <Input
-                        id="login-password"
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="pl-9 pr-9 h-10 text-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition cursor-pointer"
-                      >
-                        {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                      </button>
+                      <div className="relative">
+                        <Lock className="size-4 text-muted-foreground absolute left-3 top-3 pointer-events-none" />
+                        <Input
+                          id="login-password"
+                          type={showPassword ? 'text' : 'password'}
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••••••"
+                          className="pl-9 pr-9 h-10 text-xs font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <label className="flex items-center gap-2 text-muted-foreground cursor-pointer select-none">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
                       <input
                         type="checkbox"
                         checked={rememberMe}
                         onChange={(e) => setRememberMe(e.target.checked)}
-                        className="rounded border-input bg-background text-primary focus:ring-primary size-4"
+                        className="rounded border-input text-primary focus:ring-primary size-4"
                       />
-                      <span>Recordar correo en este dispositivo</span>
+                      <span>Recordar sesión en este equipo</span>
                     </label>
                   </div>
 
                   <Button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full h-10 font-bold text-xs shadow-md cursor-pointer"
+                    className="w-full h-10 text-xs font-bold shadow-md shadow-primary/20 cursor-pointer"
                   >
                     {isLoading ? (
-                      <div className="size-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                      <div className="flex items-center gap-2">
+                        <div className="size-3.5 border-2 border-primary-foreground border-t-transparent animate-spin rounded-full" />
+                        <span>Autenticando...</span>
+                      </div>
                     ) : (
-                      <>
-                        <span>Ingresar al Sistema</span>
-                        <ArrowRight className="size-4 ml-1" />
-                      </>
+                      <div className="flex items-center justify-center gap-2">
+                        <span>Ingresar a MediSoft Suite</span>
+                        <ArrowRight className="size-4" />
+                      </div>
                     )}
                   </Button>
                 </form>
 
-                {/* Acceso a Registro */}
-                <div className="text-center text-xs text-muted-foreground pt-2">
-                  ¿No tienes una cuenta de empresa?{' '}
+                <div className="text-center text-xs text-muted-foreground">
+                  ¿No tienes una cuenta médica aún?{' '}
                   <button
                     type="button"
                     onClick={() => {
@@ -517,33 +514,6 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                   >
                     Crear una cuenta (7 Días Gratis)
                   </button>
-                </div>
-
-                {/* Credenciales Demo Rápida */}
-                <div className="pt-4 border-t border-border space-y-2">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider text-center">
-                    Acceso Rápido Demo (1 Clic):
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDemoLogin('admin@pycore.com', 'Admin1234*')}
-                      className="text-xs font-semibold h-9 border-dashed hover:border-primary cursor-pointer"
-                    >
-                      Superadmin
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDemoLogin('admin@plataforma.com', 'Admin1234*')}
-                      className="text-xs font-semibold h-9 border-dashed hover:border-primary cursor-pointer"
-                    >
-                      Admin Clínica
-                    </Button>
-                  </div>
                 </div>
               </div>
             )}
