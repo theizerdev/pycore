@@ -177,18 +177,35 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       setTipoDocumento('V');
       if (initialSearch && initialSearch.trim()) {
         const clean = initialSearch.trim();
-        if (/^\d+$/.test(clean)) {
+        const docMatch = clean.match(/^([VEJPGvejpg]-?)?(\d{5,10})$/i);
+        if (docMatch) {
+          const prefix = docMatch[1] ? docMatch[1].replace('-', '').toUpperCase() : 'V';
+          const number = docMatch[2];
+          setTipoDocumento(prefix);
+          setDocumentoIdentidad(number);
+          setNombres('');
+          setApellidos('');
+        } else if (/^\d+$/.test(clean)) {
+          setTipoDocumento('V');
           setDocumentoIdentidad(clean);
           setNombres('');
+          setApellidos('');
         } else {
-          setNombres(clean);
+          const words = clean.split(/\s+/);
+          if (words.length > 1) {
+            setNombres(words.slice(0, -1).join(' '));
+            setApellidos(words[words.length - 1]);
+          } else {
+            setNombres(clean);
+            setApellidos('');
+          }
           setDocumentoIdentidad('');
         }
       } else {
         setDocumentoIdentidad('');
         setNombres('');
+        setApellidos('');
       }
-      setApellidos('');
       setFechaNacimiento('');
       setGenero('M');
       setEmail('');
@@ -381,9 +398,18 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
   const patientInitials =
     `${nombres?.trim().charAt(0) || ''}${apellidos?.trim().charAt(0) || ''}`.toUpperCase() || 'PA';
 
+  const handleOpenChange = (newOpen: boolean) => {
+    onOpenChange(newOpen);
+    if (!newOpen) {
+      setTimeout(() => {
+        document.body.style.pointerEvents = 'auto';
+      }, 100);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[92vh] h-[670px] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl rounded-2xl border-border/70">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] h-[670px] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl rounded-2xl border-border/70 z-[60]">
         {/* Encabezado */}
         <DialogHeader className="p-4 px-6 border-b border-border/80 bg-muted/20 flex-row items-center justify-between space-y-0 shrink-0">
           <div className="flex items-center gap-3">

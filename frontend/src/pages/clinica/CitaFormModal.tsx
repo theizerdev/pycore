@@ -562,66 +562,122 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
                   <Input
                     value={pacienteSearch}
                     onChange={(e) => setPacienteSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (filteredPacientes.length === 0 && pacienteSearch.trim()) {
+                          setOpenNewPatientModal(true);
+                        } else if (filteredPacientes.length === 1) {
+                          setPacienteId(filteredPacientes[0].id);
+                        }
+                      }
+                    }}
                     placeholder="Escriba nombre o cédula para buscar paciente..."
-                    className="pl-8 text-xs h-8"
+                    className="pl-8 pr-16 text-xs h-8"
                   />
+                  {pacienteSearch.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setPacienteSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer px-1 py-0.5 rounded bg-muted/60"
+                    >
+                      Limpiar
+                    </button>
+                  )}
                 </div>
 
-                <div className="max-h-40 overflow-y-auto space-y-1 border border-border/60 rounded-lg p-1">
-                  {filteredPacientes.length === 0 ? (
-                    <div className="p-3.5 text-center space-y-2.5 bg-muted/20 rounded-lg border border-dashed border-border/80 my-1">
-                      <div className="flex size-9 items-center justify-center rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 mx-auto">
-                        <UserPlus className="size-4" />
-                      </div>
-                      <div>
-                        <p className="text-foreground font-semibold text-xs">
-                          {pacienteSearch.trim()
-                            ? `No se encontró ningún paciente con "${pacienteSearch}"`
-                            : 'No hay pacientes registrados con ese criterio'}
-                        </p>
-                        <p className="text-muted-foreground text-[11px] mt-0.5">
-                          Puedes registrar a la persona que va llegando en un instante.
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => setOpenNewPatientModal(true)}
-                        className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold gap-1.5 cursor-pointer shadow-xs mx-auto"
-                      >
-                        <UserPlus className="size-3.5" />
-                        <span>Registrar Paciente Nuevo</span>
-                      </Button>
-                    </div>
-                  ) : (
-                    filteredPacientes.slice(0, 5).map((p) => (
-                      <div
-                        key={p.id}
-                        onClick={() => setPacienteId(p.id)}
-                        className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="size-6 rounded-full bg-teal-600/15 text-teal-700 dark:text-teal-300 font-bold flex items-center justify-center text-[10px]">
-                            {p.nombres.charAt(0)}
-                          </div>
-                          <div>
-                            <span className="font-semibold text-foreground block">
-                              {p.nombres} {p.apellidos}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {p.tipo_documento}-{p.documento_identidad}
-                            </span>
-                          </div>
-                        </div>
+                <div className="border border-border/60 rounded-lg overflow-hidden bg-card">
+                  {/* Encabezado informativo de los 5 pacientes */}
+                  <div className="flex items-center justify-between px-3 py-1 bg-muted/40 border-b border-border/50 text-[11px]">
+                    <span className="text-muted-foreground font-medium">
+                      {pacienteSearch.trim()
+                        ? `Búsqueda: "${pacienteSearch}"`
+                        : 'Pacientes registrados'}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px] bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20 px-1.5 py-0 font-medium">
+                      {filteredPacientes.length > 0 ? `Mostrando ${Math.min(5, filteredPacientes.length)} pacientes` : '0 encontrados'}
+                    </Badge>
+                  </div>
 
-                        {p.telefono && (
-                          <span className="text-[10px] text-emerald-600 font-mono">
-                            {p.telefono}
-                          </span>
-                        )}
+                  <div className="max-h-56 overflow-y-auto p-1 space-y-1">
+                    {filteredPacientes.length === 0 ? (
+                      <div className="p-4 text-center space-y-2.5 bg-muted/20 rounded-lg border border-dashed border-teal-500/30 my-1">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 mx-auto ring-4 ring-teal-500/10">
+                          <UserPlus className="size-4" />
+                        </div>
+                        <div>
+                          <p className="text-foreground font-semibold text-xs">
+                            {pacienteSearch.trim()
+                              ? `No se encontró ningún paciente con "${pacienteSearch}"`
+                              : 'No hay pacientes registrados con ese criterio'}
+                          </p>
+                          <p className="text-muted-foreground text-[11px] mt-0.5">
+                            {pacienteSearch.trim()
+                              ? 'El paciente no existe por el buscador. Puede agregarlo directamente con la ventana modal.'
+                              : 'Puedes registrar a la persona en un instante.'}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => setOpenNewPatientModal(true)}
+                          className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold gap-1.5 cursor-pointer shadow-xs mx-auto px-3"
+                        >
+                          <UserPlus className="size-3.5" />
+                          <span>{pacienteSearch.trim() ? `Agregar "${pacienteSearch}" con Ventana Modal` : 'Registrar Paciente con Ventana Modal'}</span>
+                        </Button>
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      <>
+                        {filteredPacientes.slice(0, 5).map((p) => (
+                          <div
+                            key={p.id}
+                            onClick={() => setPacienteId(p.id)}
+                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted/60 hover:border-teal-500/30 border border-transparent cursor-pointer transition-all"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="size-7 rounded-full bg-teal-600/15 text-teal-700 dark:text-teal-300 font-bold flex items-center justify-center text-[10px] shrink-0 border border-teal-500/20">
+                                {p.nombres.charAt(0)}{p.apellidos.charAt(0)}
+                              </div>
+                              <div>
+                                <span className="font-semibold text-foreground text-xs block">
+                                  {p.nombres} {p.apellidos}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground font-mono">
+                                  {p.tipo_documento}-{p.documento_identidad}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {p.telefono && (
+                                <span className="text-[10px] text-muted-foreground font-mono hidden sm:inline-block">
+                                  {p.telefono}
+                                </span>
+                              )}
+                              <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 bg-teal-500/10 px-2 py-0.5 rounded border border-teal-500/20">
+                                Seleccionar
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+
+                        {pacienteSearch.trim() && (
+                          <div className="pt-1.5 mt-1 border-t border-border/50 flex items-center justify-between px-2 py-1 bg-muted/20 rounded-md">
+                            <span className="text-[10px] text-muted-foreground">¿No es la persona buscada?</span>
+                            <button
+                              type="button"
+                              onClick={() => setOpenNewPatientModal(true)}
+                              className="text-[11px] text-teal-600 hover:text-teal-700 dark:text-teal-400 font-semibold inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <UserPlus className="size-3" />
+                              <span>Agregar con ventana modal</span>
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
