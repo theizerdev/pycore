@@ -55,13 +55,16 @@ def _format_paciente_response(
     alergias_data = p.alergias if isinstance(p.alergias, list) else []
     edad_anios, edad_txt = calcular_edad(p.fecha_nacimiento)
 
-    if total_consultas is None or ultima_fecha is None:
-        consultas_list = getattr(p, "consultas", []) or []
-        if isinstance(consultas_list, list) and len(consultas_list) > 0:
+    if total_consultas is None:
+        if "consultas" in p.__dict__ and p.__dict__["consultas"]:
+            consultas_list = p.__dict__["consultas"]
             total_consultas = len(consultas_list)
-            ultima_fecha = consultas_list[0].fecha_consulta
+            ultima_fecha = getattr(consultas_list[0], "fecha_consulta", None)
         else:
-            total_consultas = total_consultas or 0
+            total_consultas = 0
+
+    pais_obj = p.__dict__.get("pais_telefono")
+    sucursal_obj = p.__dict__.get("sucursal_registro")
 
     return PacienteResponse(
         id=p.id,
@@ -95,10 +98,10 @@ def _format_paciente_response(
         activo=p.activo,
         edad=edad_anios,
         edad_texto=edad_txt,
-        pais_nombre=p.pais_telefono.nombre if p.pais_telefono else None,
-        pais_codigo_iso2=p.pais_telefono.codigo_iso2 if p.pais_telefono else None,
-        pais_codigo_telefonico=p.pais_telefono.codigo_telefonico if p.pais_telefono else None,
-        sucursal_nombre=p.sucursal_registro.nombre if p.sucursal_registro else None,
+        pais_nombre=pais_obj.nombre if pais_obj else None,
+        pais_codigo_iso2=pais_obj.codigo_iso2 if pais_obj else None,
+        pais_codigo_telefonico=pais_obj.codigo_telefonico if pais_obj else None,
+        sucursal_nombre=sucursal_obj.nombre if sucursal_obj else None,
         total_consultas=total_consultas,
         ultima_consulta=ultima_fecha,
         created_at=p.created_at,

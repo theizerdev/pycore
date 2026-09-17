@@ -39,6 +39,9 @@ import {
   Save,
   CheckCircle2,
   ShieldCheck,
+  ChevronLeft,
+  ChevronRight,
+  Check,
 } from 'lucide-react';
 
 interface PatientFormModalProps {
@@ -82,7 +85,8 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
 }) => {
   const { user } = useAuth();
   const regional = useRegional();
-  const [activeTab, setActiveTab] = useState('demograficos');
+  type PatientTab = 'demograficos' | 'ficha' | 'emergencia';
+  const [activeTab, setActiveTab] = useState<PatientTab>('demograficos');
   const [saving, setSaving] = useState(false);
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
 
@@ -327,61 +331,231 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
     }
   };
 
+  const STEPS: Array<{
+    id: PatientTab;
+    label: string;
+    shortTitle: string;
+    subtitle: string;
+    titleDetail: string;
+    descriptionDetail: string;
+    icon: any;
+    isComplete: boolean;
+    badge?: string;
+  }> = [
+    {
+      id: 'demograficos',
+      label: '1. Datos Personales',
+      shortTitle: 'Personales',
+      subtitle: 'Identificación y contacto',
+      titleDetail: 'Identificación y Datos Demográficos',
+      descriptionDetail: 'Información legal de filiación, residencia y canales de contacto directo.',
+      icon: User,
+      isComplete: Boolean(nombres.trim() && apellidos.trim() && documentoIdentidad.trim()),
+    },
+    {
+      id: 'ficha',
+      label: '2. Ficha Médica',
+      shortTitle: 'Ficha Médica',
+      subtitle: 'Alergias y antecedentes',
+      titleDetail: 'Ficha Clínica, Alergias y Antecedentes',
+      descriptionDetail: 'Grupo sanguíneo, alergias conocidas, patologías de base y medicación habitual.',
+      icon: Activity,
+      isComplete: Boolean(grupoSanguineo),
+      badge: alergias.length > 0 ? `${alergias.length} alergias` : undefined,
+    },
+    {
+      id: 'emergencia',
+      label: '3. Emergencia y Seguro',
+      shortTitle: 'Emergencia',
+      subtitle: 'Contacto de apoyo y póliza',
+      titleDetail: 'Contacto de Emergencia y Cobertura Médica',
+      descriptionDetail: 'Familiar responsable en urgencias y póliza de seguro de salud privada.',
+      icon: ShieldCheck,
+      isComplete: Boolean(contactoNombre.trim() || seguroMedico.trim()),
+      badge: seguroMedico.trim() ? 'Asegurado' : undefined,
+    },
+  ];
+
+  const currentStepIndex = Math.max(0, STEPS.findIndex((s) => s.id === activeTab));
+  const currentStep = STEPS[currentStepIndex] || STEPS[0];
+  const patientInitials =
+    `${nombres?.trim().charAt(0) || ''}${apellidos?.trim().charAt(0) || ''}`.toUpperCase() || 'PA';
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] h-[670px] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl rounded-2xl border-border/70">
         {/* Encabezado */}
-        <DialogHeader className="p-5 pb-3 border-b border-border/80 bg-muted/20">
+        <DialogHeader className="p-4 px-6 border-b border-border/80 bg-muted/20 flex-row items-center justify-between space-y-0 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-teal-600/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 shrink-0">
-              <User className="size-6" />
+            <div className="flex size-10 items-center justify-center rounded-xl bg-teal-600/15 text-teal-600 dark:text-teal-400 border border-teal-500/30 shadow-xs shrink-0">
+              <User className="size-5" />
             </div>
             <div>
               <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
-                <span>{patientToEdit ? 'Editar Ficha del Paciente' : 'Registrar Nuevo Paciente'}</span>
+                <span>{patientToEdit ? `Editar Ficha de ${patientToEdit.nombres} ${patientToEdit.apellidos}` : 'Registrar Nuevo Paciente'}</span>
                 {edadCalculada && (
-                  <Badge variant="secondary" className="text-xs bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30">
+                  <Badge variant="secondary" className="text-[10px] bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30 font-medium">
                     {edadCalculada}
                   </Badge>
                 )}
+                <Badge variant="outline" className="text-[10px] font-mono border-teal-500/30 text-teal-600 bg-teal-500/5">
+                  MEDISOFT Ficha
+                </Badge>
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground mt-0.5">
                 {patientToEdit
-                  ? `Actualizando historia de ${patientToEdit.nombres} ${patientToEdit.apellidos}`
-                  : 'Ficha médica integral, datos demográficos, antecedentes y contacto asistencial.'}
+                  ? `Actualizando historia clínica digital de ${patientToEdit.nombres} ${patientToEdit.apellidos}`
+                  : 'Ficha médica integral, datos demográficos, antecedentes clínicos y contacto asistencial.'}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        {/* Formulario con Pestañas */}
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-5 pt-3 border-b border-border/70 bg-card">
-              <TabsList className="grid grid-cols-3 h-9 bg-muted/50 p-1">
-                <TabsTrigger value="demograficos" className="text-xs gap-1.5 cursor-pointer data-[state=active]:bg-background">
-                  <User className="size-3.5" />
-                  <span>Datos Personales</span>
-                </TabsTrigger>
-                <TabsTrigger value="ficha" className="text-xs gap-1.5 cursor-pointer data-[state=active]:bg-background">
-                  <Activity className="size-3.5 text-rose-500" />
-                  <span>Ficha Médica & Alergias</span>
-                  {alergias.length > 0 && (
-                    <span className="flex size-4 items-center justify-center rounded-full bg-rose-500 text-white text-[10px] font-bold">
-                      {alergias.length}
+        {/* Formulario y Distribución Master-Detail */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+            {/* ── BARRA LATERAL DE PASOS (STEPPER) ── */}
+            <div className="w-full md:w-64 lg:w-72 border-b md:border-b-0 md:border-r border-border/70 bg-muted/20 dark:bg-muted/10 p-3 md:p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
+              <div className="space-y-1.5">
+                <div className="hidden md:block px-2 pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Pasos de Registro
+                  </span>
+                </div>
+
+                <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible pb-1 md:pb-0">
+                  {STEPS.map((step) => {
+                    const IconComponent = step.icon;
+                    const isActive = activeTab === step.id;
+                    const isCompleted = step.isComplete;
+
+                    return (
+                      <button
+                        key={step.id}
+                        type="button"
+                        onClick={() => setActiveTab(step.id)}
+                        className={`w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-3 border ${
+                          isActive
+                            ? 'bg-teal-500/10 border-teal-500/40 text-foreground shadow-xs'
+                            : 'border-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <div
+                          className={`size-8 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold transition-all ${
+                            isActive
+                              ? 'bg-teal-600 text-white shadow-xs'
+                              : isCompleted
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                              : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {isCompleted && !isActive ? (
+                            <Check className="size-4" />
+                          ) : (
+                            <IconComponent className="size-4" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <span
+                              className={`text-xs font-semibold truncate block ${
+                                isActive ? 'text-teal-600 dark:text-teal-400 font-bold' : ''
+                              }`}
+                            >
+                              {step.label}
+                            </span>
+                            {step.badge && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-teal-600 text-white font-bold shrink-0">
+                                {step.badge}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-muted-foreground truncate block">
+                            {step.subtitle}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tarjeta de Resumen en Vivo del Paciente (Sidebar Footer) */}
+              <div className="hidden md:block pt-3 border-t border-border/60 mt-3">
+                <div className="p-3 rounded-xl bg-card border border-border/80 shadow-2xs space-y-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-9 rounded-lg flex items-center justify-center font-bold text-xs text-white shrink-0 bg-teal-600 shadow-2xs">
+                      {patientInitials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-bold text-foreground truncate block">
+                        {nombres || apellidos ? `${nombres} ${apellidos}`.trim() : 'Nuevo Paciente'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono truncate block">
+                        {tipoDocumento}-{documentoIdentidad || 'Sin documento'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 text-[10px] border-t border-border/50">
+                    <span className="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold font-mono">
+                      {grupoSanguineo}
                     </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="emergencia" className="text-xs gap-1.5 cursor-pointer data-[state=active]:bg-background">
-                  <PhoneCall className="size-3.5 text-amber-500" />
-                  <span>Emergencia & Seguro</span>
-                </TabsTrigger>
-              </TabsList>
+                    {edadCalculada && (
+                      <span className="text-muted-foreground">
+                        {edadCalculada}
+                      </span>
+                    )}
+                    <span
+                      className={`font-semibold px-1.5 py-0.5 rounded-full ${
+                        activo
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {activo ? '● Activo' : '○ Inactivo'}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5">
-              {/* ── TAB 1: DATOS DEMOGRÁFICOS ───────────────────────── */}
-              <TabsContent value="demograficos" className="space-y-4 m-0">
+            {/* ── PANEL DE CONTENIDO DERECHO ── */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
+              {/* Banner Superior del Paso Activo */}
+              <div className="px-6 py-3.5 border-b border-border/60 bg-card/40 flex items-center justify-between shrink-0">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                      Paso {currentStepIndex + 1} de 3
+                    </span>
+                    <h3 className="text-xs sm:text-sm font-bold text-foreground">
+                      {currentStep.titleDetail}
+                    </h3>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {currentStep.descriptionDetail}
+                  </p>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-2">
+                  <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden border border-border/50">
+                    <div
+                      className="h-full bg-teal-500 transition-all duration-300 rounded-full"
+                      style={{ width: `${((currentStepIndex + 1) / 3) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 font-mono">
+                    {Math.round(((currentStepIndex + 1) / 3) * 100)}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Contenedor scrolleable del contenido del formulario */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+                <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="space-y-4">
+                  {/* ── TAB 1: DATOS DEMOGRÁFICOS ───────────────────────── */}
+                  <TabsContent value="demograficos" className="space-y-4 m-0">
                 {/* Documento y Nombres */}
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                   <div className="sm:col-span-4 space-y-1.5">
@@ -789,63 +963,63 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                     </div>
                   </div>
                 </div>
-              </TabsContent>
-            </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
 
-            {/* Footer */}
-            <DialogFooter className="p-3.5 border-t border-border/80 bg-muted/10 flex items-center justify-between">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpenChange(false)}
-                className="h-8 text-xs cursor-pointer"
-              >
-                Cancelar
-              </Button>
+              {/* Footer de navegación unificado */}
+              <div className="p-3.5 px-6 border-t border-border/70 bg-muted/10 flex items-center justify-between shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onOpenChange(false)}
+                  disabled={saving}
+                  className="h-8 text-xs cursor-pointer"
+                >
+                  Cancelar
+                </Button>
 
-              <div className="flex items-center gap-2">
-                {activeTab !== 'demograficos' && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (activeTab === 'emergencia') setActiveTab('ficha');
-                      else if (activeTab === 'ficha') setActiveTab('demograficos');
-                    }}
-                    className="h-8 text-xs cursor-pointer"
-                  >
-                    Anterior
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {currentStepIndex > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveTab(STEPS[currentStepIndex - 1].id)}
+                      className="h-8 text-xs cursor-pointer gap-1"
+                    >
+                      <ChevronLeft className="size-3.5" />
+                      <span>Anterior</span>
+                    </Button>
+                  )}
 
-                {activeTab !== 'emergencia' ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => {
-                      if (activeTab === 'demograficos') setActiveTab('ficha');
-                      else if (activeTab === 'ficha') setActiveTab('emergencia');
-                    }}
-                    className="h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-                  >
-                    Siguiente
-                  </Button>
-                ) : (
+                  {currentStepIndex < STEPS.length - 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveTab(STEPS[currentStepIndex + 1].id)}
+                      className="h-8 text-xs cursor-pointer gap-1 border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                    >
+                      <span>Siguiente: {STEPS[currentStepIndex + 1].shortTitle}</span>
+                      <ChevronRight className="size-3.5" />
+                    </Button>
+                  )}
+
                   <Button
                     type="submit"
                     size="sm"
                     disabled={saving}
-                    className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer shadow-xs gap-1.5"
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-8 text-xs cursor-pointer shadow-xs gap-1.5"
                   >
                     <Save className="size-3.5" />
-                    <span>{saving ? 'Guardando...' : patientToEdit ? 'Actualizar Ficha' : 'Registrar Paciente'}</span>
+                    <span>{saving ? 'Guardando...' : patientToEdit ? 'Actualizar Ficha' : 'Guardar Paciente'}</span>
                   </Button>
-                )}
+                </div>
               </div>
-            </DialogFooter>
-          </Tabs>
+            </div>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
