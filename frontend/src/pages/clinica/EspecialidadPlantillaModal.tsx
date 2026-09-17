@@ -171,10 +171,12 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
     titulo: string;
     descripcion: string;
     icono: string;
+    es_paso_independiente?: boolean;
   }>({
     titulo: '',
     descripcion: '',
     icono: 'ClipboardList',
+    es_paso_independiente: false,
   });
 
   // Cargar datos al abrir modal
@@ -335,6 +337,7 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
       titulo: '',
       descripcion: '',
       icono: scope === 'preconsulta' ? 'ClipboardList' : 'Stethoscope',
+      es_paso_independiente: false,
     });
     setSectionModalOpen(true);
   };
@@ -346,6 +349,7 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
       titulo: sec.titulo,
       descripcion: sec.descripcion || '',
       icono: sec.icono || 'ClipboardList',
+      es_paso_independiente: Boolean(sec.es_paso_independiente),
     });
     setSectionModalOpen(true);
   };
@@ -368,6 +372,8 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                 titulo: sectionFormData.titulo.trim(),
                 descripcion: sectionFormData.descripcion.trim() || undefined,
                 icono: sectionFormData.icono,
+                es_paso_independiente:
+                  sectionScope === 'consulta' ? Boolean(sectionFormData.es_paso_independiente) : false,
               }
             : s
         )
@@ -378,6 +384,8 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
         titulo: sectionFormData.titulo.trim(),
         descripcion: sectionFormData.descripcion.trim() || undefined,
         icono: sectionFormData.icono,
+        es_paso_independiente:
+          sectionScope === 'consulta' ? Boolean(sectionFormData.es_paso_independiente) : false,
         campos: [],
       };
       updater((prev) => [...prev, newSec]);
@@ -1178,7 +1186,17 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                           <div className="flex items-center gap-2">
                             <Stethoscope className="size-4 text-primary" />
                             <div>
-                              <CardTitle className="text-xs font-bold text-foreground">{sec.titulo}</CardTitle>
+                              <div className="flex items-center gap-2">
+                                <CardTitle className="text-xs font-bold text-foreground">{sec.titulo}</CardTitle>
+                                {sec.es_paso_independiente && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[9.5px] px-1.5 py-0 h-4 bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300 font-semibold"
+                                  >
+                                    ⚡ Paso Autónomo
+                                  </Badge>
+                                )}
+                              </div>
                               {sec.descripcion && (
                                 <CardDescription className="text-[10px] text-muted-foreground">
                                   {sec.descripcion}
@@ -1864,6 +1882,31 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                 className="h-9 text-xs"
               />
             </div>
+
+            {/* Promover a paso autónomo en el Wizard */}
+            {sectionScope === 'consulta' && (
+              <div className="p-3 rounded-xl border border-primary/25 bg-primary/5 flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="sec-paso-independiente"
+                    className="text-xs font-semibold cursor-pointer text-foreground flex items-center gap-1.5"
+                  >
+                    <Sliders className="size-3.5 text-primary" />
+                    <span>Mostrar como Paso Independiente en el Wizard</span>
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Si se activa, esta sección tendrá su propia pestaña y número de paso exclusivo en el flujo de la consulta para avanzar paso a paso.
+                  </p>
+                </div>
+                <Switch
+                  id="sec-paso-independiente"
+                  checked={Boolean(sectionFormData.es_paso_independiente)}
+                  onCheckedChange={(checked) =>
+                    setSectionFormData((prev) => ({ ...prev, es_paso_independiente: checked }))
+                  }
+                />
+              </div>
+            )}
 
             <DialogFooter className="pt-2">
               <Button

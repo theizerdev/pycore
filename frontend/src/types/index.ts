@@ -411,6 +411,7 @@ export interface SeccionClinica {
   descripcion?: string | null;
   icono?: string | null;
   campos: CampoClinico[];
+  es_paso_independiente?: boolean;
 }
 
 export interface EspecialidadPlantilla {

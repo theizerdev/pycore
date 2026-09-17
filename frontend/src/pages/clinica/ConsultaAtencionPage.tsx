@@ -269,6 +269,206 @@ const formatRespuestaValue = (val: any): { text: string; isBoolean?: boolean; is
   return { text: String(val) };
 };
 
+// Componente para renderizar campos dinámicos de una sección clínica
+interface SeccionCamposRenderProps {
+  seccion: SeccionClinica;
+  datosPlantilla: Record<string, any>;
+  setDatosPlantilla: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  readOnly?: boolean;
+}
+
+const SeccionCamposRender: React.FC<SeccionCamposRenderProps> = ({
+  seccion,
+  datosPlantilla,
+  setDatosPlantilla,
+  readOnly = false,
+}) => {
+  return (
+    <Card className="border-border/80 shadow-xs">
+      <CardContent className="p-5 space-y-4">
+        <div className="border-b border-border/60 pb-2.5">
+          <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+            <FileCheck className="h-4 w-4 text-primary" />
+            <span>{seccion.titulo}</span>
+          </h4>
+          {seccion.descripcion && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {seccion.descripcion}
+            </p>
+          )}
+        </div>
+
+        {(!seccion.campos || seccion.campos.length === 0) ? (
+          <div className="p-8 text-center rounded-xl border border-dashed border-border text-muted-foreground text-xs">
+            Esta sección no tiene campos de examen configurados aún.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            {seccion.campos.map((campo: CampoClinico) => {
+              const gridSpan =
+                campo.grid_cols === 12
+                  ? 'md:col-span-12'
+                  : campo.grid_cols === 4
+                    ? 'md:col-span-4'
+                    : campo.grid_cols === 3
+                      ? 'md:col-span-3'
+                      : 'md:col-span-6';
+
+              const valor = datosPlantilla[campo.key] ?? '';
+
+              return (
+                <div key={campo.key} className={cn('space-y-1.5', gridSpan)}>
+                  <Label className="text-xs font-semibold flex items-center justify-between">
+                    <span>
+                      {campo.label}
+                      {campo.requerido && (
+                        <span className="text-destructive ml-0.5">*</span>
+                      )}
+                    </span>
+                    {campo.unidad && (
+                      <span className="text-[11px] text-muted-foreground font-normal">
+                        ({campo.unidad})
+                      </span>
+                    )}
+                  </Label>
+
+                  {/* RENDERIZADO POR TIPO DE CAMPO */}
+                  {campo.tipo === 'textarea' ? (
+                    <Textarea
+                      value={valor}
+                      onChange={(e) =>
+                        setDatosPlantilla((prev) => ({
+                          ...prev,
+                          [campo.key]: e.target.value,
+                        }))
+                      }
+                      placeholder={campo.placeholder || ''}
+                      disabled={readOnly}
+                      rows={3}
+                    />
+                  ) : campo.tipo === 'select' ? (
+                    <Select
+                      value={String(valor)}
+                      onValueChange={(val) =>
+                        setDatosPlantilla((prev) => ({
+                          ...prev,
+                          [campo.key]: val,
+                        }))
+                      }
+                      disabled={readOnly}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Seleccione una opción..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(campo.opciones || []).map((opc) => (
+                          <SelectItem key={opc} value={opc}>
+                            {opc}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : campo.tipo === 'boolean' ? (
+                    <div className="flex items-center gap-3 pt-2">
+                      <Switch
+                        checked={Boolean(valor)}
+                        onCheckedChange={(checked) =>
+                          setDatosPlantilla((prev) => ({
+                            ...prev,
+                            [campo.key]: checked,
+                          }))
+                        }
+                        disabled={readOnly}
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {Boolean(valor) ? 'Presente / Positivo' : 'Ausente / Negativo'}
+                      </span>
+                    </div>
+                  ) : campo.tipo === 'number' ? (
+                    <Input
+                      type="number"
+                      min={campo.min_val ?? undefined}
+                      max={campo.max_val ?? undefined}
+                      value={valor}
+                      onChange={(e) =>
+                        setDatosPlantilla((prev) => ({
+                          ...prev,
+                          [campo.key]: e.target.value,
+                        }))
+                      }
+                      placeholder={campo.placeholder || ''}
+                      disabled={readOnly}
+                      className="h-10 font-mono"
+                    />
+                  ) : campo.tipo === 'date' ? (
+                    <Input
+                      type="date"
+                      value={valor}
+                      onChange={(e) =>
+                        setDatosPlantilla((prev) => ({
+                          ...prev,
+                          [campo.key]: e.target.value,
+                        }))
+                      }
+                      disabled={readOnly}
+                      className="h-10"
+                    />
+                  ) : campo.tipo === 'scale_1_10' ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Leve (1)</span>
+                        <span className="font-bold text-foreground">Valor: {valor || '-'}</span>
+                        <span>Severo (10)</span>
+                      </div>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            disabled={readOnly}
+                            onClick={() =>
+                              setDatosPlantilla((prev) => ({
+                                ...prev,
+                                [campo.key]: num,
+                              }))
+                            }
+                            className={cn(
+                              'flex-1 h-8 text-xs font-semibold rounded border transition-colors cursor-pointer',
+                              Number(valor) === num
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background hover:bg-muted text-muted-foreground border-border'
+                            )}
+                          >
+                            {num}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <Input
+                      type="text"
+                      value={valor}
+                      onChange={(e) =>
+                        setDatosPlantilla((prev) => ({
+                          ...prev,
+                          [campo.key]: e.target.value,
+                        }))
+                      }
+                      placeholder={campo.placeholder || ''}
+                      disabled={readOnly}
+                      className="h-10"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   readOnly: propReadOnly = false,
 }) => {
@@ -281,7 +481,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
 
   const [consulta, setConsulta] = useState<ConsultaMedica | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [currentStep, setCurrentStep] = useState<number | string>(1);
   const [saving, setSaving] = useState<boolean>(false);
   const [finalizing, setFinalizing] = useState<boolean>(false);
   const [impresionModalOpen, setImpresionModalOpen] = useState<boolean>(false);
@@ -588,21 +788,61 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     );
   }, [consulta?.especialidad?.paso_inicial, plantillaEfectiva?.paso_inicial, pasosHabilitados]);
 
-  const ALL_WIZARD_STEPS = useMemo(
-    () => [
-      { num: 1, label: 'Preconsulta y Motivo', icon: ClipboardList },
-      { num: 2, label: 'Signos Vitales', icon: HeartPulse },
-      { num: 3, label: 'Evaluación y Hallazgos', icon: Stethoscope },
-      { num: 4, label: 'Estudios Médicos', icon: FlaskConical },
-      { num: 5, label: 'Receta y Reposo', icon: Pill },
-      { num: 6, label: 'Diagnóstico y Cierre', icon: CheckCircle2 },
-    ],
-    []
-  );
+  // Secciones clínicas configuradas como paso autónomo en el wizard
+  const seccionesAutonomas: SeccionClinica[] = useMemo(() => {
+    return (plantillaEfectiva?.consulta_secciones || []).filter(
+      (sec) => Boolean(sec.es_paso_independiente)
+    );
+  }, [plantillaEfectiva?.consulta_secciones]);
 
   const stepsList = useMemo(() => {
-    return ALL_WIZARD_STEPS.filter((s) => pasosHabilitados.includes(s.num));
-  }, [ALL_WIZARD_STEPS, pasosHabilitados]);
+    const list: Array<{
+      num: number | string;
+      label: string;
+      icon: any;
+      isSeccionAutonoma?: boolean;
+      seccion?: SeccionClinica;
+    }> = [];
+
+    // Paso 1: Preconsulta y Motivo
+    if (pasosHabilitados.includes(1)) {
+      list.push({ num: 1, label: 'Preconsulta y Motivo', icon: ClipboardList });
+    }
+    // Paso 2: Signos Vitales
+    if (pasosHabilitados.includes(2)) {
+      list.push({ num: 2, label: 'Signos Vitales', icon: HeartPulse });
+    }
+    // Paso 3: Evaluación y Anamnesis
+    if (pasosHabilitados.includes(3)) {
+      list.push({ num: 3, label: 'Evaluación y Hallazgos', icon: Stethoscope });
+    }
+
+    // Pasos Autónomos Dinámicos de la Especialidad
+    seccionesAutonomas.forEach((sec) => {
+      list.push({
+        num: `sec_${sec.id}`,
+        label: sec.titulo,
+        icon: Stethoscope,
+        isSeccionAutonoma: true,
+        seccion: sec,
+      });
+    });
+
+    // Paso 4: Estudios Médicos
+    if (pasosHabilitados.includes(4)) {
+      list.push({ num: 4, label: 'Estudios Médicos', icon: FlaskConical });
+    }
+    // Paso 5: Receta y Reposo
+    if (pasosHabilitados.includes(5)) {
+      list.push({ num: 5, label: 'Receta y Reposo', icon: Pill });
+    }
+    // Paso 6: Diagnóstico y Cierre
+    if (pasosHabilitados.includes(6)) {
+      list.push({ num: 6, label: 'Diagnóstico y Cierre', icon: CheckCircle2 });
+    }
+
+    return list;
+  }, [pasosHabilitados, seccionesAutonomas]);
 
   // Inicializar paso al configurado por la especialidad al cargar la consulta
   useEffect(() => {
@@ -618,13 +858,13 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
 
   // Asegurar que currentStep sea siempre uno de los pasos activos
   useEffect(() => {
-    if (stepsList.length > 0 && !pasosHabilitados.includes(currentStep)) {
+    if (stepsList.length > 0 && !stepsList.some((s) => String(s.num) === String(currentStep))) {
       setCurrentStep(stepsList[0].num);
     }
-  }, [stepsList, pasosHabilitados, currentStep]);
+  }, [stepsList, currentStep]);
 
   const currentStepIndex = useMemo(() => {
-    const idx = stepsList.findIndex((s) => s.num === currentStep);
+    const idx = stepsList.findIndex((s) => String(s.num) === String(currentStep));
     return idx >= 0 ? idx : 0;
   }, [stepsList, currentStep]);
 
@@ -1627,10 +1867,11 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                   </Card>
                 )}
 
-                {/* SECCIONES DINÁMICAS DE LA EVALUACIÓN / ESPECIALIDAD (FILTRANDO DUPLICADOS DE SIGNOS VITALES) */}
+                {/* SECCIONES DINÁMICAS DE LA EVALUACIÓN / ESPECIALIDAD (EXCLUYENDO PASOS AUTÓNOMOS Y DUPLICADOS DE SIGNOS VITALES) */}
                 {(() => {
                   const seccionesFiltradas = (plantillaEfectiva?.consulta_secciones || []).filter(
                     (seccion: SeccionClinica) => {
+                      if (seccion.es_paso_independiente) return false;
                       const id = (seccion.id || '').toLowerCase();
                       const tit = (seccion.titulo || '').toLowerCase();
                       return !(
@@ -1699,138 +1940,13 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                   }
 
                   return seccionesFiltradas.map((seccion: SeccionClinica) => (
-                    <Card key={seccion.id} className="border-border/80 shadow-xs">
-                      <CardContent className="p-5 space-y-4">
-                        <div className="border-b border-border/60 pb-2.5">
-                          <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
-                            <FileCheck className="h-4 w-4 text-primary" />
-                            {seccion.titulo}
-                          </h4>
-                          {seccion.descripcion && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {seccion.descripcion}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                          {seccion.campos?.map((campo: CampoClinico) => {
-                            const gridSpan =
-                              campo.grid_cols === 12
-                                ? 'md:col-span-12'
-                                : campo.grid_cols === 4
-                                  ? 'md:col-span-4'
-                                  : campo.grid_cols === 3
-                                    ? 'md:col-span-3'
-                                    : 'md:col-span-6';
-
-                            const valor = datosPlantilla[campo.key] ?? '';
-
-                            return (
-                              <div key={campo.key} className={cn('space-y-1.5', gridSpan)}>
-                                <Label className="text-xs font-semibold flex items-center justify-between">
-                                  <span>
-                                    {campo.label}
-                                    {campo.requerido && (
-                                      <span className="text-destructive ml-0.5">*</span>
-                                    )}
-                                  </span>
-                                  {campo.unidad && (
-                                    <span className="text-[11px] text-muted-foreground font-normal">
-                                      ({campo.unidad})
-                                    </span>
-                                  )}
-                                </Label>
-
-                                {/* RENDERIZADO POR TIPO DE CAMPO */}
-                                {campo.tipo === 'textarea' ? (
-                                  <Textarea
-                                    value={valor}
-                                    onChange={(e) =>
-                                      setDatosPlantilla((prev) => ({
-                                        ...prev,
-                                        [campo.key]: e.target.value,
-                                      }))
-                                    }
-                                    placeholder={campo.placeholder || ''}
-                                    disabled={readOnly}
-                                    rows={3}
-                                  />
-                                ) : campo.tipo === 'select' ? (
-                                  <Select
-                                    value={String(valor)}
-                                    onValueChange={(val) =>
-                                      setDatosPlantilla((prev) => ({
-                                        ...prev,
-                                        [campo.key]: val,
-                                      }))
-                                    }
-                                    disabled={readOnly}
-                                  >
-                                    <SelectTrigger className="h-10">
-                                      <SelectValue placeholder="Seleccione una opción..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {(campo.opciones || []).map((opc) => (
-                                        <SelectItem key={opc} value={opc}>
-                                          {opc}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : campo.tipo === 'boolean' ? (
-                                  <div className="flex items-center gap-3 pt-2">
-                                    <Switch
-                                      checked={Boolean(valor)}
-                                      onCheckedChange={(checked) =>
-                                        setDatosPlantilla((prev) => ({
-                                          ...prev,
-                                          [campo.key]: checked,
-                                        }))
-                                      }
-                                      disabled={readOnly}
-                                    />
-                                    <span className="text-xs text-muted-foreground">
-                                      {Boolean(valor) ? 'Presente / Positivo' : 'Ausente / Negativo'}
-                                    </span>
-                                  </div>
-                                ) : campo.tipo === 'number' ? (
-                                  <Input
-                                    type="number"
-                                    min={campo.min_val ?? undefined}
-                                    max={campo.max_val ?? undefined}
-                                    value={valor}
-                                    onChange={(e) =>
-                                      setDatosPlantilla((prev) => ({
-                                        ...prev,
-                                        [campo.key]: e.target.value,
-                                      }))
-                                    }
-                                    placeholder={campo.placeholder || ''}
-                                    disabled={readOnly}
-                                    className="h-10 font-mono"
-                                  />
-                                ) : (
-                                  <Input
-                                    type="text"
-                                    value={valor}
-                                    onChange={(e) =>
-                                      setDatosPlantilla((prev) => ({
-                                        ...prev,
-                                        [campo.key]: e.target.value,
-                                      }))
-                                    }
-                                    placeholder={campo.placeholder || ''}
-                                    disabled={readOnly}
-                                    className="h-10"
-                                  />
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <SeccionCamposRender
+                      key={seccion.id}
+                      seccion={seccion}
+                      datosPlantilla={datosPlantilla}
+                      setDatosPlantilla={setDatosPlantilla}
+                      readOnly={readOnly}
+                    />
                   ));
                 })()}
 
@@ -1895,6 +2011,38 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
             )}
           </div>
         )}
+
+        {/* ======================================================== */}
+        {/* ── PASOS AUTÓNOMOS DE LA ESPECIALIDAD (DINÁMICOS) ────── */}
+        {/* ======================================================== */}
+        {seccionesAutonomas.map((sec) => {
+          if (currentStep !== `sec_${sec.id}`) return null;
+          return (
+            <div key={sec.id} className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
+                <div>
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Stethoscope className="h-5 w-5 text-primary" />
+                    <span>{sec.titulo}</span>
+                    <Badge variant="secondary" className="text-xs font-semibold bg-primary/10 text-primary">
+                      Paso Autónomo: {consulta?.especialidad?.nombre || 'Especialidad'}
+                    </Badge>
+                  </h3>
+                  {sec.descripcion && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{sec.descripcion}</p>
+                  )}
+                </div>
+              </div>
+
+              <SeccionCamposRender
+                seccion={sec}
+                datosPlantilla={datosPlantilla}
+                setDatosPlantilla={setDatosPlantilla}
+                readOnly={readOnly}
+              />
+            </div>
+          );
+        })}
 
         {/* ======================================================== */}
         {/* ── PASO 4: ESTUDIOS Y EXÁMENES (VISOR + SOLICITUD) ──── */}
