@@ -245,6 +245,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       icon: Settings,
       children: [
         {
+          title: 'CMS Landing Page',
+          href: '/administracion/landing-cms',
+          icon: Sparkles,
+          badge: 'Web',
+          badgeVariant: 'secondary',
+        },
+        {
           title: 'Países & Localización',
           href: '/seguridad/paises',
           icon: Globe,

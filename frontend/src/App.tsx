@@ -67,6 +67,8 @@ const TurneroPantallaPage = lazyComponent(() => import('./pages/clinica/TurneroP
 const ConsultasPage = lazyComponent(() => import('./pages/clinica/ConsultasPage'), 'ConsultasPage');
 const ConsultaAtencionPage = lazyComponent<{ readOnly?: boolean }>(() => import('./pages/clinica/ConsultaAtencionPage'), 'ConsultaAtencionPage');
 const ServiciosPage = lazyComponent(() => import('./pages/administracion/ServiciosPage'), 'ServiciosPage');
+const LandingPage = lazyComponent(() => import('./pages/public/LandingPage'), 'LandingPage');
+const LandingCmsPage = lazyComponent(() => import('./pages/administracion/LandingCmsPage'), 'LandingCmsPage');
 
 const HomeRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -85,6 +87,8 @@ export const App: React.FC = () => {
             <Suspense fallback={<PageLoadingFallback />}>
               <Routes>
                 {/* Rutas Públicas */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/landing" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Login initialView="register" />} />
             <Route path="/verify-whatsapp" element={<Login initialView="verify-whatsapp" />} />
@@ -94,14 +98,12 @@ export const App: React.FC = () => {
 
             {/* Rutas Protegidas dentro de AdminLayout */}
             <Route
-              path="/"
               element={
                 <ProtectedRoute>
                   <AdminLayout />
                 </ProtectedRoute>
               }
             >
-              <Route index element={<HomeRedirect />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="medico/dashboard" element={<MedicoDashboardPage />} />
               <Route path="perfil" element={<Perfil />} />
@@ -194,6 +196,14 @@ export const App: React.FC = () => {
               <Route
                 path="clinica/servicios"
                 element={<Navigate to="/administracion/servicios" replace />}
+              />
+              <Route
+                path="administracion/landing-cms"
+                element={
+                  <ProtectedRoute requireSuperAdmin>
+                    <LandingCmsPage />
+                  </ProtectedRoute>
+                }
               />
 
               {/* Módulos de Seguridad y Multi-Tenant */}

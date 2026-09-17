@@ -21,6 +21,7 @@ from app.api.v1.servicios import router as servicios_router
 from app.api.v1.turnero import router as turnero_router
 from app.api.v1.estudios import router as estudios_router
 from app.api.v1.chat import router as chat_router
+from app.api.v1.landing import router as landing_router
 
 api_router = APIRouter()
 
@@ -46,5 +47,6 @@ api_router.include_router(servicios_router)
 api_router.include_router(turnero_router)
 api_router.include_router(estudios_router)
 api_router.include_router(chat_router)
+api_router.include_router(landing_router)
 
 
