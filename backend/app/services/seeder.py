@@ -780,3 +780,18 @@ async def seed_initial_data(db: AsyncSession):
             db.add(plantilla)
 
     await db.commit()
+
+    # 7. Sembrar Médicos Especialistas y Usuarios de Acceso
+    try:
+        from scripts.seed_medicos import seed_medicos_all
+        await seed_medicos_all()
+    except Exception as e:
+        print(f"Nota sobre seed_medicos: {e}")
+
+    # 8. Sembrar Tipos de Servicio Clínico por Especialidad
+    try:
+        from scripts.seed_servicios import seed_servicios_all
+        await seed_servicios_all()
+    except Exception as e:
+        print(f"Nota sobre seed_servicios: {e}")
+
