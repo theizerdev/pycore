@@ -105,8 +105,9 @@ const KpiCard: React.FC<KpiCardProps> = ({ label, value, icon, colorClass, sub, 
 export const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
 
-  // Guard: solo empresa_id === 1
-  if (!user || user.empresa_id !== 1) {
+  // Guard: solo superadmin o empresa_id === 1
+  const isSuperAdmin = Boolean(user?.es_superadmin || user?.empresa_id === 1);
+  if (!user || !isSuperAdmin) {
     return <Navigate to="/dashboard" replace />;
   }
 

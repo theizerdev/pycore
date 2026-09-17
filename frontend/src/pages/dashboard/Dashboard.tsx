@@ -108,6 +108,11 @@ const KpiCard: React.FC<KpiCardProps> = ({ label, value, icon, colorClass, sub, 
 export const Dashboard: React.FC = () => {
   const { user, sucursalActiva } = useAuth();
 
+  // Redirect superadmin to admin dashboard
+  if (user?.es_superadmin || user?.empresa_id === 1) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
   // Redirect doctors
   if (user?.rol?.slug === 'medico') {
     return <Navigate to="/medico/dashboard" replace />;

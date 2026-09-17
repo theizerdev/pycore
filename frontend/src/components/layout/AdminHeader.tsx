@@ -190,7 +190,10 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ onToggleMenu, collapse
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link to="/dashboard" className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
+                <Link
+                  to={user?.rol?.slug === 'medico' ? '/medico/dashboard' : (user?.es_superadmin || user?.empresa_id === 1) ? '/admin/dashboard' : '/dashboard'}
+                  className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
+                >
                   <Home className="size-3.5" />
                   <span>Inicio</span>
                 </Link>

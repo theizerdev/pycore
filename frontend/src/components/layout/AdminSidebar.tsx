@@ -100,14 +100,15 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   );
 
   const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+  const isSuperAdmin = Boolean(user?.es_superadmin || user?.empresa_id === 1);
 
   // Definición completa de la estructura de menú agrupada por sectores
   const menuStructure: SectorMenuItem[] = [
     {
       id: 'dashboard',
-      title: isDoctorUser ? 'Panel Médico' : 'Dashboard',
+      title: isDoctorUser ? 'Panel Médico' : isSuperAdmin ? 'Panel Principal' : 'Dashboard',
       sectorKey: 'inicio',
-      href: isDoctorUser ? '/medico/dashboard' : '/dashboard',
+      href: isDoctorUser ? '/medico/dashboard' : isSuperAdmin ? '/admin/dashboard' : '/dashboard',
       icon: LayoutDashboard,
     },
     {
@@ -383,7 +384,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       >
         {/* Logo area */}
         <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
-          <Link to="/dashboard" className="flex items-center gap-3 overflow-hidden">
+          <Link
+            to={isDoctorUser ? '/medico/dashboard' : isSuperAdmin ? '/admin/dashboard' : '/dashboard'}
+            className="flex items-center gap-3 overflow-hidden"
+          >
             {user?.empresa?.logo_mini_url || user?.empresa?.logo_mini_dark_url || user?.empresa?.logo_url ? (
               <img
                 src={

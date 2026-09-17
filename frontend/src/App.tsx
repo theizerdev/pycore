@@ -76,6 +76,9 @@ const HomeRedirect: React.FC = () => {
   if (user?.rol?.slug === 'medico') {
     return <Navigate to="/medico/dashboard" replace />;
   }
+  if (user?.es_superadmin || user?.empresa_id === 1) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
   return <Navigate to="/dashboard" replace />;
 };
 
