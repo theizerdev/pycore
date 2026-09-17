@@ -175,49 +175,73 @@ export const LandingPage: React.FC = () => {
       {/* 1. NAVBAR DE NAVEGACIÓN                                                   */}
       {/* ========================================================================= */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-white/85 dark:bg-slate-950/85 border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-3">
           {/* Brand Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
+          <Link to="/" className="flex items-center gap-3 group shrink-0 mr-2 xl:mr-6">
             <img
               src={isDarkMode ? '/medisoft_logo_dark.png' : '/medisoft_logo_light.png'}
               alt="MediSoft Suite"
-              className="h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
+              className="h-9 xl:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
             />
           </Link>
 
           {/* Enlaces de Navegación de Escritorio */}
-          <div className="hidden lg:flex items-center gap-7 text-sm font-semibold text-slate-600 dark:text-slate-300">
-            <a href="#modulos" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+          <div className="hidden lg:flex items-center gap-1 xl:gap-1.5 text-[13px] xl:text-sm font-semibold text-slate-600 dark:text-slate-300">
+            <a
+              href="#modulos"
+              className="px-2.5 xl:px-3 py-1.5 rounded-xl hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50/70 dark:hover:bg-slate-800/70 transition-all whitespace-nowrap"
+            >
               Módulos
             </a>
-            <a href="#especialidades" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+            <a
+              href="#especialidades"
+              className="px-2.5 xl:px-3 py-1.5 rounded-xl hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50/70 dark:hover:bg-slate-800/70 transition-all whitespace-nowrap"
+            >
               Especialidades
             </a>
-            <a href="#beneficios" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+            <a
+              href="#beneficios"
+              className="hidden xl:inline-block px-2.5 xl:px-3 py-1.5 rounded-xl hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50/70 dark:hover:bg-slate-800/70 transition-all whitespace-nowrap"
+            >
               Ventajas
             </a>
-            <a href="#planes" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+            <a
+              href="#planes"
+              className="px-2.5 xl:px-3 py-1.5 rounded-xl hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50/70 dark:hover:bg-slate-800/70 transition-all whitespace-nowrap"
+            >
               Planes
             </a>
-            <a href="#clientes" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+            <a
+              href="#clientes"
+              className="px-2.5 xl:px-3 py-1.5 rounded-xl hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50/70 dark:hover:bg-slate-800/70 transition-all whitespace-nowrap"
+            >
               Clientes
             </a>
-            <a href="#testimonios" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+            <a
+              href="#testimonios"
+              className="hidden 2xl:inline-block px-2.5 xl:px-3 py-1.5 rounded-xl hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50/70 dark:hover:bg-slate-800/70 transition-all whitespace-nowrap"
+            >
               Testimonios
             </a>
-            <a href="#faq" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
-              Preguntas
+            <a
+              href="#faq"
+              className="px-2.5 xl:px-3 py-1.5 rounded-xl hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50/70 dark:hover:bg-slate-800/70 transition-all whitespace-nowrap"
+            >
+              FAQ
             </a>
-            <a href="#contacto" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+            <a
+              href="#contacto"
+              className="px-2.5 xl:px-3 py-1.5 rounded-xl hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50/70 dark:hover:bg-slate-800/70 transition-all whitespace-nowrap"
+            >
               Contacto
             </a>
           </div>
 
           {/* Botones de Acción y Tema */}
-          <div className="hidden sm:flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 xl:gap-3 shrink-0 ml-2 xl:ml-6">
             <button
               onClick={toggleTheme}
-              className="p-2.5 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors shrink-0"
               title={isDarkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
               aria-label="Cambiar tema"
             >
@@ -227,7 +251,7 @@ export const LandingPage: React.FC = () => {
             {user ? (
               <Link
                 to={user.rol?.slug === 'medico' ? '/medico/dashboard' : '/dashboard'}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-md shadow-teal-500/20 transition-all hover:scale-[1.02]"
+                className="whitespace-nowrap inline-flex items-center gap-2 px-4 xl:px-5 py-2 xl:py-2.5 rounded-xl text-xs xl:text-sm font-semibold text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-md shadow-teal-500/20 transition-all hover:scale-[1.02] shrink-0"
               >
                 <span>Ir al Panel</span>
                 <ArrowRight className="size-4" />
@@ -236,13 +260,13 @@ export const LandingPage: React.FC = () => {
               <>
                 <Link
                   to="/login"
-                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className="whitespace-nowrap px-3.5 xl:px-4 py-2 xl:py-2.5 rounded-xl text-xs xl:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors shrink-0"
                 >
                   Iniciar Sesión
                 </Link>
                 <Link
                   to="/register"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-md shadow-teal-500/20 transition-all hover:scale-[1.02]"
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 xl:gap-2 px-4 xl:px-5 py-2 xl:py-2.5 rounded-xl text-xs xl:text-sm font-semibold text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-md shadow-teal-500/20 transition-all hover:scale-[1.02] shrink-0"
                 >
                   <span>Prueba Gratis</span>
                   <ArrowRight className="size-4" />
@@ -319,6 +343,13 @@ export const LandingPage: React.FC = () => {
               className="py-2 text-sm font-medium text-slate-700 dark:text-slate-300"
             >
               Preguntas Frecuentes
+            </a>
+            <a
+              href="#contacto"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-2 text-sm font-medium text-teal-600 dark:text-teal-400 font-semibold"
+            >
+              Contacto
             </a>
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
               <Link
