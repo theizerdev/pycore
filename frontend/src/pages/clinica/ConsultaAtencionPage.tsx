@@ -11,6 +11,7 @@ import { especialidadesApi } from '../../api/especialidades';
 import type { PlantillaEfectiva, SeccionClinica, CampoClinico } from '../../types';
 import OdontogramaWidget, { type OdontogramaData } from '../../components/clinica/OdontogramaWidget';
 import RefraccionWidget, { type RefraccionData } from '../../components/clinica/RefraccionWidget';
+import MotorExploracionOftalmologica, { type ExploracionOftalmologicaData } from '../../components/clinica/MotorExploracionOftalmologica';
 import SignosVitalesWidget from '../../components/clinica/SignosVitalesWidget';
 import PrescripcionRecetaWidget from '../../components/clinica/PrescripcionRecetaWidget';
 import EstudiosSolicitadosWidget from '../../components/clinica/EstudiosSolicitadosWidget';
@@ -1894,6 +1895,55 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                             }));
                           }
                         }}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* MOTOR DE EXPLORACIÓN OFTALMOLÓGICA (23 REGIONES A.12) SI ES OFTALMOLOGÍA */}
+                {((consulta?.especialidad?.nombre || '').toLowerCase().includes('oftalmo') ||
+                  (plantillaEfectiva?.widgets_activos || []).includes('motor_oftalmologia') ||
+                  (plantillaEfectiva?.widgets_activos || []).includes('refraccion')) && (
+                  <Card className="border-border/80 shadow-xs">
+                    <CardContent className="p-5 space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                        <div className="flex items-center gap-2">
+                          <Eye className="h-5 w-5 text-sky-500" />
+                          <div>
+                            <h4 className="text-base font-bold text-foreground">
+                              Biomicroscopía y Exploración Oftalmológica Integral (A.12)
+                            </h4>
+                            <p className="text-xs text-muted-foreground">
+                              Exploración estructurada en 23 regiones anatómicas con registro de hallazgos y notas clínicas por región
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-xs font-semibold bg-sky-500/10 text-sky-700 dark:text-sky-300">
+                          Exclusivo Oftalmología
+                        </Badge>
+                      </div>
+
+                      <MotorExploracionOftalmologica
+                        initialData={datosPlantilla.exploracion_oftalmologica as ExploracionOftalmologicaData}
+                        onChange={(expData) => {
+                          if (!readOnly) {
+                            setDatosPlantilla((prev) => ({
+                              ...prev,
+                              exploracion_oftalmologica: expData,
+                            }));
+                          }
+                        }}
+                        onInsertarEnEvaluacion={(narrativa) => {
+                          if (!readOnly) {
+                            setDatosPlantilla((prev) => ({
+                              ...prev,
+                              examen_fisico_general: prev.examen_fisico_general
+                                ? `${prev.examen_fisico_general}\n\n${narrativa}`
+                                : narrativa,
+                            }));
+                          }
+                        }}
+                        readOnly={readOnly}
                       />
                     </CardContent>
                   </Card>

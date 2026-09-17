@@ -785,7 +785,7 @@ DEFAULT_CLINICAL_TEMPLATES: Dict[str, Dict[str, Any]] = {
     },
 
     "oftalmologia": {
-        "widgets_activos": ["refraccion"],
+        "widgets_activos": ["refraccion", "motor_oftalmologia"],
         "flujo_pasos": [1, 3, 4, 5, 6],
         "paso_inicial": 1,
         "esquema_preconsulta": [

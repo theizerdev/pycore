@@ -74,6 +74,7 @@ import {
 } from 'lucide-react';
 import OdontogramaWidget from '../../components/clinica/OdontogramaWidget';
 import RefraccionWidget from '../../components/clinica/RefraccionWidget';
+import MotorExploracionOftalmologica from '../../components/clinica/MotorExploracionOftalmologica';
 import { PASOS_WIZARD_INFO } from './EspecialidadesPage';
 
 interface EspecialidadPlantillaModalProps {
@@ -1138,6 +1139,18 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                             disabled={!canEdit}
                           />
                         </div>
+
+                        <div className="p-2.5 rounded-lg border border-border/80 bg-card flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-bold text-foreground">Exploración Oftalmológica A.12</p>
+                            <p className="text-[10px] text-muted-foreground">23 regiones anatómicas y notas</p>
+                          </div>
+                          <Switch
+                            checked={activeWidgets.includes('motor_oftalmologia')}
+                            onCheckedChange={() => handleToggleWidget('motor_oftalmologia')}
+                            disabled={!canEdit}
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -1810,6 +1823,14 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                         {(plantillaEfectiva?.widgets_activos || activeWidgets || []).includes('refraccion') && (
                           <div className="mb-4">
                             <RefraccionWidget />
+                          </div>
+                        )}
+
+                        {/* WIDGET INTERACTIVO DE MOTOR DE EXPLORACIÓN OFTALMOLÓGICA */}
+                        {((plantillaEfectiva?.widgets_activos || activeWidgets || []).includes('motor_oftalmologia') ||
+                          especialidad?.nombre?.toLowerCase().includes('oftalmo')) && (
+                          <div className="mb-4">
+                            <MotorExploracionOftalmologica />
                           </div>
                         )}
 
