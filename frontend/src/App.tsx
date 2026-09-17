@@ -35,6 +35,7 @@ const Login = lazyComponent<{ initialView?: string }>(() => import('./pages/auth
 const ForgotPassword = lazyComponent(() => import('./pages/auth/ForgotPassword'), 'ForgotPassword');
 const Perfil = lazyComponent(() => import('./pages/auth/Perfil'), 'Perfil');
 const Dashboard = lazyComponent(() => import('./pages/dashboard/Dashboard'), 'Dashboard');
+const AdminDashboardPage = lazyComponent(() => import('./pages/administracion/AdminDashboardPage'), 'AdminDashboardPage');
 const MedicoDashboardPage = lazyComponent(() => import('./pages/clinica/MedicoDashboardPage'), 'MedicoDashboardPage');
 
 const EmpresasPage = lazyComponent(() => import('./pages/seguridad/EmpresasPage'), 'EmpresasPage');
@@ -105,6 +106,7 @@ export const App: React.FC = () => {
               }
             >
               <Route path="dashboard" element={<Dashboard />} />
+              <Route path="admin/dashboard" element={<AdminDashboardPage />} />
               <Route path="medico/dashboard" element={<MedicoDashboardPage />} />
               <Route path="perfil" element={<Perfil />} />
 
