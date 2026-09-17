@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { especialidadesApi } from '../../api/especialidades';
 import { sucursalesApi } from '../../api/sucursales';
-import type { Especialidad, EspecialidadCreateInput, EspecialidadUpdateInput, Sucursal } from '../../types';
+import { medicosApi } from '../../api/medicos';
+import type { Especialidad, EspecialidadCreateInput, EspecialidadUpdateInput, Sucursal, Medico } from '../../types';
 import { toast } from 'sonner';
 import {
   Stethoscope,
@@ -36,6 +38,17 @@ import {
   ClipboardList,
   FlaskConical,
   ArrowRight,
+  Users,
+  Copy,
+  Download,
+  FileSpreadsheet,
+  Microscope,
+  Dna,
+  Scissors,
+  Glasses,
+  Phone,
+  Mail,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { EspecialidadPlantillaModal } from './EspecialidadPlantillaModal';
@@ -142,7 +155,11 @@ const CLINICAL_ICONS: Record<string, React.ComponentType<{ className?: string }>
   Syringe,
   Pill,
   Thermometer,
-  Sparkles
+  Microscope,
+  Dna,
+  Scissors,
+  Glasses,
+  Sparkles,
 };
 
 // Paleta de colores clínicos predeterminados
@@ -157,12 +174,16 @@ const PRESET_COLORS = [
   { name: 'Verde Nutrición', hex: '#10b981' },
   { name: 'Índigo Neurológico', hex: '#6366f1' },
   { name: 'Cyan Odontológico', hex: '#06b6d4' },
+  { name: 'Ámbar Dermatológico', hex: '#d97706' },
+  { name: 'Esmeralda Fisioterapia', hex: '#059669' },
 ];
 
 export const EspecialidadesPage: React.FC = () => {
+  const navigate = useNavigate();
   const { user, sucursalActiva, hasPermission } = useAuth();
 
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
+  const [medicosList, setMedicosList] = useState<Medico[]>([]);
   const [sucursalesList, setSucursalesList] = useState<Sucursal[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -183,6 +204,15 @@ export const EspecialidadesPage: React.FC = () => {
   // Modal Plantilla Clínica Dinámica
   const [plantillaModalOpen, setPlantillaModalOpen] = useState<boolean>(false);
   const [selectedEspForPlantilla, setSelectedEspForPlantilla] = useState<Especialidad | null>(null);
+
+  // Modal Especialistas de la Especialidad
+  const [doctorsModalOpen, setDoctorsModalOpen] = useState<boolean>(false);
+  const [selectedEspForDoctors, setSelectedEspForDoctors] = useState<Especialidad | null>(null);
+
+  const handleOpenDoctors = (esp: Especialidad) => {
+    setSelectedEspForDoctors(esp);
+    setDoctorsModalOpen(true);
+  };
 
   const handleOpenPlantilla = (esp: Especialidad) => {
     setSelectedEspForPlantilla(esp);
@@ -219,11 +249,15 @@ export const EspecialidadesPage: React.FC = () => {
   const fetchEspecialidades = async () => {
     setLoading(true);
     try {
-      const data = await especialidadesApi.list({
-        sucursal_id: branchFilter === 'all' ? undefined : Number(branchFilter),
-        include_global: true
-      });
+      const [data, meds] = await Promise.all([
+        especialidadesApi.list({
+          sucursal_id: branchFilter === 'all' ? undefined : Number(branchFilter),
+          include_global: true
+        }),
+        medicosApi.list().catch(() => [])
+      ]);
       setEspecialidades(data);
+      setMedicosList(meds);
     } catch (err: any) {
       toast.error('Error al cargar especialidades médicas', {
         description: err.response?.data?.detail || 'No se pudo conectar con el servidor'
@@ -301,6 +335,57 @@ export const EspecialidadesPage: React.FC = () => {
       paso_inicial: 1,
     });
     setIsModalOpen(true);
+  };
+
+  // Duplicar Especialidad
+  const handleDuplicate = (esp: Especialidad) => {
+    setEditingEspecialidad(null);
+    const pasos = esp.pasos_activos && esp.pasos_activos.length > 0 ? esp.pasos_activos : [1, 2, 3, 4, 5, 6];
+    const inicial = esp.paso_inicial || pasos[0] || 1;
+    setFormData({
+      nombre: `${esp.nombre} (Copia)`,
+      codigo: esp.codigo ? `${esp.codigo}-COP` : '',
+      descripcion: esp.descripcion || '',
+      color: esp.color || '#0d9488',
+      icono: esp.icono || 'Stethoscope',
+      activo: true,
+      sucursal_id: esp.sucursal_id ? String(esp.sucursal_id) : 'global',
+      pasos_activos: pasos,
+      paso_inicial: inicial,
+    });
+    setIsModalOpen(true);
+    toast.info(`Especialidad duplicada como borrador: "${esp.nombre} (Copia)"`);
+  };
+
+  // Exportar listado a CSV
+  const handleExportCSV = () => {
+    if (filteredEspecialidades.length === 0) {
+      toast.error('No hay especialidades para exportar');
+      return;
+    }
+    const headers = ['ID', 'Nombre', 'Código', 'Sede', 'Estado', 'Especialistas Asignados', 'Pasos Wizard', 'Descripción'];
+    const rows = filteredEspecialidades.map((e) => {
+      const docsCount = medicosList.filter((m) => m.especialidad_id === e.id).length;
+      return [
+        e.id,
+        `"${(e.nombre || '').replace(/"/g, '""')}"`,
+        `"${(e.codigo || '').replace(/"/g, '""')}"`,
+        `"${(e.sucursal?.nombre || 'Todas las Sedes (Global)').replace(/"/g, '""')}"`,
+        e.activo ? 'Activa' : 'Inactiva',
+        docsCount,
+        `${e.pasos_activos?.length || 6}/6`,
+        `"${(e.descripcion || '').replace(/"/g, '""')}"`,
+      ].join(',');
+    });
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `especialidades_medisoft_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Listado de especialidades exportado a CSV con éxito');
   };
 
   // Abrir Modal Editar
@@ -501,7 +586,7 @@ export const EspecialidadesPage: React.FC = () => {
       </div>
 
       {/* ── TARJETAS KPI DE RESUMEN ───────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
         <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
@@ -529,12 +614,24 @@ export const EspecialidadesPage: React.FC = () => {
         <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Especialistas</p>
+              <h3 className="text-2xl font-black text-teal-600 dark:text-teal-400 mt-1">{medicosList.length}</h3>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+              <Users className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
               <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 {sucursalActiva ? 'En esta Sede' : 'Por Sedes'}
               </p>
-              <h3 className="text-2xl font-black text-teal-600 dark:text-teal-400 mt-1">{stats.inCurrentBranch}</h3>
+              <h3 className="text-2xl font-black text-sky-600 dark:text-sky-400 mt-1">{stats.inCurrentBranch}</h3>
             </div>
-            <div className="flex size-10 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
               <MapPin className="size-5" />
             </div>
           </CardContent>
@@ -598,8 +695,19 @@ export const EspecialidadesPage: React.FC = () => {
           )}
         </div>
 
-        {/* Selector de Modo Vista y Recargar */}
+        {/* Selector de Modo Vista, Exportar y Recargar */}
         <div className="flex items-center gap-1.5 self-end sm:self-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            className="h-9 px-2.5 text-xs gap-1.5 cursor-pointer text-muted-foreground hover:text-foreground border-border/80"
+            title="Exportar especialidades a CSV"
+          >
+            <Download className="size-3.5" />
+            <span className="hidden sm:inline">Exportar CSV</span>
+          </Button>
+
           <Button
             variant="ghost"
             size="icon"
@@ -729,6 +837,35 @@ export const EspecialidadesPage: React.FC = () => {
                         </Badge>
                       )}
                     </div>
+
+                    {/* Especialistas Asignados */}
+                    {(() => {
+                      const espDocs = medicosList.filter((m) => m.especialidad_id === esp.id);
+                      return (
+                        <div className="pt-2 flex items-center justify-between border-t border-border/40 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDoctors(esp)}
+                            className="flex items-center gap-1.5 text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors cursor-pointer group/doc"
+                            title="Ver especialistas adscritos a esta especialidad"
+                          >
+                            <Users className="size-3.5 transition-transform group-hover/doc:scale-110" />
+                            <span>
+                              {espDocs.length === 0
+                                ? 'Sin especialistas'
+                                : espDocs.length === 1
+                                ? '1 especialista'
+                                : `${espDocs.length} especialistas`}
+                            </span>
+                          </button>
+                          {espDocs.length > 0 && (
+                            <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.2 rounded">
+                              {espDocs.filter((d) => d.activo).length} activos
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </CardHeader>
 
@@ -757,6 +894,17 @@ export const EspecialidadesPage: React.FC = () => {
                       <Sliders className="size-3 mr-1 text-teal-600 dark:text-teal-400" />
                       <span>Plantilla</span>
                     </Button>
+                    {canCreate && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDuplicate(esp)}
+                        className="size-7 text-muted-foreground hover:text-primary cursor-pointer"
+                        title="Duplicar especialidad"
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
+                    )}
                     {canEdit && (
                       <Button
                         variant="ghost"
@@ -794,6 +942,7 @@ export const EspecialidadesPage: React.FC = () => {
                 <tr>
                   <th className="px-4 py-3">Especialidad</th>
                   <th className="px-4 py-3">Código</th>
+                  <th className="px-4 py-3">Especialistas</th>
                   <th className="px-4 py-3">Sede Asignada</th>
                   <th className="px-4 py-3">Descripción</th>
                   <th className="px-4 py-3 text-center">Estado</th>
@@ -832,6 +981,26 @@ export const EspecialidadesPage: React.FC = () => {
                         {esp.codigo || '—'}
                       </td>
                       <td className="px-4 py-3">
+                        {(() => {
+                          const espDocs = medicosList.filter((m) => m.especialidad_id === esp.id);
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDoctors(esp)}
+                              className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border cursor-pointer transition-colors ${
+                                espDocs.length > 0
+                                  ? 'bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20 hover:bg-teal-500/20'
+                                  : 'bg-muted/40 text-muted-foreground border-border/50 hover:bg-muted'
+                              }`}
+                              title="Ver especialistas asignados"
+                            >
+                              <Users className="size-3" />
+                              <span>{espDocs.length}</span>
+                            </button>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3">
                         <Badge variant="secondary" className="text-[10px] font-normal flex items-center gap-1 w-fit">
                           <MapPin className="size-2.5" />
                           <span>{esp.sucursal?.nombre || 'Todas las Sedes (Global)'}</span>
@@ -864,6 +1033,17 @@ export const EspecialidadesPage: React.FC = () => {
                             <Sliders className="size-3 mr-1 text-teal-600 dark:text-teal-400" />
                             <span>Plantilla</span>
                           </Button>
+                          {canCreate && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDuplicate(esp)}
+                              className="size-7 text-muted-foreground hover:text-primary cursor-pointer"
+                              title="Duplicar especialidad"
+                            >
+                              <Copy className="size-3.5" />
+                            </Button>
+                          )}
                           {canEdit && (
                             <Button
                               variant="ghost"
@@ -1191,6 +1371,44 @@ export const EspecialidadesPage: React.FC = () => {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Previsualización en Vivo de Pestañas de Consulta */}
+              <div className="p-3 rounded-lg bg-background/90 border border-border/80 space-y-2 mt-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Activity className="size-3.5 text-teal-600 dark:text-teal-400" />
+                    Simulador del Wizard de Consulta
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20 px-1.5 py-0 font-medium">
+                    {formData.pasos_activos.length} de 6 pestañas activas
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                  {PASOS_WIZARD_INFO.filter((p) => formData.pasos_activos.includes(p.num)).map((step, idx) => {
+                    const isStart = formData.paso_inicial === step.num;
+                    const StepIcon = step.icon;
+                    return (
+                      <div
+                        key={step.num}
+                        className={cn(
+                          'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium shrink-0 border transition-all',
+                          isStart
+                            ? 'bg-teal-500/15 border-teal-500/40 text-teal-700 dark:text-teal-300 font-bold ring-1 ring-teal-500/30 shadow-2xs'
+                            : 'bg-muted/40 border-border/60 text-muted-foreground'
+                        )}
+                      >
+                        <StepIcon className="size-3 shrink-0" />
+                        <span>{idx + 1}. {step.shortLabel}</span>
+                        {isStart && (
+                          <span className="text-[8px] bg-teal-600 text-white px-1 py-0.2 rounded font-bold uppercase tracking-wider">
+                            Inicio
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Switch de Estado Activo */}
@@ -1281,6 +1499,135 @@ export const EspecialidadesPage: React.FC = () => {
         especialidad={selectedEspForPlantilla}
         onSaved={fetchEspecialidades}
       />
+
+      {/* ── MODAL: VER ESPECIALISTAS ASIGNADOS A LA ESPECIALIDAD ────────── */}
+      <Dialog open={doctorsModalOpen} onOpenChange={setDoctorsModalOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl rounded-2xl">
+          <DialogHeader className="p-4 px-6 border-b border-border/80 bg-muted/20 flex-row items-center justify-between space-y-0 shrink-0">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex size-10 items-center justify-center rounded-xl shadow-2xs shrink-0"
+                style={{
+                  backgroundColor: `${selectedEspForDoctors?.color || '#0d9488'}20`,
+                  color: selectedEspForDoctors?.color || '#0d9488',
+                }}
+              >
+                {renderIcon(selectedEspForDoctors?.icono, selectedEspForDoctors?.color)}
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">
+                  Especialistas en {selectedEspForDoctors?.nombre}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Médicos y profesionales de la salud adscritos a este servicio
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="p-4 overflow-y-auto space-y-2.5 max-h-[55vh]">
+            {(() => {
+              if (!selectedEspForDoctors) return null;
+              const docs = medicosList.filter((m) => m.especialidad_id === selectedEspForDoctors.id);
+              if (docs.length === 0) {
+                return (
+                  <div className="text-center py-8 space-y-3">
+                    <div className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground mx-auto">
+                      <Users className="size-6 opacity-60" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">No hay especialistas registrados</p>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                        Actualmente no hay médicos asignados a {selectedEspForDoctors.nombre}.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setDoctorsModalOpen(false);
+                        navigate('/clinica/doctores');
+                      }}
+                      className="text-xs bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+                    >
+                      <Plus className="size-3.5 mr-1" />
+                      Gestionar o Asignar Médicos
+                    </Button>
+                  </div>
+                );
+              }
+
+              return docs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between p-3 rounded-xl border border-border/70 bg-card hover:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="size-10 rounded-full bg-teal-600/15 text-teal-700 dark:text-teal-300 font-bold flex items-center justify-center text-xs shrink-0 border border-teal-500/20">
+                      {doc.nombres.charAt(0)}{doc.apellidos.charAt(0)}
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-foreground">
+                        Dr(a). {doc.nombres} {doc.apellidos}
+                      </h4>
+                      <p className="text-[11px] text-muted-foreground">
+                        Documento: <span className="font-mono">{doc.tipo_documento}-{doc.documento_identidad}</span>
+                        {doc.licencia_medica && <span> • Licencia: {doc.licencia_medica}</span>}
+                      </p>
+                      {doc.sucursal_nombre && (
+                        <p className="text-[10px] text-teal-600 dark:text-teal-400 font-medium mt-0.5">
+                          📍 Sede: {doc.sucursal_nombre}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {doc.telefono && (
+                      <a
+                        href={`https://wa.me/${doc.telefono.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 text-muted-foreground hover:text-emerald-600 rounded-md hover:bg-emerald-500/10 transition-colors"
+                        title="Contactar por WhatsApp"
+                      >
+                        <Phone className="size-3.5" />
+                      </a>
+                    )}
+                    <Badge
+                      variant={doc.activo ? 'outline' : 'secondary'}
+                      className={doc.activo ? 'text-emerald-600 border-emerald-500/30 text-[10px]' : 'text-muted-foreground text-[10px]'}
+                    >
+                      {doc.activo ? 'Activo' : 'Inactivo'}
+                    </Badge>
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+
+          <DialogFooter className="p-3 px-6 border-t border-border/80 bg-muted/20 flex sm:justify-between items-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDoctorsModalOpen(false);
+                navigate('/clinica/doctores');
+              }}
+              className="text-xs gap-1.5 cursor-pointer text-muted-foreground hover:text-foreground"
+            >
+              <ExternalLink className="size-3.5" />
+              <span>Ver en Gestión de Médicos</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setDoctorsModalOpen(false)}
+              className="text-xs cursor-pointer"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
