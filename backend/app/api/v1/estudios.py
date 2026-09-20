@@ -281,14 +281,71 @@ def ejecutar_bot_analisis_imagenologia(titulo: str, subtipo: Optional[str], dato
 async def listar_estudios_paciente(
     paciente_id: int,
     categoria: Optional[str] = Query(None, description="laboratorio, imagenologia, etc."),
+    consulta_id: Optional[int] = Query(None, description="ID de la consulta médica"),
+    alcance: Optional[str] = Query("todos", description="'todos', 'esta_consulta', 'historial_previo'"),
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    """Obtiene la lista de estudios y exámenes adjuntos de un paciente."""
+    """Obtiene la lista de estudios y exámenes adjuntos de un paciente, con soporte para filtrar por consulta o historial."""
     query = (
         select(EstudioAdjunto)
         .where(
             EstudioAdjunto.paciente_id == paciente_id,
+            EstudioAdjunto.empresa_id == current_user.empresa_id
+        )
+    )
+    if categoria and categoria.lower() != "todos":
+        query = query.where(EstudioAdjunto.categoria == categoria.lower())
+
+    if consulta_id is not None:
+        if alcance == "esta_consulta":
+            query = query.where(EstudioAdjunto.consulta_id == consulta_id)
+        elif alcance == "historial_previo":
+            query = query.where(
+                or_(
+                    EstudioAdjunto.consulta_id != consulta_id,
+                    EstudioAdjunto.consulta_id.is_(None)
+                )
+            )
+
+    query = query.order_by(EstudioAdjunto.fecha_estudio.desc(), EstudioAdjunto.id.desc())
+    res = await db.execute(query)
+    estudios = res.scalars().all()
+
+    return [
+        {
+            "id": e.id,
+            "paciente_id": e.paciente_id,
+            "consulta_id": e.consulta_id,
+            "medico_id": e.medico_id,
+            "titulo": e.titulo,
+            "categoria": e.categoria,
+            "subtipo": e.subtipo,
+            "archivo_nombre": e.archivo_nombre,
+            "archivo_tipo": e.archivo_tipo,
+            "archivo_tamano": e.archivo_tamano,
+            "fecha_estudio": str(e.fecha_estudio),
+            "estado_analisis": e.estado_analisis,
+            "alertas_detectadas": e.alertas_detectadas or [],
+            "notas": e.notas,
+            "created_at": e.created_at.isoformat() if e.created_at else None
+        }
+        for e in estudios
+    ]
+
+
+@router.get("/consulta/{consulta_id}")
+async def listar_estudios_consulta(
+    consulta_id: int,
+    categoria: Optional[str] = Query(None, description="laboratorio, imagenologia, etc."),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """Obtiene la lista de estudios y exámenes adjuntos asociados directamente a una consulta específica."""
+    query = (
+        select(EstudioAdjunto)
+        .where(
+            EstudioAdjunto.consulta_id == consulta_id,
             EstudioAdjunto.empresa_id == current_user.empresa_id
         )
     )

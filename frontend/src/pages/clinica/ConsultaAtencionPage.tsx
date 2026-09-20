@@ -696,6 +696,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   };
 
   useEffect(() => {
+    setConsulta(null);
     fetchConsulta();
   }, [id]);
 
@@ -2259,6 +2260,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
               <TabsContent value="adjuntos" className="mt-4">
                 {consulta.paciente_id ? (
                   <EstudiosArchivosTab
+                    key={`estudios-tab-${consulta.id}-${consulta.paciente_id}`}
                     pacienteId={consulta.paciente_id}
                     consultaId={consulta.id}
                     medicoId={consulta.medico_id || undefined}

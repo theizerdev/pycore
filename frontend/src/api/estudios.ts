@@ -45,9 +45,23 @@ export interface EstudioAdjunto {
 }
 
 export const estudiosApi = {
-  listarPorPaciente: async (pacienteId: number, categoria?: string) => {
-    const params = categoria && categoria !== 'todos' ? { categoria } : {};
+  listarPorPaciente: async (
+    pacienteId: number,
+    categoria?: string,
+    consultaId?: number,
+    alcance?: 'esta_consulta' | 'historial_previo' | 'todos'
+  ) => {
+    const params: Record<string, any> = {};
+    if (categoria && categoria !== 'todos') params.categoria = categoria;
+    if (consultaId) params.consulta_id = consultaId;
+    if (alcance) params.alcance = alcance;
     const { data } = await api.get<EstudioAdjunto[]>(`/estudios/paciente/${pacienteId}`, { params });
+    return data;
+  },
+
+  listarPorConsulta: async (consultaId: number, categoria?: string) => {
+    const params = categoria && categoria !== 'todos' ? { categoria } : {};
+    const { data } = await api.get<EstudioAdjunto[]>(`/estudios/consulta/${consultaId}`, { params });
     return data;
   },
 

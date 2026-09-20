@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   FlaskConical, Image as ImageIcon, Plus, Search,
   Calendar, Trash2, Upload, AlertTriangle, CheckCircle2,
-  RefreshCw, Eye, Sparkles
+  RefreshCw, Eye, Sparkles, History, Stethoscope
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -27,6 +27,9 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('todos');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [alcance, setAlcance] = useState<'esta_consulta' | 'historial_previo' | 'todos'>(
+    consultaId ? 'esta_consulta' : 'todos'
+  );
 
   // Modal de Detalle / Visor Inteligente
   const [selectedEstudioId, setSelectedEstudioId] = useState<number | null>(null);
@@ -58,7 +61,16 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
   };
 
   useEffect(() => {
+    if (consultaId) {
+      setAlcance('esta_consulta');
+    } else {
+      setAlcance('todos');
+    }
+  }, [consultaId]);
+
+  useEffect(() => {
     if (pacienteId) {
+      setEstudios([]);
       fetchEstudios();
     }
   }, [pacienteId, categoriaFiltro]);
@@ -121,6 +133,9 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
       setArchivoBase64('');
       setArchivoNombre('');
       setNotas('');
+      if (consultaId) {
+        setAlcance('esta_consulta');
+      }
       fetchEstudios();
     } catch (err: unknown) {
       toast.error('Error al guardar el estudio adjunto');
@@ -140,14 +155,81 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
     }
   };
 
+  // Separar estudios de esta consulta vs historial
+  const estudiosEstaConsulta = estudios.filter(e => e.consulta_id === consultaId);
+  const estudiosHistorial = estudios.filter(e => !consultaId || e.consulta_id !== consultaId);
+
+  const estudiosSegunAlcance = consultaId
+    ? (alcance === 'esta_consulta' ? estudiosEstaConsulta : estudiosHistorial)
+    : estudios;
+
   // Filtrar por búsqueda
-  const estudiosFiltrados = estudios.filter(e =>
+  const estudiosFiltrados = estudiosSegunAlcance.filter(e =>
     e.titulo.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (e.notas && e.notas.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
     <div className="space-y-5">
+      {/* SELECTOR DE ALCANCE: DE ESTA CONSULTA VS HISTORIAL PREVIO (Solo dentro de una consulta médica) */}
+      {consultaId && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2.5 bg-muted/40 rounded-2xl border border-border">
+          <div className="flex items-center gap-1.5 p-1 bg-background rounded-xl border border-border shadow-xs text-xs">
+            <button
+              type="button"
+              onClick={() => setAlcance('esta_consulta')}
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer',
+                alcance === 'esta_consulta'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              )}
+            >
+              <Stethoscope className="w-3.5 h-3.5" />
+              <span>De esta Consulta</span>
+              <span className={cn(
+                'px-1.5 py-0.5 rounded-full text-[10px] font-bold',
+                alcance === 'esta_consulta'
+                  ? 'bg-primary-foreground/20 text-primary-foreground'
+                  : 'bg-muted text-muted-foreground'
+              )}>
+                {estudiosEstaConsulta.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAlcance('historial_previo')}
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer',
+                alcance === 'historial_previo'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              )}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Historial del Paciente</span>
+              <span className={cn(
+                'px-1.5 py-0.5 rounded-full text-[10px] font-bold',
+                alcance === 'historial_previo'
+                  ? 'bg-primary-foreground/20 text-primary-foreground'
+                  : 'bg-muted text-muted-foreground'
+              )}>
+                {estudiosHistorial.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="text-xs text-muted-foreground px-2">
+            {alcance === 'esta_consulta' ? (
+              <span>Exámenes y análisis adjuntos exclusivos de la atención médica actual.</span>
+            ) : (
+              <span>Estudios previos del paciente para consulta de antecedentes clínicos.</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* BARRA SUPERIOR DE ACCIONES Y FILTROS */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5">
         {/* Pestañas de Filtro Rápido */}
@@ -208,24 +290,39 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
           {estudiosFiltrados.map(est => {
             const isLab = est.categoria === 'laboratorio';
             const isAlterado = est.estado_analisis === 'analizado_alterado';
+            const esDeConsultaPrevia = Boolean(consultaId && est.consulta_id !== consultaId);
 
             return (
               <div
                 key={est.id}
-                className="group relative bg-card border border-border hover:border-primary/50 rounded-2xl p-4 sm:p-5 transition-all shadow-xs hover:shadow-md flex flex-col justify-between"
+                className={cn(
+                  'group relative bg-card border rounded-2xl p-4 sm:p-5 transition-all shadow-xs hover:shadow-md flex flex-col justify-between',
+                  esDeConsultaPrevia
+                    ? 'border-border/70 bg-muted/20 hover:border-border'
+                    : 'border-border hover:border-primary/50'
+                )}
               >
                 <div>
-                  {/* Categoría y Estado */}
+                  {/* Categoría, Estado y Badge de Historial */}
                   <div className="flex items-center justify-between gap-2 mb-3">
-                    <span className={cn(
-                      'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border',
-                      isLab
-                        ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30'
-                        : 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
-                    )}>
-                      {isLab ? <FlaskConical className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> : <ImageIcon className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />}
-                      <span className="capitalize">{est.categoria}</span>
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={cn(
+                        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border',
+                        isLab
+                          ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30'
+                          : 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
+                      )}>
+                        {isLab ? <FlaskConical className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> : <ImageIcon className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />}
+                        <span className="capitalize">{est.categoria}</span>
+                      </span>
+
+                      {esDeConsultaPrevia && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20">
+                          <History className="w-3 h-3 text-slate-500" />
+                          Consulta anterior
+                        </span>
+                      )}
+                    </div>
 
                     {isAlterado ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
@@ -300,22 +397,52 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
           })}
         </div>
       ) : (
-        <div className="bg-card border border-border/80 rounded-2xl p-10 text-center flex flex-col items-center justify-center">
+        <div className="bg-card border border-border/80 rounded-2xl p-8 sm:p-10 text-center flex flex-col items-center justify-center">
           <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3 text-muted-foreground">
             <FlaskConical className="w-7 h-7 opacity-60" />
           </div>
-          <h3 className="text-base font-bold text-foreground mb-1">Sin Estudios Registrados</h3>
+          <h3 className="text-base font-bold text-foreground mb-1">
+            {consultaId && alcance === 'esta_consulta'
+              ? 'Sin Estudios en esta Consulta'
+              : consultaId && alcance === 'historial_previo'
+              ? 'Sin Estudios Previos'
+              : 'Sin Estudios Registrados'}
+          </h3>
           <p className="text-muted-foreground text-xs max-w-md mb-5">
-            Adjunte exámenes de laboratorio o imágenes (ecos, panorámicas dentales, rayos X) para visualizarlos en el visor clínico e interpretarlos con el Asistente Bot.
+            {consultaId && alcance === 'esta_consulta'
+              ? 'Aún no se han adjuntado estudios ni análisis para la atención médica actual. Adjunte exámenes para que el Asistente Clínico los analice.'
+              : consultaId && alcance === 'historial_previo'
+              ? 'El paciente no posee estudios registrados en consultas anteriores.'
+              : 'Adjunte exámenes de laboratorio o imágenes (ecos, panorámicas dentales, rayos X) para visualizarlos en el visor clínico e interpretarlos con el Asistente Bot.'}
           </p>
-          <Button
-            size="sm"
-            onClick={() => setModalUploadOpen(true)}
-            className="text-xs gap-1.5 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Adjuntar Primer Estudio</span>
-          </Button>
+
+          {(!consultaId || alcance === 'esta_consulta') && (
+            <Button
+              size="sm"
+              onClick={() => setModalUploadOpen(true)}
+              className="text-xs gap-1.5 cursor-pointer font-semibold shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Adjuntar Estudio a esta Consulta</span>
+            </Button>
+          )}
+
+          {consultaId && alcance === 'esta_consulta' && estudiosHistorial.length > 0 && (
+            <div className="mt-6 p-3 bg-muted/40 rounded-xl border border-border flex items-center gap-3 text-xs text-muted-foreground max-w-md">
+              <History className="w-4 h-4 text-primary shrink-0" />
+              <div className="flex-1 text-left">
+                El paciente tiene <strong>{estudiosHistorial.length}</strong> {estudiosHistorial.length === 1 ? 'estudio previo' : 'estudios previos'} de consultas anteriores.
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAlcance('historial_previo')}
+                className="text-xs h-7 text-primary hover:text-primary font-semibold p-1"
+              >
+                Ver Historial →
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
