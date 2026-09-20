@@ -93,11 +93,18 @@ async def get_resumen_contadores(
     start_dt = datetime.combine(target_date, dtime.min)
     end_dt = datetime.combine(target_date, dtime.max)
 
+    # Las consultas activas en espera o en curso representan el flujo operativo en tiempo real
+    # y deben permanecer visibles en los contadores operativos aunque hayan iniciado antes de medianoche
     query = (
         select(ConsultaMedica.estado, func.count(ConsultaMedica.id))
         .where(
-            ConsultaMedica.fecha_consulta >= start_dt,
-            ConsultaMedica.fecha_consulta <= end_dt,
+            or_(
+                and_(
+                    ConsultaMedica.fecha_consulta >= start_dt,
+                    ConsultaMedica.fecha_consulta <= end_dt,
+                ),
+                ConsultaMedica.estado.in_(["en_espera", "en_curso"])
+            )
         )
         .group_by(ConsultaMedica.estado)
     )
@@ -186,7 +193,16 @@ async def list_consultas(
     if fecha:
         start_dt = datetime.combine(fecha, dtime.min)
         end_dt = datetime.combine(fecha, dtime.max)
-        stmt = stmt.where(ConsultaMedica.fecha_consulta >= start_dt, ConsultaMedica.fecha_consulta <= end_dt)
+        if estado in ("en_curso", "en_espera"):
+            # Para estados activos en sala de espera o en consultorio, mantener visibles las consultas activas
+            stmt = stmt.where(
+                or_(
+                    and_(ConsultaMedica.fecha_consulta >= start_dt, ConsultaMedica.fecha_consulta <= end_dt),
+                    ConsultaMedica.estado == estado
+                )
+            )
+        else:
+            stmt = stmt.where(ConsultaMedica.fecha_consulta >= start_dt, ConsultaMedica.fecha_consulta <= end_dt)
     else:
         if fecha_desde:
             stmt = stmt.where(ConsultaMedica.fecha_consulta >= datetime.combine(fecha_desde, dtime.min))

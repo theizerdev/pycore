@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 12  # 12 horas
     
+    # URL del Frontend (Portal Web)
+    FRONTEND_URL: str = "http://localhost:5173"
+
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
         "https://medisoft.theizerdev.com",
@@ -33,3 +36,24 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 settings = Settings()
+
+def get_frontend_base_url(request = None) -> str:
+    """
+    Retorna la URL base del frontend.
+    Prioridad:
+    1. Header 'Origin' del request HTTP si existe.
+    2. Header 'Referer' del request HTTP si existe.
+    3. settings.FRONTEND_URL (por defecto https://medisoft.theizerdev.com o valor en .env).
+    """
+    if request:
+        origin = request.headers.get("origin")
+        if origin and origin.strip():
+            return origin.strip().rstrip("/")
+        referer = request.headers.get("referer")
+        if referer and referer.strip():
+            from urllib.parse import urlparse
+            parsed = urlparse(referer.strip())
+            if parsed.scheme and parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    return getattr(settings, "FRONTEND_URL", "https://medisoft.theizerdev.com").rstrip("/")
+

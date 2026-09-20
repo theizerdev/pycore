@@ -7,7 +7,7 @@ import { especialidadesApi } from '../../api/especialidades';
 import { sucursalesApi } from '../../api/sucursales';
 import type { Medico, Especialidad, Sucursal } from '../../types';
 import { toast } from 'sonner';
-import { cn, getInitials } from '../../lib/utils';
+import { cn, getInitials, getLocalDateString } from '../../lib/utils';
 
 // UI Components
 import { Button } from '../../components/ui/button';
@@ -122,9 +122,7 @@ export const ConsultasPage: React.FC = () => {
 
   // Filtros
   const [search, setSearch] = useState<string>('');
-  const [selectedFecha, setSelectedFecha] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [selectedFecha, setSelectedFecha] = useState<string>(getLocalDateString());
   const [selectedMedico, setSelectedMedico] = useState<string>('all');
   const [selectedEspecialidad, setSelectedEspecialidad] = useState<string>('all');
   const [selectedSucursal, setSelectedSucursal] = useState<string>('all');
@@ -697,13 +695,36 @@ export const ConsultasPage: React.FC = () => {
             </div>
 
             {/* Fecha */}
-            <div>
+            <div className="flex items-center gap-1.5">
               <Input
                 type="date"
                 value={selectedFecha}
                 onChange={(e) => setSelectedFecha(e.target.value)}
                 className="bg-background h-10 rounded-xl text-xs"
               />
+              {selectedFecha ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedFecha('')}
+                  title="Ver todas las fechas"
+                  className="h-10 px-2.5 rounded-xl text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+                >
+                  Todas
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedFecha(getLocalDateString())}
+                  title="Filtrar por hoy"
+                  className="h-10 px-2.5 rounded-xl text-xs text-primary font-semibold shrink-0 cursor-pointer"
+                >
+                  Hoy
+                </Button>
+              )}
             </div>
 
             {/* Especialidad */}
@@ -753,7 +774,7 @@ export const ConsultasPage: React.FC = () => {
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-bold text-foreground">{consultas.length}</span>
               <span>{consultas.length === 1 ? 'consulta encontrada' : 'consultas encontradas'}</span>
-              {(search || selectedMedico !== 'all' || selectedEspecialidad !== 'all' || selectedFecha !== new Date().toISOString().split('T')[0]) && (
+              {(search || selectedMedico !== 'all' || selectedEspecialidad !== 'all' || selectedFecha !== getLocalDateString()) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -761,7 +782,7 @@ export const ConsultasPage: React.FC = () => {
                     setSearch('');
                     setSelectedMedico('all');
                     setSelectedEspecialidad('all');
-                    setSelectedFecha(new Date().toISOString().split('T')[0]);
+                    setSelectedFecha(getLocalDateString());
                   }}
                   className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer ml-1"
                 >

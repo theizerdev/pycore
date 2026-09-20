@@ -8,6 +8,7 @@ import type { CitaMedica, Medico, Paciente, Sucursal, Servicio, CitaEstadoPago }
 import { formatCleanWhatsAppNumber } from './DoctorWelcomeModal';
 import { PatientFormModal } from './PatientFormModal';
 import { toast } from 'sonner';
+import { getLocalDateString } from '../../lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -107,9 +108,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [especialidadId, setEspecialidadId] = useState<number | null>(null);
   const [sucursalId, setSucursalId] = useState<number | null>(null);
   const [servicioId, setServicioId] = useState<number | null>(null);
-  const [fecha, setFecha] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [fecha, setFecha] = useState<string>(getLocalDateString());
   const [horaInicio, setHoraInicio] = useState<string>('09:00');
   const [duracionMinutos, setDuracionMinutos] = useState<number>(30);
   const [motivo, setMotivo] = useState<string>('');

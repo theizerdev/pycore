@@ -30,6 +30,7 @@ import { CitaStatusModal } from './CitaStatusModal';
 import { PatientFormModal } from './PatientFormModal';
 import { evaluarPuntualidadCita, type EvaluacionPuntualidad } from '../../utils/punctuality';
 import { toast } from 'sonner';
+import { getLocalDateString } from '../../lib/utils';
 
 import {
   Dialog,
@@ -150,9 +151,7 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
   const [bloqueoMedicoId, setBloqueoMedicoId] = useState<number | null>(null);
   const [bloqueoSucursalId, setBloqueoSucursalId] = useState<number | null>(null);
-  const [bloqueoFecha, setBloqueoFecha] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [bloqueoFecha, setBloqueoFecha] = useState<string>(getLocalDateString());
   const [bloqueoHoraInicio, setBloqueoHoraInicio] = useState<string>('12:00');
   const [bloqueoHoraFin, setBloqueoHoraFin] = useState<string>('14:00');
   const [bloqueoTipo, setBloqueoTipo] = useState<BloqueoTipo>('almuerzo');
@@ -289,7 +288,7 @@ export const AgendaCalendarioPage: React.FC = () => {
   };
 
   // Citas de hoy para el panel asistencial
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   const citasHoy = useMemo(() => {
     return citas.filter((c) => {
       if (isDoctorUser && currentDoctor && c.medico_id !== currentDoctor.id) return false;
@@ -764,7 +763,7 @@ export const AgendaCalendarioPage: React.FC = () => {
             size="sm"
             onClick={() => {
               setCitaToEdit(null);
-              setNewCitaInitialDate(new Date().toISOString().split('T')[0]);
+              setNewCitaInitialDate(getLocalDateString());
               setNewCitaInitialTime('08:00');
               setNewCitaInitialPacienteId(undefined);
               if (isDoctorUser && currentDoctor) {
@@ -1365,7 +1364,7 @@ export const AgendaCalendarioPage: React.FC = () => {
                   label: 'Agendar Cita',
                   onClick: () => {
                     setCitaToEdit(null);
-                    setNewCitaInitialDate(new Date().toISOString().split('T')[0]);
+                    setNewCitaInitialDate(getLocalDateString());
                     setNewCitaInitialTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
                     setNewCitaInitialPacienteId(savedPatient.id);
                     if (isDoctorUser && currentDoctor) {

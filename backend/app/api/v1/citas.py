@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_permission
+from app.core.config import settings
 import uuid
 from app.models.usuario import Usuario
 from app.models.empresa import Empresa
@@ -918,8 +919,9 @@ async def cambiar_estado_cita(
                     res_esp = await db.execute(select(Especialidad.nombre).where(Especialidad.id == cita.especialidad_id))
                     esp_nombre = res_esp.scalar() or "Consulta Médica"
 
-                    # URL para que el paciente abra la preconsulta desde su móvil
-                    preconsulta_url = f"http://localhost:5173/preconsulta/{preconsulta.token}"
+                    # URL para que el paciente abra la preconsulta desde su móvil usando FRONTEND_URL de .env
+                    base_frontend = (settings.FRONTEND_URL or "https://medisoft.theizerdev.com").rstrip("/")
+                    preconsulta_url = f"{base_frontend}/preconsulta/{preconsulta.token}"
 
                     mensaje_ws = (
                         f"👋 ¡Hola *{paciente.nombres}*!\n\n"

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from 'sonner';
 import { estudiosApi, type EstudioAdjunto } from '../../api/estudios';
 import { EstudioDetalleModal } from './EstudioDetalleModal';
-import { cn } from '../../lib/utils';
+import { cn, getLocalDateString } from '../../lib/utils';
 
 interface EstudiosArchivosTabProps {
   pacienteId: number;
@@ -41,7 +41,7 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
   const [titulo, setTitulo] = useState<string>('');
   const [categoria, setCategoria] = useState<'laboratorio' | 'imagenologia' | 'informe' | 'otro'>('laboratorio');
   const [subtipo, setSubtipo] = useState<string>('');
-  const [fechaEstudio, setFechaEstudio] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [fechaEstudio, setFechaEstudio] = useState<string>(getLocalDateString());
   const [notas, setNotas] = useState<string>('');
   const [archivoBase64, setArchivoBase64] = useState<string>('');
   const [archivoNombre, setArchivoNombre] = useState<string>('');

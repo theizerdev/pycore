@@ -19,7 +19,7 @@ import { EstudiosArchivosTab } from '../../components/clinica/EstudiosArchivosTa
 import { PatientRecordDrawer } from './PatientRecordDrawer';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
-import { cn, getInitials } from '../../lib/utils';
+import { cn, getInitials, getLocalDateString } from '../../lib/utils';
 
 // UI Components
 import { Button } from '../../components/ui/button';
@@ -542,8 +542,8 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   // Reposo Médico
   const [reposo, setReposo] = useState<ReposoMedico>({
     requiere_reposo: false,
-    fecha_inicio: new Date().toISOString().split('T')[0],
-    fecha_fin: new Date().toISOString().split('T')[0],
+    fecha_inicio: getLocalDateString(),
+    fecha_fin: getLocalDateString(),
     dias_reposo: 1,
     motivo_diagnostico: '',
     observaciones: '',
@@ -653,9 +653,9 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         setReposo({
           requiere_reposo: Boolean(data.reposo_medico.requiere_reposo),
           fecha_inicio:
-            data.reposo_medico.fecha_inicio || new Date().toISOString().split('T')[0],
+            data.reposo_medico.fecha_inicio || getLocalDateString(),
           fecha_fin:
-            data.reposo_medico.fecha_fin || new Date().toISOString().split('T')[0],
+            data.reposo_medico.fecha_fin || getLocalDateString(),
           dias_reposo: Number(data.reposo_medico.dias_reposo) || 1,
           motivo_diagnostico: data.reposo_medico.motivo_diagnostico || '',
           observaciones: data.reposo_medico.observaciones || '',

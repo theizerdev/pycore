@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import or_, func
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.security import (
     require_permission,
     get_current_active_user,
@@ -635,11 +636,8 @@ async def enviar_bienvenida_medico(
     especialidad_nom = medico.especialidad.nombre if medico.especialidad else "Especialista"
 
     # 3. URL del portal
-    host_url = str(request.base_url).rstrip("/")
-    if ":8000" in host_url:
-        login_url = host_url.replace(":8000", ":5173") + "/login"
-    else:
-        login_url = f"{host_url}/login"
+    base_portal = (settings.FRONTEND_URL or "https://medisoft.theizerdev.com").rstrip("/")
+    login_url = f"{base_portal}/login"
 
     # 4. Mensaje de bienvenida
     pass_display = req.password_temporal.strip() if req.password_temporal else "[La asignada por el sistema]"
