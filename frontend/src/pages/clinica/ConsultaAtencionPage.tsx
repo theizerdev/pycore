@@ -563,8 +563,26 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const [cieBusqueda, setCieBusqueda] = useState<string>('');
 
   const isOftalmologia = useMemo(() => {
-    return (consulta?.especialidad?.nombre || '').toLowerCase().includes('oftalmo');
-  }, [consulta?.especialidad?.nombre]);
+    const espNombre = (consulta?.especialidad?.nombre || '').toLowerCase();
+    const espCodigo = (consulta?.especialidad?.codigo || '').toLowerCase();
+    const widgets = plantillaEfectiva?.widgets_activos || [];
+    return (
+      espNombre.includes('oftalmo') ||
+      espCodigo.includes('oftalmo') ||
+      widgets.includes('refraccion') ||
+      widgets.includes('motor_oftalmologia')
+    );
+  }, [consulta?.especialidad?.nombre, consulta?.especialidad?.codigo, plantillaEfectiva?.widgets_activos]);
+
+  const secRefraccion = useMemo(() => {
+    return (plantillaEfectiva?.consulta_secciones || []).find(
+      (s) =>
+        s.id === 'con_oftalmo_refraccion' ||
+        (s.id || '').toLowerCase().includes('refraccion') ||
+        (s.titulo || '').toLowerCase().includes('refracci') ||
+        (s.titulo || '').toLowerCase().includes('agudeza')
+    );
+  }, [plantillaEfectiva?.consulta_secciones]);
 
   const handleSaveInstilacionGotas = (instData: InstilacionGotasData) => {
     setDatosPlantilla((prev) => {
@@ -783,7 +801,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const handleGuardarYFinalizar = async () => {
     if (!consulta) return;
     if (!diagnosticoPrincipal.trim()) {
-      const diagStep = pasosHabilitados.includes(6) ? 6 : stepsList[stepsList.length - 1]?.num || 1;
+      const diagStep = stepsList[stepsList.length - 1]?.num || (isOftalmologia ? 7 : 6);
       setCurrentStep(diagStep);
       toast.error('Por favor indique el Diagnóstico Principal antes de finalizar la consulta');
       return;
@@ -812,6 +830,9 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
 
   // Pasos habilitados configurados para la especialidad
   const pasosHabilitados: number[] = useMemo(() => {
+    if (isOftalmologia) {
+      return [1, 2, 3, 4, 5, 6, 7];
+    }
     const raw =
       consulta?.especialidad?.pasos_activos ||
       plantillaEfectiva?.pasos_activos;
@@ -819,7 +840,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       return raw;
     }
     return [1, 2, 3, 4, 5, 6];
-  }, [consulta?.especialidad?.pasos_activos, plantillaEfectiva?.pasos_activos]);
+  }, [isOftalmologia, consulta?.especialidad?.pasos_activos, plantillaEfectiva?.pasos_activos]);
 
   const pasoInicialConfigurado = useMemo(() => {
     return (
@@ -838,6 +859,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   }, [plantillaEfectiva?.consulta_secciones]);
 
   const stepsList = useMemo(() => {
+    // Si es Oftalmología: exactamente 7 pasos estructurados secuencialmente (Paso 2 Refracción, Paso 3 Evaluación de Hallazgos)
+    if (isOftalmologia) {
+      return [
+        { num: 1, label: 'Preconsulta y Motivo', icon: ClipboardList },
+        { num: 2, label: 'Refracción', icon: Eye },
+        { num: 3, label: 'Evaluación de Hallazgos', icon: Stethoscope },
+        { num: 4, label: 'Signos Vitales', icon: HeartPulse },
+        { num: 5, label: 'Estudios Médicos', icon: FlaskConical },
+        { num: 6, label: 'Receta y Reposo', icon: Pill },
+        { num: 7, label: 'Diagnóstico y Cierre', icon: CheckCircle2 },
+      ];
+    }
+
     const list: Array<{
       num: number | string;
       label: string;
@@ -847,7 +881,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     }> = [];
 
     // Separar secciones autónomas según su ubicación:
-    // Previas a la evaluación (ej. Refracción Ocular como Paso 2) vs Posteriores a la evaluación
+    // Previas a la evaluación vs Posteriores a la evaluación
     const seccionesPrevias = seccionesAutonomas.filter(
       (s) =>
         s.orden_posicion === 'antes_evaluacion' ||
@@ -864,7 +898,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       list.push({ num: 1, label: 'Preconsulta y Motivo', icon: ClipboardList });
     }
 
-    // Pasos Autónomos Previos a la Evaluación (Ej: Paso 2 Refracción en Oftalmología)
+    // Pasos Autónomos Previos a la Evaluación
     seccionesPrevias.forEach((sec) => {
       const isRefrac =
         (sec.id || '').toLowerCase().includes('refraccion') ||
@@ -914,7 +948,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     }
 
     return list;
-  }, [pasosHabilitados, seccionesAutonomas]);
+  }, [isOftalmologia, pasosHabilitados, seccionesAutonomas]);
 
   // Inicializar paso al configurado por la especialidad al cargar la consulta
   useEffect(() => {
@@ -1826,7 +1860,15 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                         Flujo Clínico
                       </div>
                       <p>
-                        En este primer paso valide las respuestas previas del paciente y registre el motivo de la consulta. En el <strong>Paso 2</strong> registrará las constantes vitales y en el <strong>Paso 3</strong> detallará la anamnesis próxima, evolución semiológica, datos de interconsulta/referencia y el examen físico especializado.
+                        {isOftalmologia ? (
+                          <>
+                            En este primer paso valide las respuestas previas del paciente y registre el motivo de consulta. En el <strong>Paso 2</strong> realizará la <strong>Función Visual y Refracción</strong>, en el <strong>Paso 3</strong> la <strong>Evaluación de Hallazgos y Biomicroscopía</strong>, y en los pasos siguientes las constantes vitales, estudios médicos, prescripción médica y diagnósticos.
+                          </>
+                        ) : (
+                          <>
+                            En este primer paso valide las respuestas previas del paciente y registre el motivo de la consulta. En el <strong>Paso 2</strong> registrará las constantes vitales y en el <strong>Paso 3</strong> detallará la anamnesis próxima, evolución semiológica, datos de interconsulta/referencia y el examen físico especializado.
+                          </>
+                        )}
                       </p>
                     </div>
                   </CardContent>
@@ -1837,14 +1879,84 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         )}
 
         {/* ======================================================== */}
-        {/* ── PASO 2: SIGNOS VITALES Y TRIAJE ──────────────────── */}
+        {/* ── PASO 2 (OFTALMOLOGÍA): REFRACCIÓN Y FUNCIÓN VISUAL ── */}
         {/* ======================================================== */}
-        {currentStep === 2 && (
+        {isOftalmologia && currentStep === 2 && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
+              <div>
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-sky-500" />
+                  <span>Paso 2: Función Visual y Refracción</span>
+                  <Badge variant="secondary" className="text-xs font-semibold bg-sky-500/10 text-sky-700 dark:text-sky-300">
+                    Gabinete Optométrico & Refracción
+                  </Badge>
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Agudeza visual Snellen OD/OI, queratometría K1/K2, refracción computarizada objetiva y subjetiva, y control de instilación ciclopléjica.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant={datosPlantilla.instilacion_gotas?.activo ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setInstilacionModalOpen(true)}
+                  className={`gap-1.5 h-8 text-xs font-semibold cursor-pointer ${
+                    datosPlantilla.instilacion_gotas?.activo
+                      ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-xs'
+                      : 'text-sky-600 dark:text-sky-400 border-sky-500/30 hover:bg-sky-50 dark:hover:bg-sky-950/30'
+                  }`}
+                >
+                  <Droplet className={`h-3.5 w-3.5 ${datosPlantilla.instilacion_gotas?.activo ? 'animate-bounce' : ''}`} />
+                  <span>
+                    {datosPlantilla.instilacion_gotas?.activo
+                      ? `Gotas Activas (${datosPlantilla.instilacion_gotas.farmaco})`
+                      : 'Instilar Gotas (Cicloplejía)'}
+                  </span>
+                </Button>
+              </div>
+            </div>
+
+            {/* Widget interactivo de Gabinete Optométrico y Refracción */}
+            <RefraccionWidget
+              initialData={datosPlantilla.refraccion as RefraccionData}
+              onChange={(refData) => {
+                if (!readOnly) {
+                  setDatosPlantilla((prev) => ({
+                    ...prev,
+                    refraccion: refData,
+                  }));
+                }
+              }}
+              onOpenInstilacionModal={() => setInstilacionModalOpen(true)}
+              readOnly={readOnly}
+            />
+
+            {/* Render de campos configurados de la plantilla para refracción (ej: PIO y resumen diagnóstico) */}
+            {secRefraccion && (
+              <SeccionCamposRender
+                seccion={secRefraccion}
+                datosPlantilla={datosPlantilla}
+                setDatosPlantilla={setDatosPlantilla}
+                readOnly={readOnly}
+              />
+            )}
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* ── SIGNOS VITALES: PASO 4 (OFTALMO) / PASO 2 (GENERAL) ─ */}
+        {/* ======================================================== */}
+        {((isOftalmologia && currentStep === 4) || (!isOftalmologia && currentStep === 2)) && (
           <div className="space-y-6">
             <div>
               <h3 className="text-base font-bold text-foreground flex items-center gap-2">
                 <HeartPulse className="h-5 w-5 text-primary" />
-                Paso 2: Signos Vitales y Parámetros Basales
+                {isOftalmologia
+                  ? 'Paso 4: Signos Vitales y Parámetros Basales'
+                  : 'Paso 2: Signos Vitales y Parámetros Basales'}
               </h3>
               <p className="text-xs text-muted-foreground">
                 Registro de constantes biológicas durante la consulta. El Índice de Masa Corporal (IMC) se calcula automáticamente.
@@ -2030,6 +2142,12 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                       if (seccion.es_paso_independiente) return false;
                       const id = (seccion.id || '').toLowerCase();
                       const tit = (seccion.titulo || '').toLowerCase();
+                      if (
+                        isOftalmologia &&
+                        (id.includes('refraccion') || tit.includes('refracci') || tit.includes('agudeza'))
+                      ) {
+                        return false;
+                      }
                       return !(
                         id.includes('signos') ||
                         id.includes('vitales') ||
@@ -2171,7 +2289,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         {/* ======================================================== */}
         {/* ── PASOS AUTÓNOMOS DE LA ESPECIALIDAD (DINÁMICOS) ────── */}
         {/* ======================================================== */}
-        {seccionesAutonomas.map((sec) => {
+        {!isOftalmologia && seccionesAutonomas.map((sec) => {
           if (currentStep !== `sec_${sec.id}`) return null;
           const isRefrac =
             (sec.id || '').toLowerCase().includes('refraccion') ||
@@ -2228,16 +2346,18 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         })}
 
         {/* ======================================================== */}
-        {/* ── PASO 4: ESTUDIOS Y EXÁMENES (VISOR + SOLICITUD) ──── */}
+        {/* ── ESTUDIOS MÉDICOS: PASO 5 (OFTALMO) / PASO 4 (GENERAL) ── */}
         {/* ======================================================== */}
-        {currentStep === 4 && (
+        {((isOftalmologia && currentStep === 5) || (!isOftalmologia && currentStep === 4)) && (
           <div className="space-y-6">
             <Tabs defaultValue="adjuntos" className="w-full">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-3">
                 <div>
                   <h3 className="text-base font-bold text-foreground flex items-center gap-2">
                     <FlaskConical className="h-5 w-5 text-primary" />
-                    Paso 4: Estudios Médicos, Laboratorio e Imagenología
+                    {isOftalmologia
+                      ? 'Paso 5: Estudios Médicos, Laboratorio e Imagenología'
+                      : 'Paso 4: Estudios Médicos, Laboratorio e Imagenología'}
                   </h3>
                   <p className="text-xs text-muted-foreground">
                     Consulte exámenes adjuntos en el visor clínico inteligente o gestione nuevas órdenes de laboratorio e imagen.
@@ -2283,9 +2403,9 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         )}
 
         {/* ======================================================== */}
-        {/* ── PASO 5: PRESCRIPCIÓN MÉDICA Y REPOSO ─────────────── */}
+        {/* ── RECETA Y REPOSO: PASO 6 (OFTALMO) / PASO 5 (GENERAL) ── */}
         {/* ======================================================== */}
-        {currentStep === 5 && (
+        {((isOftalmologia && currentStep === 6) || (!isOftalmologia && currentStep === 5)) && (
           <div className="space-y-6">
             {/* SECCIÓN 1: CARRITO DE MEDICAMENTOS */}
             <div className="space-y-4">
@@ -2407,9 +2527,9 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         )}
 
         {/* ======================================================== */}
-        {/* ── PASO 6: DIAGNÓSTICO CIE-10, RESUMEN Y CIERRE ─────── */}
+        {/* ── DIAGNÓSTICO Y CIERRE: PASO 7 (OFTALMO) / PASO 6 (GENERAL) */}
         {/* ======================================================== */}
-        {currentStep === 6 && (
+        {((isOftalmologia && currentStep === 7) || (!isOftalmologia && currentStep === 6)) && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-6 space-y-4">
