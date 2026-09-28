@@ -183,6 +183,7 @@ class ConsultaResponse(BaseModel):
     observaciones_adicionales: Optional[str] = None
     referido_para: Optional[str] = None
     estado: str
+    estado_pago: str = "pendiente"
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

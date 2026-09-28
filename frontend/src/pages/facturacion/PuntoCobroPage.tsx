@@ -85,7 +85,17 @@ export const PuntoCobroPage: React.FC = () => {
   const [selectedCitaId, setSelectedCitaId] = useState<string>('');
   const [selectedConsultaId, setSelectedConsultaId] = useState<string>('');
   const [consultasFinalizadas, setConsultasFinalizadas] = useState<ConsultaMedica[]>([]);
+  const [tabConsultas, setTabConsultas] = useState<'pendientes' | 'pagadas'>('pendientes');
   const [loadingConsultas, setLoadingConsultas] = useState<boolean>(false);
+
+  // Separar consultas pendientes de cobro vs ya pagadas
+  const consultasPendientes = useMemo(() => {
+    return consultasFinalizadas.filter((c) => c.estado_pago !== 'pagado');
+  }, [consultasFinalizadas]);
+
+  const consultasPagadas = useMemo(() => {
+    return consultasFinalizadas.filter((c) => c.estado_pago === 'pagado');
+  }, [consultasFinalizadas]);
   const [descuentoDivisa, setDescuentoDivisa] = useState<number>(0);
   const [notasCobro, setNotasCobro] = useState<string>('');
   const [submittingCobro, setSubmittingCobro] = useState(false);
@@ -246,6 +256,11 @@ export const PuntoCobroPage: React.FC = () => {
 
   // Vincular consulta médica finalizada al cobro actual
   const handleSelectConsulta = (consulta: ConsultaMedica) => {
+    if (consulta.estado_pago === 'pagado') {
+      toast.warning(`Esta consulta ya fue cobrada y registrada (${consulta.codigo || `#${consulta.id}`}).`);
+      return;
+    }
+
     if (selectedConsultaId === String(consulta.id)) {
       // Si ya estaba seleccionada, deseleccionar
       setSelectedConsultaId('');

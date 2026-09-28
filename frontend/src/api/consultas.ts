@@ -161,6 +161,7 @@ export interface ConsultaMedica {
   plan_tratamiento?: string;
   indicaciones_generales?: string;
   estado: 'en_espera' | 'en_curso' | 'finalizada' | 'anulada';
+  estado_pago?: 'pendiente' | 'pagado' | 'exonerado';
   created_at?: string;
   updated_at?: string;
 
@@ -183,6 +184,7 @@ export interface ConsultaMedica {
 
 export interface ConsultaFiltros {
   estado?: string;
+  estado_pago?: string;
   fecha?: string;
   fecha_desde?: string;
   fecha_hasta?: string;

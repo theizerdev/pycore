@@ -149,6 +149,7 @@ async def list_consultas(
     especialidad_id: Optional[int] = Query(None, description="Filtrar por especialidad"),
     sucursal_id: Optional[int] = Query(None, description="Filtrar por sucursal"),
     paciente_id: Optional[int] = Query(None, description="Filtrar por paciente"),
+    estado_pago: Optional[str] = Query(None, description="Filtrar por estado de pago: 'pendiente', 'pagado', 'exonerado'"),
     search: Optional[str] = Query(None, description="Búsqueda por código, paciente, médico o motivo"),
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(require_permission("consultas.ver")),
@@ -189,6 +190,14 @@ async def list_consultas(
             stmt = stmt.where(ConsultaMedica.estado == estados_list[0])
         elif len(estados_list) > 1:
             stmt = stmt.where(ConsultaMedica.estado.in_(estados_list))
+
+    # Filtro por estado de pago
+    if estado_pago:
+        estados_pago_list = [ep.strip() for ep in estado_pago.split(",") if ep.strip()]
+        if len(estados_pago_list) == 1:
+            stmt = stmt.where(ConsultaMedica.estado_pago == estados_pago_list[0])
+        elif len(estados_pago_list) > 1:
+            stmt = stmt.where(ConsultaMedica.estado_pago.in_(estados_pago_list))
 
     # Filtro por fecha usando rangos para aprovechar el índice B-tree de MySQL
     if fecha:

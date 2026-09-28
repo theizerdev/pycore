@@ -7,6 +7,7 @@ from sqlalchemy import desc, func, and_
 
 from app.models.caja import Caja, TurnoCaja, Cobro, CobroDetalle, CobroPago, MovimientoCaja
 from app.models.cita import CitaMedica
+from app.models.consulta import ConsultaMedica
 from app.models.usuario import Usuario
 from app.models.paciente import Paciente
 from app.models.medico import Medico
@@ -354,6 +355,26 @@ class CajaService:
                 cita.estado_pago = "pagado"
                 cita.metodo_pago = data.pagos[0].metodo if len(data.pagos) == 1 else "mixto"
 
+        # 8. Si está vinculado a una Consulta Médica (o la cita tiene consulta vinculada), marcar como pagada
+        consulta_obj = None
+        if data.consulta_id:
+            stmt_cons = select(ConsultaMedica).where(
+                ConsultaMedica.id == data.consulta_id,
+                ConsultaMedica.empresa_id == empresa_id
+            )
+            res_cons = await db.execute(stmt_cons)
+            consulta_obj = res_cons.scalar_one_or_none()
+        elif data.cita_id:
+            stmt_cons = select(ConsultaMedica).where(
+                ConsultaMedica.cita_id == data.cita_id,
+                ConsultaMedica.empresa_id == empresa_id
+            )
+            res_cons = await db.execute(stmt_cons)
+            consulta_obj = res_cons.scalar_one_or_none()
+
+        if consulta_obj:
+            consulta_obj.estado_pago = "pagado"
+
         await db.commit()
         await db.refresh(cobro)
         return cobro
@@ -422,6 +443,26 @@ class CajaService:
             cita = res_cita.scalar_one_or_none()
             if cita:
                 cita.estado_pago = "pendiente"
+
+        # Revertir consulta si existe
+        consulta_to_revert = None
+        if cobro.consulta_id:
+            stmt_cons = select(ConsultaMedica).where(
+                ConsultaMedica.id == cobro.consulta_id,
+                ConsultaMedica.empresa_id == empresa_id
+            )
+            res_cons = await db.execute(stmt_cons)
+            consulta_to_revert = res_cons.scalar_one_or_none()
+        elif cobro.cita_id:
+            stmt_cons = select(ConsultaMedica).where(
+                ConsultaMedica.cita_id == cobro.cita_id,
+                ConsultaMedica.empresa_id == empresa_id
+            )
+            res_cons = await db.execute(stmt_cons)
+            consulta_to_revert = res_cons.scalar_one_or_none()
+
+        if consulta_to_revert:
+            consulta_to_revert.estado_pago = "pendiente"
 
         await db.commit()
         await db.refresh(cobro)
