@@ -35,6 +35,14 @@ import {
   Layers,
   CalendarCheck,
   Building2,
+  Volume2,
+  VolumeX,
+  UserPlus,
+  ArrowUpRight,
+  ArrowDownRight,
+  Shield,
+  FileText,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -68,12 +76,14 @@ import { consultasApi, type ConsultaMedica } from '../../api/consultas';
 import { TurnoAperturaModal } from '../../components/facturacion/TurnoAperturaModal';
 import { TurnoCierreModal } from '../../components/facturacion/TurnoCierreModal';
 import { CobroReciboModal } from '../../components/facturacion/CobroReciboModal';
+import { PatientFormModal } from '../clinica/PatientFormModal';
+import { posSound } from '../../lib/posSounds';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 import type { Paciente, Servicio, Medico, CitaMedica } from '../../types';
 
 // ==========================================
-// Estructura de Pestaña Multi-Ticket (Estilo Quadralo)
+// Estructura de Pestaña Multi-Ticket (Quadralo System)
 // ==========================================
 interface PosTicket {
   id: string;
@@ -92,6 +102,10 @@ interface PosTicket {
     medicoNombre?: string;
   } | null;
 }
+
+const STORAGE_TICKETS_KEY = 'medisoft_pos_tickets_v2';
+const STORAGE_ACTIVE_TICKET_KEY = 'medisoft_pos_active_ticket_id_v2';
+const STORAGE_SOUND_KEY = 'medisoft_pos_sound_enabled';
 
 export const PuntoCobroPage: React.FC = () => {
   const { user, sucursalActiva } = useAuth();
@@ -112,8 +126,51 @@ export const PuntoCobroPage: React.FC = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [submittingCobro, setSubmittingCobro] = useState(false);
 
-  // Modo Kiosco / Pantalla Completa
+  // Modal de Búsqueda Rápida de Pacientes [F8] y Nuevo Paciente Exprés
+  const [isPatientSearchOpen, setIsPatientSearchOpen] = useState(false);
+  const [patientSearchTerm, setPatientSearchTerm] = useState('');
+  const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
+
+  // Modal de Historial de Últimos Recibos [F4]
+  const [isRecentCobrosOpen, setIsRecentCobrosOpen] = useState(false);
+  const [recentCobros, setRecentCobros] = useState<Cobro[]>([]);
+  const [loadingRecentCobros, setLoadingRecentCobros] = useState(false);
+
+  // Modal de Movimientos Extraordinarios de Caja (Entrada / Salida de Efectivo)
+  const [isMovimientoModalOpen, setIsMovimientoModalOpen] = useState(false);
+  const [movTipo, setMovTipo] = useState<'egreso' | 'ingreso'>('egreso');
+  const [movConcepto, setMovConcepto] = useState('');
+  const [movMoneda, setMovMoneda] = useState<'USD' | 'VES' | 'EUR'>('USD');
+  const [movMonto, setMovMonto] = useState<number | ''>('');
+  const [submittingMovimiento, setSubmittingMovimiento] = useState(false);
+
+  // Modo Kiosco / Pantalla Completa [F11]
   const [isKioskMode, setIsKioskMode] = useState(false);
+
+  // Sonidos de Terminal POS
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_SOUND_KEY);
+      return stored !== null ? stored === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    posSound.enabled = next;
+    try {
+      localStorage.setItem(STORAGE_SOUND_KEY, String(next));
+    } catch {}
+    if (next) {
+      posSound.playBeep();
+      toast.success('Sonidos del terminal POS activados');
+    } else {
+      toast.info('Terminal POS silenciada');
+    }
+  };
 
   // Tasas de Cambio Oficiales
   const [ratesData, setRatesData] = useState<TasasActualesResponse | null>(null);
@@ -134,12 +191,54 @@ export const PuntoCobroPage: React.FC = () => {
   const [searchCatalogQuery, setSearchCatalogQuery] = useState('');
   const [selectedCategoria, setSelectedCategoria] = useState('todos');
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const patientSearchInputRef = useRef<HTMLInputElement>(null);
 
   // ==========================================
-  // Pestañas Multi-Ticket (Quadralo System)
+  // Pestañas Multi-Ticket con Persistencia LocalStorage (Anti-F5)
   // ==========================================
-  const [tickets, setTickets] = useState<PosTicket[]>([
-    {
+  const [tickets, setTickets] = useState<PosTicket[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_TICKETS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      {
+        id: 'ticket-1',
+        name: 'Ticket 1',
+        pacienteId: '',
+        medicoId: '',
+        citaId: '',
+        consultaId: '',
+        detalles: [],
+        descuentoDivisa: 0,
+        notasCobro: '',
+        autoLoadedInfo: null,
+      },
+    ];
+  });
+
+  const [activeTicketId, setActiveTicketId] = useState<string>(() => {
+    try {
+      const savedId = localStorage.getItem(STORAGE_ACTIVE_TICKET_KEY);
+      if (savedId) return savedId;
+    } catch {}
+    return 'ticket-1';
+  });
+
+  // Guardar automáticamente tickets en localStorage (Anti-F5)
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_TICKETS_KEY, JSON.stringify(tickets));
+      localStorage.setItem(STORAGE_ACTIVE_TICKET_KEY, activeTicketId);
+    } catch {}
+  }, [tickets, activeTicketId]);
+
+  // Ticket actualmente seleccionado
+  const activeTicket = useMemo(() => {
+    return tickets.find((t) => t.id === activeTicketId) || tickets[0] || {
       id: 'ticket-1',
       name: 'Ticket 1',
       pacienteId: '',
@@ -150,13 +249,7 @@ export const PuntoCobroPage: React.FC = () => {
       descuentoDivisa: 0,
       notasCobro: '',
       autoLoadedInfo: null,
-    },
-  ]);
-  const [activeTicketId, setActiveTicketId] = useState<string>('ticket-1');
-
-  // Ticket actualmente seleccionado
-  const activeTicket = useMemo(() => {
-    return tickets.find((t) => t.id === activeTicketId) || tickets[0];
+    };
   }, [tickets, activeTicketId]);
 
   // Actualizador de campos del ticket activo
@@ -168,6 +261,11 @@ export const PuntoCobroPage: React.FC = () => {
     },
     [activeTicketId]
   );
+
+  // Soporte de Seguros / Cobertura de Póliza en el Modal de Pagos
+  const [tieneSeguro, setTieneSeguro] = useState(false);
+  const [seguroNombre, setSeguroNombre] = useState('Seguros Caracas');
+  const [seguroPorcentaje, setSeguroPorcentaje] = useState(80); // 80% cubierto por póliza por defecto
 
   // Medios de pago para el modal de cobro
   const [pagos, setPagos] = useState<CobroPagoItem[]>([
@@ -299,6 +397,7 @@ export const PuntoCobroPage: React.FC = () => {
           },
         });
 
+        posSound.playBeep();
         toast.success(
           `✓ Servicio "${servNombre}" cargado automáticamente desde la cita médica del paciente.`,
           { duration: 4000 }
@@ -345,6 +444,7 @@ export const PuntoCobroPage: React.FC = () => {
     };
     setTickets((prev) => [...prev, newTicket]);
     setActiveTicketId(newId);
+    posSound.playBeep();
     toast.info(`Nuevo Ticket #${nextNum} abierto en la terminal`);
   };
 
@@ -398,19 +498,18 @@ export const PuntoCobroPage: React.FC = () => {
 
   // Agregar ítem desde el Catálogo Táctil al Carrito
   const handleAddServicioToCart = (serv: Servicio) => {
+    posSound.playBeep();
     const isOdonto = (serv.categoria || '').toLowerCase().includes('odont');
     const existingIndex = activeTicket.detalles.findIndex(
       (d) => d.servicio_id === serv.id && (!isOdonto || !d.diente_fdi)
     );
 
     if (existingIndex >= 0) {
-      // Si ya está en el carrito, incrementar cantidad
       const newDetalles = [...activeTicket.detalles];
       newDetalles[existingIndex].cantidad += 1;
       updateActiveTicket({ detalles: newDetalles });
       toast.success(`+1 ${serv.nombre} agregado al ticket`);
     } else {
-      // Agregar nuevo concepto
       const newItem: CobroDetalleItem = {
         servicio_id: serv.id,
         tipo_concepto: isOdonto ? 'odontologia' : 'servicio',
@@ -426,6 +525,7 @@ export const PuntoCobroPage: React.FC = () => {
 
   // Modificar cantidad en carrito
   const handleUpdateItemQty = (index: number, delta: number) => {
+    posSound.playBeep();
     const newDetalles = [...activeTicket.detalles];
     const newQty = newDetalles[index].cantidad + delta;
     if (newQty <= 0) {
@@ -438,14 +538,8 @@ export const PuntoCobroPage: React.FC = () => {
 
   // Eliminar ítem del carrito
   const handleRemoveItem = (index: number) => {
+    posSound.playBeep();
     const newDetalles = activeTicket.detalles.filter((_, i) => i !== index);
-    updateActiveTicket({ detalles: newDetalles });
-  };
-
-  // Modificar precio unitario en carrito
-  const handleUpdateItemPrice = (index: number, newPrice: number) => {
-    const newDetalles = [...activeTicket.detalles];
-    newDetalles[index].precio_unitario_divisa = Math.max(0, newPrice);
     updateActiveTicket({ detalles: newDetalles });
   };
 
@@ -459,6 +553,7 @@ export const PuntoCobroPage: React.FC = () => {
   // Vincular consulta médica
   const handleSelectConsulta = (consulta: ConsultaMedica) => {
     if (consulta.estado_pago === 'pagado') {
+      posSound.playError();
       toast.warning(`Esta consulta ya fue cobrada (${consulta.codigo || '#' + consulta.id}).`);
       return;
     }
@@ -469,6 +564,7 @@ export const PuntoCobroPage: React.FC = () => {
       return;
     }
 
+    posSound.playBeep();
     const docNombre = consulta.medico
       ? `${consulta.medico.nombres} ${consulta.medico.apellidos}`.trim()
       : '';
@@ -544,6 +640,12 @@ export const PuntoCobroPage: React.FC = () => {
       } else if (e.key === 'F10') {
         e.preventDefault();
         searchInputRef.current?.focus();
+      } else if (e.key === 'F8') {
+        e.preventDefault();
+        setIsPatientSearchOpen(true);
+      } else if (e.key === 'F4') {
+        e.preventDefault();
+        handleOpenRecentCobros();
       } else if (e.key === 'F12') {
         e.preventDefault();
         if (activeTicket.detalles.length > 0 && turnoActivo) {
@@ -555,22 +657,44 @@ export const PuntoCobroPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTicket.detalles, turnoActivo, totalFacturaDivisa]);
 
+  // Modal de Historial de Últimos Recibos [F4]
+  const handleOpenRecentCobros = async () => {
+    setIsRecentCobrosOpen(true);
+    setLoadingRecentCobros(true);
+    try {
+      const list = await cajasApi.listCobros({
+        sucursal_id: currentSucursalId,
+        limit: 15,
+      });
+      setRecentCobros(list || []);
+    } catch (err) {
+      toast.error('Error al cargar historial de últimos recibos');
+    } finally {
+      setLoadingRecentCobros(false);
+    }
+  };
+
   // Abrir Modal de Pagos
   const handleOpenPaymentModal = () => {
     if (!turnoActivo) {
+      posSound.playError();
       toast.error('Debe haber un turno de caja abierto para registrar cobros');
       setAperturaModalOpen(true);
       return;
     }
     if (!activeTicket.pacienteId) {
-      toast.error('Seleccione un paciente para emitir el cobro');
+      posSound.playError();
+      toast.error('Seleccione o ingrese un paciente para emitir el cobro');
+      setIsPatientSearchOpen(true);
       return;
     }
     if (activeTicket.detalles.length === 0) {
+      posSound.playError();
       toast.error('El ticket está vacío. Agregue al menos un servicio.');
       return;
     }
     if (totalFacturaDivisa <= 0) {
+      posSound.playError();
       toast.error('El total a cobrar debe ser mayor a cero.');
       return;
     }
@@ -586,11 +710,41 @@ export const PuntoCobroPage: React.FC = () => {
         notas: '',
       },
     ]);
+    setTieneSeguro(false);
     setIsPaymentModalOpen(true);
   };
 
+  // Aplicar división con Seguro Médico
+  useEffect(() => {
+    if (!isPaymentModalOpen) return;
+    if (tieneSeguro && totalFacturaDivisa > 0) {
+      const montoSeguro = Math.round((totalFacturaDivisa * (seguroPorcentaje / 100)) * 100) / 100;
+      const deducible = Math.max(0, Math.round((totalFacturaDivisa - montoSeguro) * 100) / 100);
+
+      setPagos([
+        {
+          metodo: 'seguro_medico',
+          moneda: monedaReferencia as any,
+          monto_moneda_origen: montoSeguro,
+          referencia: `Carta Aval ${seguroNombre}`,
+          banco_origen: seguroNombre,
+          notas: `Cobertura Póliza ${seguroPorcentaje}%`,
+        },
+        {
+          metodo: monedaReferencia === 'EUR' ? 'efectivo_eur' : 'efectivo_usd',
+          moneda: monedaReferencia as any,
+          monto_moneda_origen: deducible,
+          referencia: '',
+          banco_origen: '',
+          notas: 'Deducible Paciente',
+        },
+      ]);
+    }
+  }, [tieneSeguro, seguroPorcentaje, seguroNombre, totalFacturaDivisa, isPaymentModalOpen]);
+
   // Botones Rápidos de Denominaciones en Efectivo (Quadralo Style)
   const handleQuickAmount = (amount: number) => {
+    posSound.playBeep();
     setPagos([
       {
         metodo: monedaReferencia === 'EUR' ? 'efectivo_eur' : 'efectivo_usd',
@@ -605,6 +759,7 @@ export const PuntoCobroPage: React.FC = () => {
 
   // Agregar línea de pago mixto
   const handleAddPagoRow = () => {
+    posSound.playBeep();
     const falta = Math.round(saldoPendienteDivisa * 100) / 100;
     setPagos([
       ...pagos,
@@ -624,6 +779,7 @@ export const PuntoCobroPage: React.FC = () => {
       toast.info('Debe mantenerse al menos un medio de pago');
       return;
     }
+    posSound.playBeep();
     setPagos(pagos.filter((_, i) => i !== index));
   };
 
@@ -631,7 +787,10 @@ export const PuntoCobroPage: React.FC = () => {
   const handleConfirmarCobro = async () => {
     if (!turnoActivo) return;
     if (saldoPendienteDivisa > 0.01) {
-      toast.error(`Aún queda un saldo pendiente de ${monedaReferencia === 'EUR' ? '€' : '$'}${saldoPendienteDivisa.toFixed(2)} por cubrir.`);
+      posSound.playError();
+      toast.error(
+        `Aún queda un saldo pendiente de ${monedaReferencia === 'EUR' ? '€' : '$'}${saldoPendienteDivisa.toFixed(2)} por cubrir.`
+      );
       return;
     }
 
@@ -650,6 +809,7 @@ export const PuntoCobroPage: React.FC = () => {
         pagos,
       });
 
+      posSound.playSuccess();
       toast.success(`¡Cobro exitoso! Recibo ${cobroGenerado.numero_recibo} emitido.`);
       setUltimoCobro(cobroGenerado);
       setIsPaymentModalOpen(false);
@@ -672,11 +832,68 @@ export const PuntoCobroPage: React.FC = () => {
       const turnoUp = await cajasApi.getActiveTurno();
       setTurnoActivo(turnoUp);
     } catch (err: any) {
+      posSound.playError();
       toast.error(err.response?.data?.detail || 'Error al procesar el cobro');
     } finally {
       setSubmittingCobro(false);
     }
   };
+
+  // Registrar Movimiento de Caja (Entrada / Salida de Efectivo)
+  const handleGuardarMovimiento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!turnoActivo) return;
+    if (!movConcepto.trim()) {
+      toast.error('Indique el concepto o motivo del movimiento');
+      return;
+    }
+    const montoNum = Number(movMonto);
+    if (!montoNum || montoNum <= 0) {
+      toast.error('Ingrese un monto válido');
+      return;
+    }
+
+    try {
+      setSubmittingMovimiento(true);
+      await cajasApi.createMovimiento({
+        turno_caja_id: turnoActivo.id,
+        sucursal_id: currentSucursalId,
+        tipo: movTipo,
+        concepto: movConcepto.trim(),
+        moneda: movMoneda,
+        monto: montoNum,
+      });
+
+      posSound.playSuccess();
+      toast.success(`Movimiento de ${movTipo.toUpperCase()} registrado correctamente`);
+      setIsMovimientoModalOpen(false);
+      setMovConcepto('');
+      setMovMonto('');
+
+      // Refrescar turno
+      const turnoUp = await cajasApi.getActiveTurno();
+      setTurnoActivo(turnoUp);
+    } catch (err: any) {
+      posSound.playError();
+      toast.error(err.response?.data?.detail || 'Error al registrar movimiento');
+    } finally {
+      setSubmittingMovimiento(false);
+    }
+  };
+
+  // Filtro de Pacientes para Modal Rápido [F8]
+  const filteredModalPacientes = useMemo(() => {
+    const q = patientSearchTerm.trim().toLowerCase();
+    if (!q) return pacientes.slice(0, 15);
+    return pacientes
+      .filter((p) => {
+        const doc = (p.documento_identidad || '').toLowerCase();
+        const nom = `${p.nombres} ${p.apellidos}`.toLowerCase();
+        const tel = (p.telefono || '').toLowerCase();
+        return nom.includes(q) || doc.includes(q) || tel.includes(q);
+      })
+      .slice(0, 20);
+  }, [pacientes, patientSearchTerm]);
 
   return (
     <div
@@ -694,7 +911,7 @@ export const PuntoCobroPage: React.FC = () => {
             <Sparkles className="size-4 text-emerald-400 animate-pulse" />
             <span className="font-bold tracking-wide">Terminal Kiosco POS Activo</span>
             <span className="text-[11px] text-emerald-200 hidden sm:inline">
-              • Modo inmersivo de cobranza médica y odontológica
+              • Modo inmersivo de cobranza médica y odontológica sin distracciones
             </span>
           </div>
           <Button
@@ -716,7 +933,53 @@ export const PuntoCobroPage: React.FC = () => {
           description="Gestión integral de recaudación médica y odontológica con cálculo en tiempo real según tasa oficial BCV."
           icon={<CircleDollarSign className="h-6 w-6 text-white" />}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Control de Sonidos POS */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleSound}
+              className={cn(
+                'h-9 text-xs gap-1.5 cursor-pointer transition-colors',
+                soundEnabled
+                  ? 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  : 'bg-rose-50 text-rose-600 border-rose-200'
+              )}
+              title={soundEnabled ? 'Sonidos activos (clic para silenciar)' : 'Silenciado (clic para activar)'}
+            >
+              {soundEnabled ? (
+                <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 text-rose-500" />
+              )}
+              <span className="hidden xl:inline">{soundEnabled ? 'Sonido' : 'Silencio'}</span>
+            </Button>
+
+            {/* Atajo F4 Historial de Últimos Recibos */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenRecentCobros}
+              className="gap-1.5 text-xs h-9 cursor-pointer text-indigo-700 dark:text-indigo-300 bg-indigo-50/50 hover:bg-indigo-100 border-indigo-200"
+            >
+              <History className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="font-bold">[F4]</span> Últimos Recibos
+            </Button>
+
+            {/* Entrada / Salida de Efectivo */}
+            {turnoActivo && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsMovimientoModalOpen(true)}
+                className="gap-1.5 text-xs h-9 cursor-pointer text-slate-700 dark:text-slate-200"
+              >
+                <ArrowUpRight className="w-3.5 h-3.5 text-amber-500" />
+                <span className="hidden sm:inline">Movimiento</span> (+/-)
+              </Button>
+            )}
+
+            {/* Turno Apertura / Cierre */}
             {turnoActivo ? (
               <Button
                 variant="outline"
@@ -742,7 +1005,7 @@ export const PuntoCobroPage: React.FC = () => {
               className="gap-1.5 text-xs h-9 cursor-pointer text-slate-700 dark:text-slate-200"
               title="Modo pantalla completa [F11]"
             >
-              <Maximize2 className="w-3.5 h-3.5 text-indigo-500" />
+              <Maximize2 className="w-3.5 h-3.5 text-emerald-600" />
               <span className="hidden sm:inline">Kiosco</span> [F11]
             </Button>
           </div>
@@ -842,7 +1105,10 @@ export const PuntoCobroPage: React.FC = () => {
             return (
               <div
                 key={ticket.id}
-                onClick={() => setActiveTicketId(ticket.id)}
+                onClick={() => {
+                  setActiveTicketId(ticket.id);
+                  posSound.playBeep();
+                }}
                 className={cn(
                   'flex items-center gap-2 px-3 py-1.5 rounded-t-xl text-xs font-bold cursor-pointer transition-all border border-b-0 whitespace-nowrap',
                   isSelected
@@ -932,7 +1198,10 @@ export const PuntoCobroPage: React.FC = () => {
                 <button
                   key={cat}
                   type="button"
-                  onClick={() => setSelectedCategoria(cat)}
+                  onClick={() => {
+                    setSelectedCategoria(cat);
+                    posSound.playBeep();
+                  }}
                   className={cn(
                     'px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer border flex items-center gap-1.5',
                     isSelected
@@ -995,7 +1264,7 @@ export const PuntoCobroPage: React.FC = () => {
                     type="button"
                     onClick={() => setTabConsultas('pendientes')}
                     className={cn(
-                      'px-2 py-0.5 rounded font-bold transition-all',
+                      'px-2 py-0.5 rounded font-bold transition-all cursor-pointer',
                       tabConsultas === 'pendientes'
                         ? 'bg-white dark:bg-slate-700 text-emerald-700 shadow-2xs'
                         : 'text-slate-500'
@@ -1007,7 +1276,7 @@ export const PuntoCobroPage: React.FC = () => {
                     type="button"
                     onClick={() => setTabConsultas('pagadas')}
                     className={cn(
-                      'px-2 py-0.5 rounded font-bold transition-all',
+                      'px-2 py-0.5 rounded font-bold transition-all cursor-pointer',
                       tabConsultas === 'pagadas'
                         ? 'bg-white dark:bg-slate-700 text-teal-700 shadow-2xs'
                         : 'text-slate-500'
@@ -1190,22 +1459,38 @@ export const PuntoCobroPage: React.FC = () => {
               )}
             </div>
 
-            {/* Selector de Paciente */}
+            {/* Selector y Búsqueda Rápida de Paciente [F8] */}
             <div className="space-y-1">
-              <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                <span>Paciente *</span>
-                {activeTicket.pacienteId && (
-                  <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Paciente Activo
-                  </span>
-                )}
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                  Paciente *
+                </Label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPatientSearchOpen(true)}
+                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Search className="w-3 h-3" />
+                    <span>[F8] Buscar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsNewPatientModalOpen(true)}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <UserPlus className="w-3 h-3" />
+                    <span>+ Paciente Exprés</span>
+                  </button>
+                </div>
+              </div>
+
               <Select
                 value={activeTicket.pacienteId}
                 onValueChange={handleSelectPaciente}
               >
                 <SelectTrigger className="h-10 text-xs bg-slate-50 dark:bg-slate-800/80 rounded-xl">
-                  <SelectValue placeholder="Seleccione o busque paciente..." />
+                  <SelectValue placeholder="Seleccione o presione [F8] para buscar..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
                   {pacientes.map((p) => (
@@ -1480,6 +1765,57 @@ export const PuntoCobroPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Soporte de Aseguradora / Seguro Médico */}
+          <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={tieneSeguro}
+                  onChange={(e) => setTieneSeguro(e.target.checked)}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                />
+                <Shield className="w-4 h-4 text-indigo-600" />
+                <span>¿Facturar con Cobertura de Seguro Médico / Póliza?</span>
+              </label>
+              {tieneSeguro && (
+                <Badge className="bg-indigo-600 text-white text-[9.5px]">Aseguradora Activa</Badge>
+              )}
+            </div>
+
+            {tieneSeguro && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-200 dark:border-slate-700">
+                <div>
+                  <Label className="text-[10px] text-slate-500 font-semibold">Aseguradora / Empresa:</Label>
+                  <Input
+                    value={seguroNombre}
+                    onChange={(e) => setSeguroNombre(e.target.value)}
+                    placeholder="Ej. Seguros Caracas, Mercantil..."
+                    className="h-8 text-xs bg-white dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-slate-500 font-semibold">% Cubierto por Seguro:</Label>
+                  <Select
+                    value={String(seguroPorcentaje)}
+                    onValueChange={(v) => setSeguroPorcentaje(parseInt(v, 10))}
+                  >
+                    <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="text-xs">
+                      <SelectItem value="50">50% Cubierto (50% Deducible)</SelectItem>
+                      <SelectItem value="70">70% Cubierto (30% Deducible)</SelectItem>
+                      <SelectItem value="80">80% Cubierto (20% Deducible)</SelectItem>
+                      <SelectItem value="90">90% Cubierto (10% Deducible)</SelectItem>
+                      <SelectItem value="100">100% Cubierto Total</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Botonera Rápida de Billetes en Efectivo (Quadralo Style) */}
           <div className="space-y-1.5">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block">
@@ -1538,7 +1874,7 @@ export const PuntoCobroPage: React.FC = () => {
                         onValueChange={(val) => {
                           const newPagos = [...pagos];
                           newPagos[pIdx].metodo = val;
-                          if (val === 'efectivo_usd' || val === 'zelle') {
+                          if (val === 'efectivo_usd' || val === 'zelle' || val === 'seguro_medico') {
                             newPagos[pIdx].moneda = 'USD';
                           } else if (val === 'efectivo_eur') {
                             newPagos[pIdx].moneda = 'EUR';
@@ -1559,6 +1895,7 @@ export const PuntoCobroPage: React.FC = () => {
                           <SelectItem value="punto_venta">Punto de Venta / Tarjeta</SelectItem>
                           <SelectItem value="transferencia">Transferencia Bancaria</SelectItem>
                           <SelectItem value="zelle">Zelle ($)</SelectItem>
+                          <SelectItem value="seguro_medico">Aseguradora / Seguro Médico</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1641,7 +1978,287 @@ export const PuntoCobroPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Modales de Gestión de Caja y Recibo Térmico */}
+      {/* ==================================================== */}
+      {/* MODAL DE BÚSQUEDA RÁPIDA DE PACIENTE [F8] */}
+      {/* ==================================================== */}
+      <Dialog open={isPatientSearchOpen} onOpenChange={setIsPatientSearchOpen}>
+        <DialogContent className="sm:max-w-[550px] p-5 rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between text-base font-extrabold text-slate-900 dark:text-white">
+              <span className="flex items-center gap-2">
+                <User className="w-4 h-4 text-emerald-600" />
+                Buscar Paciente [F8]
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setIsPatientSearchOpen(false);
+                  setIsNewPatientModalOpen(true);
+                }}
+                className="text-xs gap-1 text-indigo-700 border-indigo-300"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Nuevo Paciente
+              </Button>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Escriba el nombre, cédula o teléfono para asignar el paciente al ticket activo.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="relative pt-2">
+            <Search className="absolute left-3.5 top-5 size-4 text-slate-400" />
+            <Input
+              ref={patientSearchInputRef}
+              value={patientSearchTerm}
+              onChange={(e) => setPatientSearchTerm(e.target.value)}
+              placeholder="Ej. 25844912 o Carlos Mendoza..."
+              className="pl-10 h-10 text-xs rounded-xl"
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1 pt-2">
+            {filteredModalPacientes.length === 0 ? (
+              <div className="p-6 text-center text-slate-400 text-xs">
+                No se encontraron pacientes con ese criterio.
+              </div>
+            ) : (
+              filteredModalPacientes.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => {
+                    handleSelectPaciente(String(p.id));
+                    setIsPatientSearchOpen(false);
+                    setPatientSearchTerm('');
+                  }}
+                  className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 cursor-pointer flex items-center justify-between transition-all"
+                >
+                  <div>
+                    <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block">
+                      {p.nombres} {p.apellidos}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      CI: {p.documento_identidad || 'Sin documento'} {p.telefono ? `• Tel: ${p.telefono}` : ''}
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] text-emerald-700 border-emerald-300">
+                    Asignar
+                  </Badge>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================================================== */}
+      {/* MODAL DE HISTORIAL DE ÚLTIMOS RECIBOS [F4] */}
+      {/* ==================================================== */}
+      <Dialog open={isRecentCobrosOpen} onOpenChange={setIsRecentCobrosOpen}>
+        <DialogContent className="sm:max-w-[700px] p-5 rounded-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-extrabold text-slate-900 dark:text-white">
+              <History className="w-4 h-4 text-indigo-600" />
+              Últimos Recibos Emitidos en el Turno [F4]
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Reimpresión térmica directa y reenvío por WhatsApp en 1 clic.
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingRecentCobros ? (
+            <div className="p-8 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+              <Activity className="w-4 h-4 animate-spin text-indigo-600" />
+              <span>Cargando recibos...</span>
+            </div>
+          ) : recentCobros.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-xs">
+              No hay recibos emitidos recientemente.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recentCobros.map((rc) => (
+                <div
+                  key={rc.id}
+                  className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 text-xs"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">
+                        {rc.numero_recibo}
+                      </span>
+                      <Badge className="bg-emerald-600 text-white text-[9px] py-0 h-4">
+                        {rc.estado}
+                      </Badge>
+                    </div>
+                    <span className="text-slate-700 dark:text-slate-300 font-semibold block truncate">
+                      {rc.paciente_nombre || 'Particular'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {new Date(rc.fecha_emision).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} •{' '}
+                      {rc.medico_nombre ? `Dr. ${rc.medico_nombre}` : 'Sin médico'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <span className="font-mono font-bold text-sm text-emerald-600 block">
+                        {rc.moneda_referencia === 'EUR' ? '€' : '$'}{Number(rc.total_divisa).toFixed(2)}
+                      </span>
+                      <span className="text-[9.5px] font-mono text-slate-400 block">
+                        Bs. {Number(rc.total_ves).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setUltimoCobro(rc);
+                        setReciboModalOpen(true);
+                      }}
+                      className="h-8 px-2 text-xs gap-1 font-bold text-indigo-700 border-indigo-300 cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Reimprimir</span>
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================================================== */}
+      {/* MODAL DE MOVIMIENTOS DE CAJA (ENTRADA / SALIDA) */}
+      {/* ==================================================== */}
+      <Dialog open={isMovimientoModalOpen} onOpenChange={setIsMovimientoModalOpen}>
+        <DialogContent className="sm:max-w-[480px] p-5 rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-extrabold text-slate-900 dark:text-white">
+              <Wallet className="w-4 h-4 text-amber-500" />
+              Movimiento Extraordinario de Caja Chica
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Registre salidas para gastos menores o ingresos adicionales de sencillo.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleGuardarMovimiento} className="space-y-3 pt-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMovTipo('egreso')}
+                className={cn(
+                  'py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all',
+                  movTipo === 'egreso'
+                    ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-2xs'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-600'
+                )}
+              >
+                <ArrowUpRight className="w-4 h-4 text-rose-600" />
+                <span>Salida / Gasto</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMovTipo('ingreso')}
+                className={cn(
+                  'py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all',
+                  movTipo === 'ingreso'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 text-slate-600'
+                )}
+              >
+                <ArrowDownRight className="w-4 h-4 text-emerald-600" />
+                <span>Entrada / Sencillo</span>
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Concepto / Motivo *</Label>
+              <Input
+                value={movConcepto}
+                onChange={(e) => setMovConcepto(e.target.value)}
+                placeholder="Ej. Compra de agua mineral, courier, insumos..."
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Moneda</Label>
+                <Select
+                  value={movMoneda}
+                  onValueChange={(val: any) => setMovMoneda(val)}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs">
+                    <SelectItem value="USD">Dólares ($)</SelectItem>
+                    <SelectItem value="VES">Bolívares (Bs.)</SelectItem>
+                    <SelectItem value="EUR">Euros (€)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Monto *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={movMonto}
+                  onChange={(e) => setMovMonto(parseFloat(e.target.value) || '')}
+                  placeholder="0.00"
+                  className="h-9 text-xs font-mono font-bold"
+                  required
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsMovimientoModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={submittingMovimiento}
+                className={cn(
+                  'text-white font-bold text-xs',
+                  movTipo === 'egreso' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                )}
+              >
+                {submittingMovimiento ? 'Registrando...' : 'Confirmar Movimiento'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Registro de Paciente Exprés */}
+      <PatientFormModal
+        open={isNewPatientModalOpen}
+        onOpenChange={setIsNewPatientModalOpen}
+        onSaved={(newPac) => {
+          if (newPac) {
+            setPacientes((prev) => [newPac, ...prev]);
+            handleSelectPaciente(String(newPac.id));
+            setIsNewPatientModalOpen(false);
+          }
+        }}
+      />
+
+      {/* Modales de Gestión de Turnos */}
       <TurnoAperturaModal
         open={aperturaModalOpen}
         onOpenChange={setAperturaModalOpen}
@@ -1659,6 +2276,7 @@ export const PuntoCobroPage: React.FC = () => {
         />
       )}
 
+      {/* Recibo Térmico 80mm */}
       <CobroReciboModal
         open={reciboModalOpen}
         onOpenChange={setReciboModalOpen}

@@ -175,6 +175,20 @@ export const cajasApi = {
     const res = await api.post<Cobro>(`/cajas/cobros/${id}/anular`, null, { params: { motivo } });
     return res.data;
   },
+
+  // Movimientos Extraordinarios de Caja
+  createMovimiento: async (data: {
+    turno_caja_id: number;
+    sucursal_id: number;
+    tipo: 'ingreso' | 'egreso';
+    concepto: string;
+    moneda: 'USD' | 'VES' | 'EUR';
+    monto: number;
+    comprobante_adjunto?: string;
+  }) => {
+    const res = await api.post('/cajas/movimientos', data);
+    return res.data;
+  },
 };
 
 export default cajasApi;
