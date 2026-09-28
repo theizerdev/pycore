@@ -43,6 +43,12 @@ import {
   Shield,
   FileText,
   RotateCcw,
+  Banknote,
+  Smartphone,
+  ShieldCheck,
+  Percent,
+  Phone,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -424,6 +430,16 @@ export const PuntoCobroPage: React.FC = () => {
     return consultasFinalizadas.filter((c) => c.estado_pago === 'pagado');
   }, [consultasFinalizadas]);
 
+  const selectedPaciente = useMemo(() => {
+    if (!activeTicket.pacienteId) return null;
+    return pacientes.find((p) => p.id === parseInt(activeTicket.pacienteId, 10)) || null;
+  }, [pacientes, activeTicket.pacienteId]);
+
+  const selectedMedico = useMemo(() => {
+    if (!activeTicket.medicoId) return null;
+    return medicos.find((m) => m.id === parseInt(activeTicket.medicoId, 10)) || null;
+  }, [medicos, activeTicket.medicoId]);
+
   // ==========================================
   // Manejador de Pestañas Multi-Ticket
   // ==========================================
@@ -607,6 +623,20 @@ export const PuntoCobroPage: React.FC = () => {
     return totalFacturaDivisa * tasaActiva;
   }, [totalFacturaDivisa, tasaActiva]);
 
+  // Aplicar porcentaje de descuento preestablecido
+  const applyDiscountPercent = (pct: number) => {
+    posSound.playBeep();
+    if (pct === 0) {
+      updateActiveTicket({ descuentoDivisa: 0 });
+      return;
+    }
+    const discountVal = Math.round(subtotalFacturaDivisa * (pct / 100) * 100) / 100;
+    updateActiveTicket({ descuentoDivisa: discountVal });
+    toast.success(
+      `Descuento del ${pct}% aplicado (-${monedaReferencia === 'EUR' ? '€' : '$'}${discountVal.toFixed(2)})`
+    );
+  };
+
   // Cálculos de Pagos y Vueltos
   const totalAbonadoDivisa = useMemo(() => {
     return pagos.reduce((acc, p) => {
@@ -675,7 +705,7 @@ export const PuntoCobroPage: React.FC = () => {
   };
 
   // Abrir Modal de Pagos
-  const handleOpenPaymentModal = () => {
+  const handleOpenPaymentModal = (defaultMethod?: 'efectivo' | 'punto' | 'pagomovil' | 'seguro') => {
     if (!turnoActivo) {
       posSound.playError();
       toast.error('Debe haber un turno de caja abierto para registrar cobros');
@@ -699,18 +729,68 @@ export const PuntoCobroPage: React.FC = () => {
       return;
     }
 
-    // Inicializar pago con el monto exacto en divisa
-    setPagos([
-      {
-        metodo: monedaReferencia === 'EUR' ? 'efectivo_eur' : 'efectivo_usd',
-        moneda: monedaReferencia as any,
-        monto_moneda_origen: totalFacturaDivisa,
-        referencia: '',
-        banco_origen: '',
-        notas: '',
-      },
-    ]);
-    setTieneSeguro(false);
+    if (defaultMethod === 'seguro') {
+      setTieneSeguro(true);
+      setSeguroPorcentaje(80);
+      const montoSeguro = Math.round((totalFacturaDivisa * 0.8) * 100) / 100;
+      const deducible = Math.max(0, Math.round((totalFacturaDivisa - montoSeguro) * 100) / 100);
+      const aseguradoraNombre = selectedPaciente?.seguro_medico || seguroNombre;
+      setPagos([
+        {
+          metodo: 'seguro_medico',
+          moneda: (monedaReferencia === 'EUR' ? 'EUR' : 'USD') as any,
+          monto_moneda_origen: montoSeguro,
+          referencia: `Carta Aval ${aseguradoraNombre}`,
+          banco_origen: aseguradoraNombre,
+          notas: `Cobertura Póliza 80%`,
+        },
+        {
+          metodo: (monedaReferencia === 'EUR' ? 'efectivo_eur' : 'efectivo_usd') as any,
+          moneda: (monedaReferencia === 'EUR' ? 'EUR' : 'USD') as any,
+          monto_moneda_origen: deducible,
+          referencia: '',
+          banco_origen: '',
+          notas: 'Deducible Paciente',
+        },
+      ]);
+    } else if (defaultMethod === 'punto') {
+      setTieneSeguro(false);
+      setPagos([
+        {
+          metodo: 'punto_venta',
+          moneda: 'VES',
+          monto_moneda_origen: Math.round(totalFacturaVes * 100) / 100,
+          referencia: '',
+          banco_origen: '',
+          notas: '',
+        },
+      ]);
+    } else if (defaultMethod === 'pagomovil') {
+      setTieneSeguro(false);
+      setPagos([
+        {
+          metodo: 'pago_movil',
+          moneda: 'VES',
+          monto_moneda_origen: Math.round(totalFacturaVes * 100) / 100,
+          referencia: '',
+          banco_origen: '',
+          notas: '',
+        },
+      ]);
+    } else {
+      setTieneSeguro(false);
+      setPagos([
+        {
+          metodo: (monedaReferencia === 'EUR' ? 'efectivo_eur' : 'efectivo_usd') as any,
+          moneda: (monedaReferencia === 'EUR' ? 'EUR' : 'USD') as any,
+          monto_moneda_origen: totalFacturaDivisa,
+          referencia: '',
+          banco_origen: '',
+          notas: '',
+        },
+      ]);
+    }
+
     setIsPaymentModalOpen(true);
   };
 
@@ -1078,7 +1158,7 @@ export const PuntoCobroPage: React.FC = () => {
         <div className="flex items-center">
           <Button
             type="button"
-            onClick={handleOpenPaymentModal}
+            onClick={() => handleOpenPaymentModal()}
             disabled={activeTicket.detalles.length === 0 || !turnoActivo}
             className="w-full h-full min-h-[50px] bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm gap-2 rounded-xl shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
           >
@@ -1434,8 +1514,8 @@ export const PuntoCobroPage: React.FC = () => {
         {/* ==================================================== */}
         {/* COLUMNA DERECHA: TICKET ACTIVO Y CARRITO POS (5 cols) */}
         {/* ==================================================== */}
-        <div className="lg:col-span-5 space-y-3">
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5">
+        <div className="lg:col-span-5 space-y-3 lg:sticky lg:top-4 h-fit">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-md space-y-3.5">
             {/* Header del Ticket Activo */}
             <div className="flex items-center justify-between border-b pb-2.5">
               <div className="flex items-center gap-2">
@@ -1443,7 +1523,7 @@ export const PuntoCobroPage: React.FC = () => {
                 <span className="font-extrabold text-sm text-slate-900 dark:text-white">
                   {activeTicket.name}
                 </span>
-                <Badge variant="outline" className="text-[10px] font-mono text-emerald-700 bg-emerald-50">
+                <Badge variant="outline" className="text-[10px] font-mono text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300">
                   {activeTicket.detalles.length} concepto(s)
                 </Badge>
               </div>
@@ -1451,127 +1531,214 @@ export const PuntoCobroPage: React.FC = () => {
               {activeTicket.detalles.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => updateActiveTicket({ detalles: [] })}
-                  className="text-[11px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
+                  onClick={() => {
+                    updateActiveTicket({ detalles: [], autoLoadedInfo: null, descuentoDivisa: 0 });
+                    posSound.playBeep();
+                  }}
+                  className="text-[11px] text-rose-500 hover:text-rose-700 font-semibold cursor-pointer transition-colors"
                 >
                   Vaciar ticket
                 </button>
               )}
             </div>
 
-            {/* Selector y Búsqueda Rápida de Paciente [F8] */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  Paciente *
-                </Label>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsPatientSearchOpen(true)}
-                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 cursor-pointer"
+            {/* Tarjeta de Paciente Seleccionado / Selector Rápido */}
+            {selectedPaciente ? (
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-50/70 via-teal-50/30 to-slate-50 dark:from-slate-800/90 dark:to-slate-800/50 border border-emerald-500/25 dark:border-emerald-500/20 shadow-xs space-y-2">
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-black text-sm shrink-0 shadow-sm shadow-emerald-600/30">
+                      {((selectedPaciente.nombres?.[0] || '') + (selectedPaciente.apellidos?.[0] || '')).toUpperCase() || 'P'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                          {selectedPaciente.nombres} {selectedPaciente.apellidos}
+                        </h4>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold bg-white/80 dark:bg-slate-700/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-700/50">
+                          CI: {selectedPaciente.documento_identidad || 'S/D'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 pt-0.5 flex-wrap">
+                        {selectedPaciente.telefono && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="w-3 h-3 text-slate-400" />
+                            {selectedPaciente.telefono}
+                          </span>
+                        )}
+                        {selectedPaciente.seguro_medico && (
+                          <span className="flex items-center gap-1 text-teal-700 dark:text-teal-400 font-semibold">
+                            <ShieldCheck className="w-3 h-3" />
+                            {selectedPaciente.seguro_medico}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setIsPatientSearchOpen(true)}
+                      className="h-7 px-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100/50 cursor-pointer"
+                      title="Cambiar paciente [F8]"
+                    >
+                      <Search className="w-3 h-3 mr-1" />
+                      Cambiar
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateActiveTicket({
+                          pacienteId: '',
+                          citaId: '',
+                          consultaId: '',
+                          medicoId: '',
+                          autoLoadedInfo: null,
+                          name: `Ticket ${tickets.findIndex((t) => t.id === activeTicketId) + 1}`,
+                        });
+                        posSound.playBeep();
+                      }}
+                      className="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
+                      title="Quitar paciente del ticket"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cita Clínica Vinculada (si existe) */}
+                {activeTicket.autoLoadedInfo && (
+                  <div className="p-2 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-emerald-500/20 text-xs flex items-center justify-between shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CalendarCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
+                          Cita del Día Vinculada
+                        </span>
+                        <span className="font-bold text-slate-800 dark:text-slate-100 block truncate">
+                          {activeTicket.autoLoadedInfo.servicioNombre}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="font-black font-mono text-emerald-700 dark:text-emerald-400 text-xs">
+                        {monedaReferencia === 'EUR' ? '€' : '$'}
+                        {activeTicket.autoLoadedInfo.precio.toFixed(2)}
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 block font-mono">
+                        Bs. {(activeTicket.autoLoadedInfo.precio * tasaActiva).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Doctor Asignado a la Atención */}
+                <div className="pt-1 border-t border-emerald-500/10 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                    <Stethoscope className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-[11px] font-semibold">Médico:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100 text-[11px] truncate max-w-[180px]">
+                      {selectedMedico
+                        ? `Dr(a). ${selectedMedico.nombres} ${selectedMedico.apellidos}`
+                        : activeTicket.autoLoadedInfo?.medicoNombre
+                        ? `Dr(a). ${activeTicket.autoLoadedInfo.medicoNombre}`
+                        : 'Particular / Sin médico'}
+                    </span>
+                  </div>
+
+                  <Select
+                    value={activeTicket.medicoId}
+                    onValueChange={(val) => updateActiveTicket({ medicoId: val })}
                   >
-                    <Search className="w-3 h-3" />
-                    <span>[F8] Buscar</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsNewPatientModalOpen(true)}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
-                  >
-                    <UserPlus className="w-3 h-3" />
-                    <span>+ Paciente Exprés</span>
-                  </button>
+                    <SelectTrigger className="h-6 text-[10px] w-auto border-none bg-emerald-100/60 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-bold px-2 rounded-md shadow-none hover:bg-emerald-200/50">
+                      <SelectValue placeholder="Asignar" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64 text-xs">
+                      <SelectItem value="">Sin médico asignado</SelectItem>
+                      {medicos.map((m) => (
+                        <SelectItem key={m.id} value={String(m.id)}>
+                          Dr(a). {m.nombres} {m.apellidos}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-
-              <Select
-                value={activeTicket.pacienteId}
-                onValueChange={handleSelectPaciente}
-              >
-                <SelectTrigger className="h-10 text-xs bg-slate-50 dark:bg-slate-800/80 rounded-xl">
-                  <SelectValue placeholder="Seleccione o presione [F8] para buscar..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {pacientes.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)} className="text-xs">
-                      {p.nombres} {p.apellidos} {p.documento_identidad ? `(CI: ${p.documento_identidad})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Aviso de Auto-Carga desde Cita Médica */}
-            {activeTicket.autoLoadedInfo && (
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <CalendarCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>
-                    Auto-cargado desde cita: <strong>{activeTicket.autoLoadedInfo.servicioNombre}</strong>
+            ) : (
+              <div className="p-3.5 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 text-center space-y-2">
+                <div className="flex items-center justify-center gap-2">
+                  <Users className="w-4 h-4 text-emerald-600" />
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Paciente no seleccionado
                   </span>
-                </span>
-                <span className="text-[10px] font-bold font-mono">
-                  {monedaReferencia === 'EUR' ? '€' : '$'}
-                  {activeTicket.autoLoadedInfo.precio.toFixed(2)}
-                </span>
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setIsPatientSearchOpen(true)}
+                    className="h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 rounded-xl cursor-pointer"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    [F8] Buscar Paciente
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsNewPatientModalOpen(true)}
+                    className="h-8 text-xs font-bold text-indigo-700 border-indigo-300 hover:bg-indigo-50 gap-1.5 rounded-xl cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    + Paciente Exprés
+                  </Button>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  O presione [F8] para buscar por cédula, nombre o teléfono
+                </p>
               </div>
             )}
-
-            {/* Selector Opcional de Médico Asignado */}
-            <div className="space-y-1">
-              <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                Médico / Especialista (Opcional)
-              </Label>
-              <Select
-                value={activeTicket.medicoId}
-                onValueChange={(val) => updateActiveTicket({ medicoId: val })}
-              >
-                <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800/80 rounded-xl">
-                  <SelectValue placeholder="Vincular médico a la transacción..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  <SelectItem value="">Ninguno / Particular</SelectItem>
-                  {medicos.map((m) => (
-                    <SelectItem key={m.id} value={String(m.id)} className="text-xs">
-                      Dr(a). {m.nombres} {m.apellidos}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
 
             {/* Carrito: Lista de Conceptos a Cobrar */}
             <div className="space-y-2 pt-1">
               <Label className="text-[11px] font-extrabold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>Conceptos a Cobrar</span>
-                <span className="text-[10px] text-slate-400">Total ítems: {activeTicket.detalles.length}</span>
+                <span className="text-[10px] text-slate-400 font-mono">Total ítems: {activeTicket.detalles.length}</span>
               </Label>
 
               {activeTicket.detalles.length === 0 ? (
-                <div className="p-8 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 space-y-2 bg-slate-50/50 dark:bg-slate-800/30">
-                  <ShoppingCart className="w-8 h-8 mx-auto text-slate-300" />
-                  <p className="text-xs font-medium">El carrito está vacío</p>
-                  <p className="text-[10px]">
+                <div className="p-6 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 space-y-2 bg-slate-50/50 dark:bg-slate-800/30">
+                  <ShoppingCart className="w-7 h-7 mx-auto text-slate-300 dark:text-slate-600" />
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">El ticket no tiene conceptos agregados</p>
+                  <p className="text-[10.5px] text-slate-400">
                     Selecciona un paciente con cita previa o haz clic en cualquier servicio del catálogo para agregarlo.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[250px] xl:max-h-[300px] overflow-y-auto pr-1">
                   {activeTicket.detalles.map((it, idx) => {
                     const subtotal = (Number(it.precio_unitario_divisa) || 0) * (Number(it.cantidad) || 1);
                     return (
                       <div
                         key={idx}
-                        className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-1.5 text-xs shadow-2xs"
+                        className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/90 hover:border-emerald-500/40 transition-all shadow-xs space-y-2 group"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <span className="font-bold text-slate-800 dark:text-slate-100 block truncate">
-                              {it.descripcion}
-                            </span>
-                            <div className="flex items-center gap-1.5 pt-0.5">
-                              <Badge variant="outline" className="text-[9px] px-1 py-0 uppercase">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  'text-[9px] px-1.5 py-0 font-bold uppercase tracking-wider',
+                                  it.tipo_concepto === 'consulta'
+                                    ? 'border-emerald-300 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40'
+                                    : it.tipo_concepto === 'odontologia'
+                                    ? 'border-sky-300 text-sky-700 bg-sky-50 dark:bg-sky-950/40'
+                                    : 'border-slate-200 text-slate-600 bg-slate-50 dark:bg-slate-800'
+                                )}
+                              >
                                 {it.tipo_concepto}
                               </Badge>
                               <span className="text-[10px] text-slate-400 font-mono">
@@ -1579,12 +1746,15 @@ export const PuntoCobroPage: React.FC = () => {
                                 {Number(it.precio_unitario_divisa).toFixed(2)} c/u
                               </span>
                             </div>
+                            <h5 className="font-extrabold text-xs text-slate-800 dark:text-slate-100 pt-0.5 line-clamp-1" title={it.descripcion}>
+                              {it.descripcion}
+                            </h5>
                           </div>
 
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(idx)}
-                            className="text-slate-400 hover:text-rose-500 cursor-pointer p-1"
+                            className="text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-1.5 rounded-lg transition-colors cursor-pointer"
                             title="Eliminar del ticket"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1593,8 +1763,8 @@ export const PuntoCobroPage: React.FC = () => {
 
                         {/* Selector de Diente FDI si es odontología */}
                         {it.tipo_concepto === 'odontologia' && (
-                          <div className="flex items-center gap-1.5 pt-1 text-[11px]">
-                            <span className="text-slate-500 font-medium">Diente FDI:</span>
+                          <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 text-[11px]">
+                            <span className="text-slate-500 font-medium">🦷 Diente FDI:</span>
                             <Input
                               type="number"
                               min="11"
@@ -1607,39 +1777,41 @@ export const PuntoCobroPage: React.FC = () => {
                                   e.target.value ? parseInt(e.target.value, 10) : null
                                 )
                               }
-                              className="h-6 w-18 text-xs font-mono"
+                              className="h-6 w-20 text-xs font-mono font-bold"
                             />
                           </div>
                         )}
 
                         {/* Controles de Cantidad y Subtotal */}
-                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
-                          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border rounded-lg p-0.5">
+                        <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
+                          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
                             <button
                               type="button"
                               onClick={() => handleUpdateItemQty(idx, -1)}
-                              className="w-5 h-5 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded cursor-pointer"
+                              className="w-6 h-6 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-md cursor-pointer transition-colors shadow-2xs font-bold"
+                              title="Reducir cantidad"
                             >
                               <Minus className="w-3 h-3" />
                             </button>
-                            <span className="w-6 text-center font-bold font-mono text-xs">
+                            <span className="w-7 text-center font-black font-mono text-xs text-slate-800 dark:text-slate-100">
                               {it.cantidad}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleUpdateItemQty(idx, 1)}
-                              className="w-5 h-5 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded cursor-pointer"
+                              className="w-6 h-6 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-md cursor-pointer transition-colors shadow-2xs font-bold"
+                              title="Aumentar cantidad"
                             >
                               <Plus className="w-3 h-3" />
                             </button>
                           </div>
 
                           <div className="text-right">
-                            <span className="font-black text-sm text-slate-900 dark:text-white font-mono">
+                            <span className="font-black text-sm text-slate-900 dark:text-white font-mono block">
                               {monedaReferencia === 'EUR' ? '€' : '$'}
                               {subtotal.toFixed(2)}
                             </span>
-                            <span className="text-[10px] text-slate-400 block font-mono">
+                            <span className="text-[10px] text-slate-400 font-mono block">
                               Bs. {(subtotal * tasaActiva).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
@@ -1651,63 +1823,142 @@ export const PuntoCobroPage: React.FC = () => {
               )}
             </div>
 
-            {/* Descuento Opcional */}
-            <div className="flex items-center justify-between text-xs pt-1">
-              <span className="font-semibold text-slate-600">Descuento ({monedaReferencia}):</span>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={activeTicket.descuentoDivisa || ''}
-                onChange={(e) =>
-                  updateActiveTicket({ descuentoDivisa: parseFloat(e.target.value) || 0 })
-                }
-                placeholder="0.00"
-                className="h-7 w-24 text-right font-mono text-xs"
-              />
+            {/* Descuento & Toolbar de Presets */}
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Percent className="w-3.5 h-3.5 text-emerald-600" />
+                  Descuento ({monedaReferencia}):
+                </span>
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={activeTicket.descuentoDivisa || ''}
+                    onChange={(e) =>
+                      updateActiveTicket({ descuentoDivisa: parseFloat(e.target.value) || 0 })
+                    }
+                    placeholder="0.00"
+                    className="h-7 w-20 text-right font-mono text-xs bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700"
+                  />
+                  <span className="text-[10px] font-bold font-mono text-slate-500">
+                    {monedaReferencia === 'EUR' ? '€' : '$'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Chips de porcentaje rápido */}
+              <div className="grid grid-cols-5 gap-1">
+                {[0, 5, 10, 15, 20].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => applyDiscountPercent(pct)}
+                    className={cn(
+                      'py-1 rounded-md text-[10px] font-extrabold font-mono transition-all cursor-pointer border text-center',
+                      pct === 0 && (!activeTicket.descuentoDivisa || activeTicket.descuentoDivisa === 0)
+                        ? 'bg-slate-800 text-white border-slate-800 shadow-2xs'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    )}
+                  >
+                    {pct === 0 ? 'Sin Dcto' : `${pct}%`}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Bloque Resumen de Totales */}
-            <div className="p-3.5 rounded-xl bg-slate-900 text-white space-y-1.5 shadow-md">
-              <div className="flex justify-between text-xs text-slate-300">
+            {/* Bloque Resumen de Totales Ejecutivo (Obsidian Card) */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/80 border border-slate-800 text-white shadow-xl shadow-slate-950/20 relative overflow-hidden space-y-2">
+              <div className="flex justify-between text-xs text-slate-400">
                 <span>Subtotal:</span>
-                <span className="font-mono">
-                  {monedaReferencia === 'EUR' ? '€' : '$'}
-                  {subtotalFacturaDivisa.toFixed(2)}
+                <span className="font-mono font-bold text-slate-200">
+                  {monedaReferencia === 'EUR' ? '€' : '$'}{subtotalFacturaDivisa.toFixed(2)}
                 </span>
               </div>
+
               {activeTicket.descuentoDivisa > 0 && (
                 <div className="flex justify-between text-xs text-rose-300">
-                  <span>Descuento:</span>
-                  <span className="font-mono">
-                    -{monedaReferencia === 'EUR' ? '€' : '$'}
-                    {activeTicket.descuentoDivisa.toFixed(2)}
+                  <span>Descuento aplicado:</span>
+                  <span className="font-mono font-bold">
+                    -{monedaReferencia === 'EUR' ? '€' : '$'}{activeTicket.descuentoDivisa.toFixed(2)}
                   </span>
                 </div>
               )}
+
               <div className="border-t border-slate-800 pt-2 flex items-baseline justify-between">
-                <span className="font-extrabold text-sm uppercase tracking-wide">TOTAL A COBRAR:</span>
-                <span className="font-black text-2xl font-mono text-emerald-400">
-                  {monedaReferencia === 'EUR' ? '€' : '$'}
-                  {totalFacturaDivisa.toFixed(2)}
-                </span>
+                <div>
+                  <span className="text-[10px] font-black tracking-widest text-emerald-400 uppercase block">
+                    TOTAL A COBRAR
+                  </span>
+                  <span className="text-3xl font-black font-mono tracking-tight text-white block mt-0.5">
+                    {monedaReferencia === 'EUR' ? '€' : '$'}{totalFacturaDivisa.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[9.5px] text-slate-400 block font-mono">
+                    Tasa Oficial BCV: {tasaActiva.toLocaleString('es-ES', { minimumFractionDigits: 2 })} Bs.
+                  </span>
+                  <span className="text-base font-extrabold font-mono text-emerald-400 block pt-0.5">
+                    Bs. {totalFacturaVes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between text-xs font-mono text-slate-300 pt-0.5">
-                <span>Equivalente BCV:</span>
-                <span className="font-bold text-white">
-                  Bs. {totalFacturaVes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
+            </div>
+
+            {/* Botonera Rápida de Métodos de Pago (Quadralo Power Bar) */}
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                disabled={activeTicket.detalles.length === 0 || !turnoActivo}
+                onClick={() => handleOpenPaymentModal('efectivo')}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/70 hover:bg-emerald-50 hover:border-emerald-300 dark:hover:bg-emerald-950/30 flex flex-col items-center justify-center gap-1 text-slate-700 dark:text-slate-200 cursor-pointer transition-all active:scale-95 disabled:opacity-40"
+                title="Cobro directo en Efectivo"
+              >
+                <Banknote className="w-4 h-4 text-emerald-600" />
+                <span className="text-[10px] font-bold">Efectivo</span>
+              </button>
+              <button
+                type="button"
+                disabled={activeTicket.detalles.length === 0 || !turnoActivo}
+                onClick={() => handleOpenPaymentModal('punto')}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/70 hover:bg-sky-50 hover:border-sky-300 dark:hover:bg-sky-950/30 flex flex-col items-center justify-center gap-1 text-slate-700 dark:text-slate-200 cursor-pointer transition-all active:scale-95 disabled:opacity-40"
+                title="Cobro con Tarjeta / Punto de Venta"
+              >
+                <CreditCard className="w-4 h-4 text-sky-600" />
+                <span className="text-[10px] font-bold">Punto / POS</span>
+              </button>
+              <button
+                type="button"
+                disabled={activeTicket.detalles.length === 0 || !turnoActivo}
+                onClick={() => handleOpenPaymentModal('pagomovil')}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/70 hover:bg-amber-50 hover:border-amber-300 dark:hover:bg-amber-950/30 flex flex-col items-center justify-center gap-1 text-slate-700 dark:text-slate-200 cursor-pointer transition-all active:scale-95 disabled:opacity-40"
+                title="Cobro con Pago Móvil"
+              >
+                <Smartphone className="w-4 h-4 text-amber-600" />
+                <span className="text-[10px] font-bold">Pago Móvil</span>
+              </button>
+              <button
+                type="button"
+                disabled={activeTicket.detalles.length === 0 || !turnoActivo}
+                onClick={() => handleOpenPaymentModal('seguro')}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/70 hover:bg-indigo-50 hover:border-indigo-300 dark:hover:bg-indigo-950/30 flex flex-col items-center justify-center gap-1 text-slate-700 dark:text-slate-200 cursor-pointer transition-all active:scale-95 disabled:opacity-40"
+                title="Cobro con Aseguradora / Cobertura Médica"
+              >
+                <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                <span className="text-[10px] font-bold">Seguro</span>
+              </button>
             </div>
 
             {/* Botón Principal para Emitir y Cobrar */}
             <Button
               type="button"
-              onClick={handleOpenPaymentModal}
+              onClick={() => handleOpenPaymentModal()}
               disabled={activeTicket.detalles.length === 0 || !turnoActivo}
-              className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm gap-2 rounded-xl shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
+              className="w-full h-12 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm gap-2 rounded-xl shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50 active:scale-[0.99] transition-all"
             >
-              <Coins className="w-5 h-5 text-emerald-200" />
+              <Coins className="w-5 h-5 text-emerald-200 animate-pulse" />
               <span>[F12] Procesar Cobro & Emitir Recibo</span>
             </Button>
           </div>
