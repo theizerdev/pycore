@@ -34,6 +34,8 @@ import {
   CalendarDays,
   Hourglass,
   CheckCircle2,
+  Receipt,
+  CircleDollarSign,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -172,6 +174,24 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           href: '/clinica/consultas/atendidas',
           icon: CheckCircle2,
           permission: 'consultas.atendidas',
+        },
+      ],
+    },
+    {
+      id: 'sector-caja',
+      title: 'Caja & Cobros',
+      sectorKey: 'caja',
+      icon: Wallet,
+      children: [
+        {
+          title: 'Punto de Cobro (POS)',
+          href: '/facturacion/cobro',
+          icon: CircleDollarSign,
+        },
+        {
+          title: 'Historial de Recibos',
+          href: '/facturacion/recibos',
+          icon: Receipt,
         },
       ],
     },

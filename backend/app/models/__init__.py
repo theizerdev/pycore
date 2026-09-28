@@ -25,6 +25,7 @@ from app.models.estudio import EstudioAdjunto
 from app.models.chat import ChatCanal, ChatParticipante, ChatMensaje
 from app.models.landing import LandingPageConfig
 from app.models.landing_contacto import MensajeContactoLanding
+from app.models.caja import Caja, TurnoCaja, Cobro, CobroDetalle, CobroPago, MovimientoCaja
 
 __all__ = [
     "Base",
@@ -61,5 +62,11 @@ __all__ = [
     "ChatMensaje",
     "LandingPageConfig",
     "MensajeContactoLanding",
+    "Caja",
+    "TurnoCaja",
+    "Cobro",
+    "CobroDetalle",
+    "CobroPago",
+    "MovimientoCaja",
 ]
 

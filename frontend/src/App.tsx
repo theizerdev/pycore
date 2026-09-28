@@ -70,6 +70,8 @@ const ConsultaAtencionPage = lazyComponent<{ readOnly?: boolean }>(() => import(
 const ServiciosPage = lazyComponent(() => import('./pages/administracion/ServiciosPage'), 'ServiciosPage');
 const LandingPage = lazyComponent(() => import('./pages/public/LandingPage'), 'LandingPage');
 const LandingCmsPage = lazyComponent(() => import('./pages/administracion/LandingCmsPage'), 'LandingCmsPage');
+const PuntoCobroPage = lazyComponent(() => import('./pages/facturacion/PuntoCobroPage'), 'PuntoCobroPage');
+const RecibosHistorialPage = lazyComponent(() => import('./pages/facturacion/RecibosHistorialPage'), 'RecibosHistorialPage');
 
 const HomeRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -191,16 +193,30 @@ export const App: React.FC = () => {
                 }
               />
               <Route
-                path="administracion/servicios"
+                path="clinica/servicios"
+                element={<Navigate to="/administracion/servicios" replace />}
+              />
+
+              {/* Módulo de Caja, Cobros & Facturación */}
+              <Route
+                path="facturacion/cobro"
                 element={
-                  <ProtectedRoute requiredPermission="servicios.ver">
-                    <ServiciosPage />
+                  <ProtectedRoute>
+                    <PuntoCobroPage />
                   </ProtectedRoute>
                 }
               />
               <Route
-                path="clinica/servicios"
-                element={<Navigate to="/administracion/servicios" replace />}
+                path="facturacion/recibos"
+                element={
+                  <ProtectedRoute>
+                    <RecibosHistorialPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="facturacion"
+                element={<Navigate to="/facturacion/cobro" replace />}
               />
               <Route
                 path="administracion/landing-cms"
