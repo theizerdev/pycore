@@ -808,117 +808,263 @@ export const PuntoCobroPage: React.FC = () => {
                   </div>
                 ) : consultasFinalizadas.length > 0 ? (
                   <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/30 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                         <FileCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                        Consultas Médicas Finalizadas (Listas para Cobro):
+                        Consultas Médicas del Paciente:
                       </span>
-                      <Badge className="bg-emerald-600 text-white text-[10px] font-mono">
-                        {consultasFinalizadas.length} {consultasFinalizadas.length === 1 ? 'disponible' : 'disponibles'}
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {consultasFinalizadas.map((consulta) => {
-                        const isSelected = selectedConsultaId === String(consulta.id);
-                        const doctorName = consulta.medico
-                          ? `${consulta.medico.nombres} ${consulta.medico.apellidos}`.trim()
-                          : 'Médico Asignado';
-                        const fechaFormateada = (() => {
-                          try {
-                            const d = new Date(consulta.fecha_consulta);
-                            return d.toLocaleDateString('es-ES', {
-                              day: '2-digit',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            });
-                          } catch {
-                            return consulta.fecha_consulta;
-                          }
-                        })();
-
-                        return (
-                          <button
-                            key={consulta.id}
-                            type="button"
-                            onClick={() => handleSelectConsulta(consulta)}
+                      <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <button
+                          type="button"
+                          onClick={() => setTabConsultas('pendientes')}
+                          className={cn(
+                            "px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1.5 cursor-pointer",
+                            tabConsultas === 'pendientes'
+                              ? "bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-2xs font-bold"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                          )}
+                        >
+                          <span>Listas para Cobro</span>
+                          <Badge
+                            variant="outline"
                             className={cn(
-                              "p-3 rounded-xl border text-left text-xs transition-all relative overflow-hidden flex flex-col justify-between gap-2 cursor-pointer group shadow-2xs",
-                              isSelected
-                                ? "bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-500/40"
-                                : "bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-emerald-50/40 text-slate-800 dark:text-slate-100"
+                              "text-[9px] px-1 py-0 h-4 border-0",
+                              consultasPendientes.length > 0
+                                ? "bg-emerald-600 text-white font-bold"
+                                : "bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300"
                             )}
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      "text-[9.5px] font-mono px-1.5 py-0 h-4.5 font-bold",
-                                      isSelected
-                                        ? "border-white/50 text-white bg-white/20"
-                                        : "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40"
-                                    )}
-                                  >
-                                    {consulta.codigo || `CON-#${consulta.id}`}
-                                  </Badge>
-                                  <span
-                                    className={cn(
-                                      "text-[10px] font-medium flex items-center gap-1",
-                                      isSelected ? "text-emerald-100" : "text-slate-400"
-                                    )}
-                                  >
-                                    <Clock className="w-3 h-3" />
-                                    {fechaFormateada}
-                                  </span>
-                                </div>
-                                <span className="font-bold text-xs block truncate">
-                                  Dr(a). {doctorName}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "text-[11px] block truncate font-medium",
-                                    isSelected ? "text-emerald-100" : "text-teal-700 dark:text-teal-400"
-                                  )}
-                                >
-                                  {consulta.especialidad?.nombre || 'Medicina General'}
-                                </span>
-                              </div>
+                            {consultasPendientes.length}
+                          </Badge>
+                        </button>
 
-                              <div className="shrink-0 pt-0.5">
-                                {isSelected ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white text-emerald-800 font-bold text-[10px] shadow-xs">
-                                    <Check className="w-3 h-3" /> Vinculada
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 font-semibold text-[10px] group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                                    Vincular
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                        <button
+                          type="button"
+                          onClick={() => setTabConsultas('pagadas')}
+                          className={cn(
+                            "px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1.5 cursor-pointer",
+                            tabConsultas === 'pagadas'
+                              ? "bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-2xs font-bold"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                          )}
+                        >
+                          <span>Ya Cobradas</span>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[9px] px-1 py-0 h-4 border-0",
+                              consultasPagadas.length > 0
+                                ? "bg-teal-600 text-white font-bold"
+                                : "bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300"
+                            )}
+                          >
+                            {consultasPagadas.length}
+                          </Badge>
+                        </button>
+                      </div>
+                    </div>
 
-                            {(consulta.diagnostico_principal || consulta.motivo_consulta) && (
-                              <div
+                    {tabConsultas === 'pendientes' ? (
+                      consultasPendientes.length === 0 ? (
+                        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            {consultasPagadas.length > 0
+                              ? `Todas las consultas de este paciente (${consultasPagadas.length}) ya fueron cobradas y tienen recibo.`
+                              : 'No hay consultas pendientes de cobro para este paciente.'}
+                          </span>
+                          {consultasPagadas.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setTabConsultas('pagadas')}
+                              className="text-[11px] font-bold text-teal-700 dark:text-teal-400 underline cursor-pointer hover:text-teal-800"
+                            >
+                              Ver {consultasPagadas.length} cobradas
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {consultasPendientes.map((consulta) => {
+                            const isSelected = selectedConsultaId === String(consulta.id);
+                            const doctorName = consulta.medico
+                              ? `${consulta.medico.nombres} ${consulta.medico.apellidos}`.trim()
+                              : 'Médico Asignado';
+                            const fechaFormateada = (() => {
+                              try {
+                                const d = new Date(consulta.fecha_consulta);
+                                return d.toLocaleDateString('es-ES', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                });
+                              } catch {
+                                return consulta.fecha_consulta;
+                              }
+                            })();
+
+                            return (
+                              <button
+                                key={consulta.id}
+                                type="button"
+                                onClick={() => handleSelectConsulta(consulta)}
                                 className={cn(
-                                  "pt-1.5 border-t text-[10px] truncate",
+                                  "p-3 rounded-xl border text-left text-xs transition-all relative overflow-hidden flex flex-col justify-between gap-2 cursor-pointer group shadow-2xs",
                                   isSelected
-                                    ? "border-emerald-500/40 text-emerald-100"
-                                    : "border-slate-100 dark:border-slate-700/60 text-slate-500 dark:text-slate-400"
+                                    ? "bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-500/40"
+                                    : "bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-emerald-50/40 text-slate-800 dark:text-slate-100"
                                 )}
                               >
-                                <span className="font-semibold">
-                                  {consulta.diagnostico_principal ? 'Diagnóstico: ' : 'Motivo: '}
-                                </span>
-                                {consulta.diagnostico_principal || consulta.motivo_consulta}
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-[9.5px] font-mono px-1.5 py-0 h-4.5 font-bold",
+                                          isSelected
+                                            ? "border-white/50 text-white bg-white/20"
+                                            : "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40"
+                                        )}
+                                      >
+                                        {consulta.codigo || `CON-#${consulta.id}`}
+                                      </Badge>
+                                      <span
+                                        className={cn(
+                                          "text-[10px] font-medium flex items-center gap-1",
+                                          isSelected ? "text-emerald-100" : "text-slate-400"
+                                        )}
+                                      >
+                                        <Clock className="w-3 h-3" />
+                                        {fechaFormateada}
+                                      </span>
+                                    </div>
+                                    <span className="font-bold text-xs block truncate">
+                                      Dr(a). {doctorName}
+                                    </span>
+                                    <span
+                                      className={cn(
+                                        "text-[11px] block truncate font-medium",
+                                        isSelected ? "text-emerald-100" : "text-teal-700 dark:text-teal-400"
+                                      )}
+                                    >
+                                      {consulta.especialidad?.nombre || 'Medicina General'}
+                                    </span>
+                                  </div>
+
+                                  <div className="shrink-0 pt-0.5">
+                                    {isSelected ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white text-emerald-800 font-bold text-[10px] shadow-xs">
+                                        <Check className="w-3 h-3" /> Vinculada
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 font-semibold text-[10px] group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                                        Vincular
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {(consulta.diagnostico_principal || consulta.motivo_consulta) && (
+                                  <div
+                                    className={cn(
+                                      "pt-1.5 border-t text-[10px] truncate",
+                                      isSelected
+                                        ? "border-emerald-500/40 text-emerald-100"
+                                        : "border-slate-100 dark:border-slate-700/60 text-slate-500 dark:text-slate-400"
+                                    )}
+                                  >
+                                    <span className="font-semibold">
+                                      {consulta.diagnostico_principal ? 'Diagnóstico: ' : 'Motivo: '}
+                                    </span>
+                                    {consulta.diagnostico_principal || consulta.motivo_consulta}
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )
+                    ) : (
+                      consultasPagadas.length === 0 ? (
+                        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 text-xs text-slate-500 text-center">
+                          No hay consultas cobradas previamente registradas para este paciente.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {consultasPagadas.map((consulta) => {
+                            const doctorName = consulta.medico
+                              ? `${consulta.medico.nombres} ${consulta.medico.apellidos}`.trim()
+                              : 'Médico Asignado';
+                            const fechaFormateada = (() => {
+                              try {
+                                const d = new Date(consulta.fecha_consulta);
+                                return d.toLocaleDateString('es-ES', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                });
+                              } catch {
+                                return consulta.fecha_consulta;
+                              }
+                            })();
+
+                            return (
+                              <div
+                                key={consulta.id}
+                                className="p-3 rounded-xl border border-teal-500/30 bg-teal-50/20 dark:bg-teal-950/20 text-left text-xs relative overflow-hidden flex flex-col justify-between gap-2 shadow-2xs"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[9.5px] font-mono px-1.5 py-0 h-4.5 font-bold border-teal-500/40 text-teal-800 dark:text-teal-300 bg-teal-100/60 dark:bg-teal-900/40"
+                                      >
+                                        {consulta.codigo || `CON-#${consulta.id}`}
+                                      </Badge>
+                                      <Badge className="bg-teal-600 hover:bg-teal-600 text-white text-[9.5px] px-1.5 py-0 h-4.5 font-semibold flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Pagada
+                                      </Badge>
+                                      <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                                        <Clock className="w-3 h-3" />
+                                        {fechaFormateada}
+                                      </span>
+                                    </div>
+                                    <span className="font-bold text-xs block truncate text-slate-800 dark:text-slate-100">
+                                      Dr(a). {doctorName}
+                                    </span>
+                                    <span className="text-[11px] block truncate font-medium text-teal-700 dark:text-teal-400">
+                                      {consulta.especialidad?.nombre || 'Medicina General'}
+                                    </span>
+                                  </div>
+
+                                  <div className="shrink-0 pt-0.5">
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/80 text-teal-800 dark:text-teal-300 font-bold text-[10px] border border-teal-300/60 dark:border-teal-700/50 shadow-2xs"
+                                      title="Esta consulta ya fue cobrada y registrada con recibo"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3 text-teal-600 dark:text-teal-400" /> Cobrada
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {(consulta.diagnostico_principal || consulta.motivo_consulta) && (
+                                  <div className="pt-1.5 border-t border-teal-500/20 text-[10px] text-slate-600 dark:text-slate-400 truncate">
+                                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                      {consulta.diagnostico_principal ? 'Diagnóstico: ' : 'Motivo: '}
+                                    </span>
+                                    {consulta.diagnostico_principal || consulta.motivo_consulta}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                            );
+                          })}
+                        </div>
+                      )
+                    )}
                   </div>
                 ) : (
                   <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
