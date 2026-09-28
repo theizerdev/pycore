@@ -16,10 +16,11 @@ class Empresa(Base, TimestampMixin):
     logo_mini_dark_url = Column(Text, nullable=True) # Logo mini oscuro (soporta Base64)
     activo = Column(Boolean, default=True, nullable=False)
 
-    # Ubicación, País & Moneda Principal
+    # Ubicación, País & Moneda Principal / Cobros
     pais_id = Column(Integer, ForeignKey("pais.id", ondelete="SET NULL"), nullable=True, index=True)
     pais_telefono_id = Column(Integer, ForeignKey("pais.id", ondelete="SET NULL"), nullable=True, index=True)
     moneda_principal = Column(String(10), default="USD", nullable=False) # "USD" o "VES"
+    moneda_cobro_activa = Column(String(10), default="USD", nullable=False) # "USD" o "EUR" para cálculo de cobros
     latitud = Column(Float, nullable=True)
     longitud = Column(Float, nullable=True)
 

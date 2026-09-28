@@ -260,9 +260,15 @@ class TasaItemDetail(BaseModel):
     es_oficial: bool = True
 
 
+class SetMonedaCobroRequest(BaseModel):
+    moneda: str = Field(..., description="Moneda a usar como tasa de cobro en el sistema: USD o EUR")
+
+
 class TasasActualesResponse(BaseModel):
     tasas: Dict[str, Optional[TasaItemDetail]]
     sincronizado_at: str
+    moneda_cobro_activa: str = "USD"
+    tasa_cobro_activa: Optional[float] = None
 
 
 class TasaHistoricoItem(BaseModel):

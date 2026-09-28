@@ -34,6 +34,7 @@ from app.schemas.integracion import (
     WhatsAppMessageResponse,
     BcvRateResponse,
     TasaCambioManualRequest,
+    SetMonedaCobroRequest,
     TasasActualesResponse,
     TasaHistoricoItem
 )
@@ -1101,6 +1102,43 @@ async def set_manual_rate(
     )
 
     return {"success": True, "message": f"Tasa de {payload.moneda.upper()} actualizada exitosamente", "data": result}
+
+
+@router.put("/tasas/moneda-cobro")
+async def set_active_billing_currency(
+    payload: SetMonedaCobroRequest,
+    request: Request,
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Configura la tasa de cambio de referencia a usar en el sistema para cobros (USD o EUR)."""
+    empresa_id = current_user.empresa_id or 1
+    moneda_norm = (payload.moneda or "").strip().upper()
+    if moneda_norm not in ["USD", "EUR"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La tasa de cobro sólo puede ser 'USD' (Dólar BCV) o 'EUR' (Euro BCV)"
+        )
+
+    try:
+        result = await ExchangeRateService.set_active_billing_rate(
+            empresa_id=empresa_id,
+            moneda=moneda_norm,
+            db=db
+        )
+        await registrar_auditoria(
+            db=db,
+            usuario_id=current_user.id,
+            empresa_id=empresa_id,
+            accion="CONFIGURAR_TASA_COBRO",
+            modulo="tasas_cambio",
+            request=request,
+            detalles={"moneda_cobro_activa": moneda_norm, "tasa": result.get("tasa_cobro_activa")}
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 
 @router.get("/tasas/historico", response_model=List[TasaHistoricoItem])
