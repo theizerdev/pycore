@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -17,8 +17,11 @@ import {
   AlertTriangle,
   FileText,
   HelpCircle,
-  Eye
+  Eye,
+  Download,
+  History,
 } from 'lucide-react';
+import type { PrimerOdontogramaInfo } from '../../api/consultas';
 
 export type CondicionCara = 'sano' | 'caries' | 'obturacion' | 'sellante' | 'fractura';
 export type CondicionDiente = 'sano' | 'ausente' | 'corona' | 'endodoncia' | 'implante' | 'extraccion_indicada';
@@ -45,7 +48,7 @@ export interface OdontogramaData {
 }
 
 // Catálogo anatómico de nombres FDI
-const NOMBRES_DIENTES: Record<number, string> = {
+export const NOMBRES_DIENTES: Record<number, string> = {
   // Adultos Cuadrante 1 (Superior Derecho)
   18: 'Tercer Molar Sup. Der.',
   17: 'Segundo Molar Sup. Der.',
@@ -109,7 +112,7 @@ const NOMBRES_DIENTES: Record<number, string> = {
 };
 
 // Herramientas de diagnóstico con sus colores clínicos internacionales
-interface HerramientaConfig {
+export interface HerramientaConfig {
   id: string;
   label: string;
   tipo: 'cara' | 'general';
@@ -120,7 +123,7 @@ interface HerramientaConfig {
   icono?: string;
 }
 
-const HERRAMIENTAS: HerramientaConfig[] = [
+export const HERRAMIENTAS: HerramientaConfig[] = [
   {
     id: 'sano',
     label: 'Sano / Limpiar',
@@ -217,21 +220,74 @@ interface OdontogramaWidgetProps {
   initialData?: OdontogramaData;
   onChange?: (data: OdontogramaData) => void;
   readOnly?: boolean;
+  tipoPaciente?: 'adulto' | 'infantil';
+  primerOdontograma?: PrimerOdontogramaInfo | null;
+  onVerPrimerOdontograma?: () => void;
+  onCargarPrimerOdontograma?: () => void;
+  esOdontogramaCargadoDeInicial?: boolean;
+  hideHeader?: boolean;
+  hideTools?: boolean;
+  hideDetails?: boolean;
+  denticionOverride?: 'adulto' | 'infantil';
+  onDenticionChange?: (dent: 'adulto' | 'infantil') => void;
+  showLegend?: boolean;
 }
 
 export const OdontogramaWidget: React.FC<OdontogramaWidgetProps> = ({
   initialData,
   onChange,
   readOnly = false,
+  tipoPaciente,
+  primerOdontograma,
+  onVerPrimerOdontograma,
+  onCargarPrimerOdontograma,
+  esOdontogramaCargadoDeInicial = false,
+  hideHeader = false,
+  hideTools = false,
+  hideDetails = false,
+  denticionOverride,
+  onDenticionChange,
+  showLegend = false,
 }) => {
-  const [denticion, setDenticion] = useState<'adulto' | 'infantil'>(
-    initialData?.denticion || 'adulto'
-  );
+  const [denticion, setDenticion] = useState<'adulto' | 'infantil'>(() => {
+    if (denticionOverride) return denticionOverride;
+    if (initialData?.denticion) return initialData.denticion;
+    if (tipoPaciente) return tipoPaciente;
+    return 'adulto';
+  });
   const [herramientaActiva, setHerramientaActiva] = useState<string>('caries');
   const [piezas, setPiezas] = useState<Record<number, EstadoPieza>>(
     initialData?.piezas || {}
   );
   const [piezaSeleccionada, setPiezaSeleccionada] = useState<number | null>(null);
+
+  // Sincronizar denticionOverride si es provisto externamente
+  useEffect(() => {
+    if (denticionOverride && denticionOverride !== denticion) {
+      setDenticion(denticionOverride);
+    }
+  }, [denticionOverride]);
+
+  // Sincronizar cuando initialData cambie (ej. carga asíncrona o importación de primera consulta)
+  useEffect(() => {
+    if (initialData) {
+      if (initialData.denticion && !denticionOverride) {
+        setDenticion(initialData.denticion);
+      }
+      if (initialData.piezas) {
+        setPiezas(initialData.piezas);
+      }
+    } else if (tipoPaciente && !denticionOverride) {
+      setDenticion(tipoPaciente);
+    }
+  }, [initialData, tipoPaciente, denticionOverride]);
+
+  const handleDenticionChange = (newDent: 'adulto' | 'infantil') => {
+    setDenticion(newDent);
+    setPiezaSeleccionada(null);
+    onDenticionChange?.(newDent);
+    onChange?.({ denticion: newDent, piezas });
+  };
 
   // Helper para obtener o inicializar estado de una pieza
   const getPiezaEstado = (num: number): EstadoPieza => {
@@ -547,89 +603,148 @@ export const OdontogramaWidget: React.FC<OdontogramaWidgetProps> = ({
   const piezaActual = piezaSeleccionada ? getPiezaEstado(piezaSeleccionada) : null;
 
   return (
-    <Card className="border-teal-500/30 bg-card shadow-sm overflow-hidden">
-      <CardHeader className="p-4 bg-teal-500/5 border-b border-teal-500/20">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-              <Smile className="size-5" />
+    <Card className={`border-teal-500/30 bg-card shadow-sm overflow-hidden ${hideHeader ? 'border-none shadow-none bg-transparent' : ''}`}>
+      {!hideHeader && (
+        <CardHeader className="p-4 bg-teal-500/5 border-b border-teal-500/20">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                <Smile className="size-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold text-foreground flex flex-wrap items-center gap-2">
+                  <span>Odontograma Clínico Interactivo</span>
+                  <Badge variant="outline" className="text-[10px] font-mono border-teal-500/30 text-teal-600 bg-teal-500/10">
+                    FDI Internacional
+                  </Badge>
+                  {tipoPaciente && (
+                    <Badge variant="secondary" className="text-[10px] font-medium bg-muted/80">
+                      {tipoPaciente === 'infantil' ? '👶 Pediátrico' : '👤 Adulto'}
+                    </Badge>
+                  )}
+                  {esOdontogramaCargadoDeInicial && (
+                    <Badge className="text-[10px] bg-teal-600 text-white font-medium border-none shadow-2xs">
+                      ✓ Basado en 1ra Consulta
+                    </Badge>
+                  )}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Cartografía dental de 5 caras: Oclusal/Incisal, Vestibular, Lingual/Palatino, Mesial y Distal
+                </p>
+              </div>
             </div>
-            <div>
-              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-                <span>Odontograma Clínico Interactivo</span>
-                <Badge variant="outline" className="text-[10px] font-mono border-teal-500/30 text-teal-600 bg-teal-500/10">
-                  FDI Internacional
-                </Badge>
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Cartografía dental de 5 caras: Oclusal/Incisal, Vestibular, Lingual/Palatino, Mesial y Distal
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <Tabs
-              value={denticion}
-              onValueChange={(val: string) => setDenticion(val as 'adulto' | 'infantil')}
-              className="h-8"
-            >
-              <TabsList className="h-8 p-0.5 bg-muted/60">
-                <TabsTrigger value="adulto" className="text-xs px-2.5 h-7 cursor-pointer">
-                  Adultos (32)
-                </TabsTrigger>
-                <TabsTrigger value="infantil" className="text-xs px-2.5 h-7 cursor-pointer">
-                  Pediátrico (20)
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-
-            {!readOnly && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={resetOdontograma}
-                className="h-8 text-xs text-muted-foreground hover:text-rose-600 cursor-pointer"
-                title="Restablecer odontograma completo"
-              >
-                <RotateCcw className="size-3.5 mr-1" />
-                <span>Limpiar</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* ── BARRA DE HERRAMIENTAS CLÍNICAS (PALETA) ──────────────── */}
-        {!readOnly && (
-          <div className="mt-3 pt-3 border-t border-teal-500/15 flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
-              Herramienta:
-            </span>
-            {HERRAMIENTAS.map((h) => {
-              const isActive = herramientaActiva === h.id;
-              return (
-                <button
-                  key={h.id}
+            <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+              {primerOdontograma && onVerPrimerOdontograma && (
+                <Button
                   type="button"
-                  onClick={() => setHerramientaActiva(h.id)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer ${
-                    isActive
-                      ? 'border-primary ring-2 ring-primary/20 bg-primary/10 text-primary shadow-xs'
-                      : 'border-border/60 hover:bg-muted/50 text-muted-foreground'
-                  }`}
+                  variant="outline"
+                  size="sm"
+                  onClick={onVerPrimerOdontograma}
+                  className="h-8 text-xs border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer"
+                  title={`Ver odontograma registrado en la primera consulta (#${primerOdontograma.consulta_id})`}
                 >
-                  <span
-                    className="size-2.5 rounded-full border border-black/20"
-                    style={{ backgroundColor: h.colorHex }}
-                  />
-                  <span>{h.label}</span>
-                </button>
-              );
-            })}
+                  <Eye className="size-3.5 mr-1 text-teal-600 dark:text-teal-400" />
+                  <span className="hidden sm:inline">1ra Consulta</span>
+                  <span className="sm:hidden">1ra</span>
+                </Button>
+              )}
+
+              {!readOnly && primerOdontograma && onCargarPrimerOdontograma && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onCargarPrimerOdontograma}
+                  className="h-8 text-xs border-teal-500/50 bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 cursor-pointer"
+                  title={`Cargar odontograma de la primera consulta (#${primerOdontograma.consulta_id}) en el lienzo actual`}
+                >
+                  <Download className="size-3.5 mr-1" />
+                  <span className="hidden sm:inline">Cargar Inicial</span>
+                  <span className="sm:hidden">Cargar</span>
+                </Button>
+              )}
+
+              <Tabs
+                value={denticion}
+                onValueChange={(val: string) => handleDenticionChange(val as 'adulto' | 'infantil')}
+                className="h-8"
+              >
+                <TabsList className="h-8 p-0.5 bg-muted/60">
+                  <TabsTrigger value="adulto" className="text-xs px-2.5 h-7 cursor-pointer">
+                    Adultos (32)
+                  </TabsTrigger>
+                  <TabsTrigger value="infantil" className="text-xs px-2.5 h-7 cursor-pointer">
+                    Pediátrico (20)
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetOdontograma}
+                  className="h-8 text-xs text-muted-foreground hover:text-rose-600 cursor-pointer"
+                  title="Restablecer odontograma completo"
+                >
+                  <RotateCcw className="size-3.5 mr-1" />
+                  <span>Limpiar</span>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* ── BARRA DE HERRAMIENTAS CLÍNICAS (PALETA) ──────────────── */}
+          {!readOnly && !hideTools && (
+            <div className="mt-3 pt-3 border-t border-teal-500/15 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
+                Herramienta:
+              </span>
+              {HERRAMIENTAS.map((h) => {
+                const isActive = herramientaActiva === h.id;
+                return (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => setHerramientaActiva(h.id)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer ${
+                      isActive
+                        ? 'border-primary ring-2 ring-primary/20 bg-primary/10 text-primary shadow-xs'
+                        : 'border-border/60 hover:bg-muted/50 text-muted-foreground'
+                    }`}
+                  >
+                    <span
+                      className="size-2.5 rounded-full border border-black/20"
+                      style={{ backgroundColor: h.colorHex }}
+                    />
+                    <span>{h.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </CardHeader>
+      )}
+
+      <CardContent className={hideHeader ? 'p-0 space-y-4' : 'p-4 space-y-6'}>
+        {/* Leyenda clínica de colores cuando esté en modo lectura o se active */}
+        {(readOnly || showLegend) && (
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 py-2 px-3 bg-muted/30 rounded-xl border border-border/50 text-[11px]">
+            <span className="font-bold text-muted-foreground uppercase text-[10px] tracking-wider mr-1">
+              Leyenda Clínica:
+            </span>
+            {HERRAMIENTAS.map((h) => (
+              <div key={h.id} className="flex items-center gap-1.5">
+                <span
+                  className="size-2.5 rounded-full border border-black/20 shadow-2xs"
+                  style={{ backgroundColor: h.colorHex }}
+                />
+                <span className="font-medium text-muted-foreground">{h.label}</span>
+              </div>
+            ))}
           </div>
         )}
-      </CardHeader>
-
-      <CardContent className="p-4 space-y-6">
         {/* ── LIENZO DEL ODONTOGRAMA (ARCADA SUPERIOR E INFERIOR) ──── */}
         <div className="p-4 bg-muted/20 rounded-xl border border-border/60 flex flex-col items-center justify-center overflow-x-auto min-w-[320px]">
           {/* LEYENDA ANATÓMICA DE ORIENTACIÓN */}
@@ -699,7 +814,8 @@ export const OdontogramaWidget: React.FC<OdontogramaWidgetProps> = ({
         </div>
 
         {/* ── PANEL INFERIOR: DETALLE DE PIEZA SELECCIONADA Y RESUMEN ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {!hideDetails && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Panel de Pieza Seleccionada */}
           <Card className="border-border/60 bg-card/60">
             <CardHeader className="p-3 bg-muted/30 border-b border-border/40">
@@ -940,6 +1056,7 @@ export const OdontogramaWidget: React.FC<OdontogramaWidgetProps> = ({
             </CardContent>
           </Card>
         </div>
+      )}
       </CardContent>
     </Card>
   );

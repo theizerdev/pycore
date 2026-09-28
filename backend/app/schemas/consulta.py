@@ -139,6 +139,20 @@ class ConsultaPreviaResumen(BaseModel):
     signos_vitales: Optional[Dict[str, Any]] = {}
     receta_medica: Optional[List[Any]] = []
     estudios_solicitados: Optional[List[Any]] = []
+    datos_plantilla: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+class PrimerOdontogramaInfo(BaseModel):
+    consulta_id: int
+    codigo: Optional[str] = None
+    fecha_consulta: datetime
+    medico_nombre: Optional[str] = None
+    especialidad_nombre: Optional[str] = None
+    diagnostico_principal: Optional[str] = None
+    denticion: Optional[str] = "adulto"
+    odontograma: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -176,6 +190,10 @@ class ConsultaResponse(BaseModel):
     es_subsecuente: bool = False
     total_consultas_previas: int = 0
     consulta_previa: Optional[ConsultaPreviaResumen] = None
+
+    # Odontograma histórico de la primera consulta y consulta previa
+    primer_odontograma: Optional[PrimerOdontogramaInfo] = None
+    odontograma_previo: Optional[PrimerOdontogramaInfo] = None
 
     # Relaciones anidadas
     paciente: Optional[PacienteMini] = None

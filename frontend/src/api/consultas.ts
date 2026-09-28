@@ -118,6 +118,21 @@ export interface ConsultaPreviaResumen {
   signos_vitales?: Record<string, any>;
   receta_medica?: MedicamentoPrescrito[];
   estudios_solicitados?: EstudioSolicitado[];
+  datos_plantilla?: Record<string, any>;
+}
+
+export interface PrimerOdontogramaInfo {
+  consulta_id: number;
+  codigo?: string;
+  fecha_consulta: string;
+  medico_nombre?: string;
+  especialidad_nombre?: string;
+  diagnostico_principal?: string;
+  denticion?: 'adulto' | 'infantil';
+  odontograma?: {
+    denticion: 'adulto' | 'infantil';
+    piezas: Record<number, any>;
+  };
 }
 
 export interface ConsultaMedica {
@@ -153,6 +168,10 @@ export interface ConsultaMedica {
   es_subsecuente?: boolean;
   total_consultas_previas?: number;
   consulta_previa?: ConsultaPreviaResumen | null;
+
+  // Odontograma histórico de primera consulta y previo
+  primer_odontograma?: PrimerOdontogramaInfo | null;
+  odontograma_previo?: PrimerOdontogramaInfo | null;
 
   paciente?: PacienteMini;
   medico?: MedicoMini;
@@ -233,6 +252,11 @@ export const consultasApi = {
 
   updateConsulta: async (id: number, data: Partial<ConsultaMedica>): Promise<ConsultaMedica> => {
     const response = await api.put<ConsultaMedica>(`/consultas/${id}`, data);
+    return response.data;
+  },
+
+  getOdontogramasPaciente: async (pacienteId: number): Promise<PrimerOdontogramaInfo[]> => {
+    const response = await api.get<PrimerOdontogramaInfo[]>(`/consultas/paciente/${pacienteId}/odontogramas`);
     return response.data;
   },
 };

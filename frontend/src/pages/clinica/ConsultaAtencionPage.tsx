@@ -10,6 +10,7 @@ import {
 import { especialidadesApi } from '../../api/especialidades';
 import type { PlantillaEfectiva, SeccionClinica, CampoClinico } from '../../types';
 import OdontogramaWidget, { type OdontogramaData } from '../../components/clinica/OdontogramaWidget';
+import OdontogramaHistorialModal from '../../components/clinica/OdontogramaHistorialModal';
 import RefraccionWidget, { type RefraccionData } from '../../components/clinica/RefraccionWidget';
 import MotorExploracionOftalmologica, { type ExploracionOftalmologicaData } from '../../components/clinica/MotorExploracionOftalmologica';
 import SignosVitalesWidget from '../../components/clinica/SignosVitalesWidget';
@@ -82,6 +83,7 @@ import {
   Layers,
   Eye,
   Droplet,
+  Download,
 } from 'lucide-react';
 
 interface ConsultaAtencionPageProps {
@@ -562,6 +564,56 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const [cieFiltroCategoria, setCieFiltroCategoria] = useState<string>('especialidad');
   const [cieBusqueda, setCieBusqueda] = useState<string>('');
 
+  // ── ODONTOGRAMA DE PRIMERA CONSULTA / LÍNEA BASE ──
+  const [modalPrimerOdontoOpen, setModalPrimerOdontoOpen] = useState<boolean>(false);
+  const [esOdontogramaCargadoDeInicial, setEsOdontogramaCargadoDeInicial] = useState<boolean>(false);
+
+  const pacienteEdad = useMemo(() => {
+    if (consulta?.paciente?.edad !== undefined && consulta.paciente.edad !== null) {
+      return Number(consulta.paciente.edad);
+    }
+    if (consulta?.paciente?.fecha_nacimiento) {
+      const birth = new Date(consulta.paciente.fecha_nacimiento);
+      const diff = Date.now() - birth.getTime();
+      const ageDate = new Date(diff);
+      return Math.abs(ageDate.getUTCFullYear() - 1970);
+    }
+    return undefined;
+  }, [consulta?.paciente?.edad, consulta?.paciente?.fecha_nacimiento]);
+
+  const tipoPacienteCalculado: 'adulto' | 'infantil' = useMemo(() => {
+    if (datosPlantilla.odontograma?.denticion) {
+      return datosPlantilla.odontograma.denticion;
+    }
+    if (consulta?.primer_odontograma?.denticion) {
+      return consulta.primer_odontograma.denticion;
+    }
+    if (pacienteEdad !== undefined && pacienteEdad !== null) {
+      return pacienteEdad < 12 ? 'infantil' : 'adulto';
+    }
+    const espNombre = (consulta?.especialidad?.nombre || '').toLowerCase();
+    if (espNombre.includes('pediatr') || espNombre.includes('infantil')) {
+      return 'infantil';
+    }
+    return 'adulto';
+  }, [datosPlantilla.odontograma?.denticion, consulta?.primer_odontograma?.denticion, pacienteEdad, consulta?.especialidad?.nombre]);
+
+  const handleCargarPrimerOdontograma = () => {
+    if (!consulta?.primer_odontograma?.odontograma) {
+      toast.error('No se encontró odontograma de primera consulta registrado');
+      return;
+    }
+    const odontoOrigen = consulta.primer_odontograma.odontograma;
+    setDatosPlantilla((prev) => ({
+      ...prev,
+      odontograma: odontoOrigen,
+    }));
+    setEsOdontogramaCargadoDeInicial(true);
+    toast.success(
+      `✓ Odontograma de la primera consulta (#${consulta.primer_odontograma.consulta_id}) cargado exitosamente en el lienzo actual`
+    );
+  };
+
   const isOftalmologia = useMemo(() => {
     return (consulta?.especialidad?.nombre || '').toLowerCase().includes('oftalmo');
   }, [consulta?.especialidad?.nombre]);
@@ -645,7 +697,36 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         observaciones_triaje: data.signos_vitales?.observaciones_triaje || '',
       });
 
-      setDatosPlantilla(data.datos_plantilla || {});
+      let datosPlantillaRecibidos = data.datos_plantilla || {};
+
+      // Si la consulta actual no tiene odontograma aún, pero el paciente tiene odontograma de primera consulta registrado:
+      if (
+        (!datosPlantillaRecibidos.odontograma ||
+          !datosPlantillaRecibidos.odontograma.piezas ||
+          Object.keys(datosPlantillaRecibidos.odontograma.piezas).length === 0) &&
+        data.primer_odontograma?.odontograma
+      ) {
+        datosPlantillaRecibidos = {
+          ...datosPlantillaRecibidos,
+          odontograma: data.primer_odontograma.odontograma,
+        };
+        setEsOdontogramaCargadoDeInicial(true);
+      } else if (!datosPlantillaRecibidos.odontograma) {
+        // Inicializar con la dentición adecuada según edad o tipo de paciente
+        const edadNum = data.paciente?.edad;
+        const esInfantil =
+          (edadNum !== undefined && edadNum !== null && edadNum < 12) ||
+          (data.especialidad?.nombre || '').toLowerCase().includes('pediatr');
+        datosPlantillaRecibidos = {
+          ...datosPlantillaRecibidos,
+          odontograma: {
+            denticion: esInfantil ? 'infantil' : 'adulto',
+            piezas: {},
+          },
+        };
+      }
+
+      setDatosPlantilla(datosPlantillaRecibidos);
       setEstudios(data.estudios_solicitados || []);
       setMedicamentos(data.receta_medica || []);
 
@@ -1946,22 +2027,113 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 </Card>
 
                 {/* WIDGET INTERACTIVO DE ODONTOGRAMA SI APLICA */}
-                {(plantillaEfectiva?.widgets_activos || []).includes('odontograma') && (
+                {((plantillaEfectiva?.widgets_activos || []).includes('odontograma') ||
+                  (consulta?.especialidad?.nombre || '').toLowerCase().includes('odont')) && (
                   <Card className="border-border/80 shadow-xs">
                     <CardContent className="p-5 space-y-3">
-                      <div className="flex items-center justify-between pb-3 border-b border-border/60">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border/60">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Sparkles className="h-5 w-5 text-sky-500" />
                           <h4 className="text-base font-bold text-foreground">
                             Odontograma Dental Clínico Interactivo
                           </h4>
+                          {tipoPacienteCalculado && (
+                            <Badge variant="outline" className="text-xs border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-500/10">
+                              {tipoPacienteCalculado === 'infantil' ? '👶 Pediátrico' : '👤 Adulto'}
+                            </Badge>
+                          )}
+                          {esOdontogramaCargadoDeInicial && (
+                            <Badge className="bg-teal-600 text-white text-xs border-none">
+                              ✓ Base 1ra Consulta
+                            </Badge>
+                          )}
                         </div>
-                        <Badge variant="secondary" className="text-xs">
-                          Registro Odontológico
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {consulta?.primer_odontograma && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setModalPrimerOdontoOpen(true)}
+                                className="h-8 text-xs border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer"
+                              >
+                                <Eye className="h-3.5 w-3.5 mr-1 text-teal-600 dark:text-teal-400" />
+                                <span>Ver Odontograma 1ra Consulta</span>
+                              </Button>
+
+                              {!readOnly && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleCargarPrimerOdontograma}
+                                  className="h-8 text-xs border-teal-500/50 bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 cursor-pointer"
+                                  title="Cargar o restaurar el odontograma de la primera consulta en el lienzo actual"
+                                >
+                                  <Download className="h-3.5 w-3.5 mr-1" />
+                                  <span>Cargar Odontograma Inicial</span>
+                                </Button>
+                              )}
+                            </>
+                          )}
+                          <Badge variant="secondary" className="text-xs">
+                            Registro Odontológico
+                          </Badge>
+                        </div>
                       </div>
+
+                      {/* Notificación informativa si se dispone de odontograma de primera consulta */}
+                      {consulta?.primer_odontograma && (
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-xl bg-teal-500/10 border border-teal-500/25 text-teal-950 dark:text-teal-100 text-xs">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-2 rounded-lg bg-teal-500/20 text-teal-600 dark:text-teal-400 shrink-0">
+                              <History className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-bold">
+                                Odontograma de Primera Consulta Disponible (Consulta #{consulta.primer_odontograma.consulta_id} · {new Date(consulta.primer_odontograma.fecha_consulta).toLocaleDateString()})
+                              </p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                Atendido por {consulta.primer_odontograma.medico_nombre} — Dentición: {consulta.primer_odontograma.denticion === 'infantil' ? 'Pediátrica (20 piezas)' : 'Adultos (32 piezas)'}.
+                                {esOdontogramaCargadoDeInicial ? ' (Cargado en el lienzo para esta sesión).' : ' Puedes visualizarlo o cargarlo directamente.'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setModalPrimerOdontoOpen(true)}
+                              className="h-7 text-xs border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 cursor-pointer"
+                            >
+                              <Eye className="h-3.5 w-3.5 mr-1" />
+                              Visualizar
+                            </Button>
+                            {!readOnly && !esOdontogramaCargadoDeInicial && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={handleCargarPrimerOdontograma}
+                                className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+                              >
+                                <Download className="h-3.5 w-3.5 mr-1" />
+                                Cargar en Lienzo
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <OdontogramaWidget
                         initialData={datosPlantilla.odontograma as OdontogramaData}
+                        tipoPaciente={tipoPacienteCalculado}
+                        primerOdontograma={consulta?.primer_odontograma}
+                        onVerPrimerOdontograma={() => setModalPrimerOdontoOpen(true)}
+                        onCargarPrimerOdontograma={handleCargarPrimerOdontograma}
+                        esOdontogramaCargadoDeInicial={esOdontogramaCargadoDeInicial}
+                        readOnly={readOnly}
                         onChange={(odontoData) => {
                           if (!readOnly) {
                             setDatosPlantilla((prev) => ({
@@ -1970,6 +2142,17 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                             }));
                           }
                         }}
+                      />
+
+                      {/* Modal de visualización de odontograma de primera consulta */}
+                      <OdontogramaHistorialModal
+                        open={modalPrimerOdontoOpen}
+                        onOpenChange={setModalPrimerOdontoOpen}
+                        primerOdontograma={consulta?.primer_odontograma || null}
+                        pacienteNombre={consulta?.paciente ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}` : ''}
+                        pacienteEdad={pacienteEdad}
+                        readOnly={readOnly}
+                        onCargarEnConsultaActual={handleCargarPrimerOdontograma}
                       />
                     </CardContent>
                   </Card>

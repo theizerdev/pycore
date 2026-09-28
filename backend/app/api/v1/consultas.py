@@ -25,6 +25,7 @@ from app.schemas.consulta import (
     ConsultaResponse,
     ConsultaPreviaResumen,
     ConsultaResumenContadores,
+    PrimerOdontogramaInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -347,14 +348,122 @@ async def get_consulta(
                 indicaciones_generales=cp.indicaciones_generales,
                 signos_vitales=cp.signos_vitales or {},
                 receta_medica=cp.receta_medica or [],
-                estudios_solicitados=cp.estudios_solicitados or []
+                estudios_solicitados=cp.estudios_solicitados or [],
+                datos_plantilla=cp.datos_plantilla or {},
             )
         else:
             consulta.consulta_previa = None
     else:
         consulta.consulta_previa = None
 
+    # Búsqueda de odontograma de primera consulta e historial dental del paciente
+    stmt_odontos = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad)
+        )
+        .where(
+            ConsultaMedica.paciente_id == consulta.paciente_id,
+            ConsultaMedica.id != consulta.id,
+            ConsultaMedica.datos_plantilla.is_not(None),
+            ConsultaMedica.estado.in_(["finalizada", "en_curso"])
+        )
+        .order_by(ConsultaMedica.fecha_consulta.asc(), ConsultaMedica.id.asc())
+    )
+    res_odontos = await db.execute(stmt_odontos)
+    all_odontos = res_odontos.scalars().all()
+
+    odontos_con_datos = [
+        c for c in all_odontos
+        if c.datos_plantilla and isinstance(c.datos_plantilla, dict) and c.datos_plantilla.get("odontograma")
+    ]
+
+    if odontos_con_datos:
+        # 1. El primer odontograma histórico registrado (Línea Base del paciente)
+        primero = odontos_con_datos[0]
+        med_nom_1 = f"Dr(a). {primero.medico.nombres} {primero.medico.apellidos}" if primero.medico else "Médico Odontólogo"
+        esp_nom_1 = primero.especialidad.nombre if primero.especialidad else "Odontología"
+        od_data_1 = primero.datos_plantilla.get("odontograma", {})
+        consulta.primer_odontograma = PrimerOdontogramaInfo(
+            consulta_id=primero.id,
+            codigo=primero.codigo,
+            fecha_consulta=primero.fecha_consulta,
+            medico_nombre=med_nom_1,
+            especialidad_nombre=esp_nom_1,
+            diagnostico_principal=primero.diagnostico_principal,
+            denticion=od_data_1.get("denticion", "adulto") if isinstance(od_data_1, dict) else "adulto",
+            odontograma=od_data_1
+        )
+
+        # 2. El odontograma previo más reciente
+        ultimo_prev = odontos_con_datos[-1]
+        med_nom_u = f"Dr(a). {ultimo_prev.medico.nombres} {ultimo_prev.medico.apellidos}" if ultimo_prev.medico else "Médico Odontólogo"
+        esp_nom_u = ultimo_prev.especialidad.nombre if ultimo_prev.especialidad else "Odontología"
+        od_data_u = ultimo_prev.datos_plantilla.get("odontograma", {})
+        consulta.odontograma_previo = PrimerOdontogramaInfo(
+            consulta_id=ultimo_prev.id,
+            codigo=ultimo_prev.codigo,
+            fecha_consulta=ultimo_prev.fecha_consulta,
+            medico_nombre=med_nom_u,
+            especialidad_nombre=esp_nom_u,
+            diagnostico_principal=ultimo_prev.diagnostico_principal,
+            denticion=od_data_u.get("denticion", "adulto") if isinstance(od_data_u, dict) else "adulto",
+            odontograma=od_data_u
+        )
+    else:
+        consulta.primer_odontograma = None
+        consulta.odontograma_previo = None
+
     return consulta
+
+
+@router.get("/paciente/{paciente_id}/odontogramas", response_model=List[PrimerOdontogramaInfo])
+async def get_odontogramas_paciente(
+    paciente_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("consultas.ver")),
+):
+    """
+    Retorna el historial completo de todos los odontogramas registrados para un paciente ordenados cronológicamente.
+    """
+    stmt = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad)
+        )
+        .where(
+            ConsultaMedica.paciente_id == paciente_id,
+            ConsultaMedica.datos_plantilla.is_not(None)
+        )
+        .order_by(ConsultaMedica.fecha_consulta.asc(), ConsultaMedica.id.asc())
+    )
+    if not current_user.es_superadmin:
+        stmt = stmt.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(stmt)
+    consultas = res.scalars().all()
+
+    items: List[PrimerOdontogramaInfo] = []
+    for c in consultas:
+        if c.datos_plantilla and isinstance(c.datos_plantilla, dict) and c.datos_plantilla.get("odontograma"):
+            med_nom = f"Dr(a). {c.medico.nombres} {c.medico.apellidos}" if c.medico else "Médico Odontólogo"
+            esp_nom = c.especialidad.nombre if c.especialidad else "Odontología"
+            od_data = c.datos_plantilla.get("odontograma", {})
+            items.append(
+                PrimerOdontogramaInfo(
+                    consulta_id=c.id,
+                    codigo=c.codigo,
+                    fecha_consulta=c.fecha_consulta,
+                    medico_nombre=med_nom,
+                    especialidad_nombre=esp_nom,
+                    diagnostico_principal=c.diagnostico_principal,
+                    denticion=od_data.get("denticion", "adulto") if isinstance(od_data, dict) else "adulto",
+                    odontograma=od_data
+                )
+            )
+    return items
 
 
 @router.post("", response_model=ConsultaResponse, status_code=status.HTTP_201_CREATED)
