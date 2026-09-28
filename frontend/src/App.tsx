@@ -71,6 +71,7 @@ const ServiciosPage = lazyComponent(() => import('./pages/administracion/Servici
 const LandingPage = lazyComponent(() => import('./pages/public/LandingPage'), 'LandingPage');
 const LandingCmsPage = lazyComponent(() => import('./pages/administracion/LandingCmsPage'), 'LandingCmsPage');
 const PuntoCobroPage = lazyComponent(() => import('./pages/facturacion/PuntoCobroPage'), 'PuntoCobroPage');
+const CajasControlPage = lazyComponent(() => import('./pages/facturacion/CajasControlPage'), 'CajasControlPage');
 const RecibosHistorialPage = lazyComponent(() => import('./pages/facturacion/RecibosHistorialPage'), 'RecibosHistorialPage');
 
 const HomeRedirect: React.FC = () => {
@@ -203,6 +204,14 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <PuntoCobroPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="facturacion/cajas"
+                element={
+                  <ProtectedRoute>
+                    <CajasControlPage />
                   </ProtectedRoute>
                 }
               />

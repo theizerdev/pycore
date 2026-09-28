@@ -209,3 +209,56 @@ class CobroResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── RESUMEN ANALÍTICO Y CLASIFICACIÓN FINANCIERA ────────────────────
+class MetodoPagoResumen(BaseModel):
+    metodo: str
+    nombre_legible: str
+    moneda: str
+    total_monto_origen: float
+    total_equivalente_divisa: float
+    cantidad_transacciones: int
+    porcentaje: float
+
+
+class ConceptoResumen(BaseModel):
+    tipo_concepto: str
+    nombre_legible: str
+    total_divisa: float
+    total_ves: float
+    cantidad_items: int
+    porcentaje: float
+
+
+class TopServicioResumen(BaseModel):
+    descripcion: str
+    tipo_concepto: str
+    total_divisa: float
+    cantidad: int
+
+
+class ResumenAnaliticoCajaResponse(BaseModel):
+    fecha_desde: Optional[str] = None
+    fecha_hasta: Optional[str] = None
+    total_ventas_divisa: float
+    total_ventas_ves: float
+    total_cobros_count: int
+    total_cobros_anulados: int
+    total_descuentos_divisa: float
+
+    # Movimientos extraordinarios de efectivo
+    total_ingresos_extra_usd: float
+    total_egresos_extra_usd: float
+    total_ingresos_extra_ves: float
+    total_egresos_extra_ves: float
+
+    # Clasificación de dinero por método de pago
+    por_metodo_pago: List[MetodoPagoResumen]
+
+    # Clasificación por conceptos de facturación
+    por_concepto: List[ConceptoResumen]
+
+    # Ranking de servicios más demandados
+    top_servicios: List[TopServicioResumen]
+

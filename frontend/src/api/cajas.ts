@@ -127,6 +127,64 @@ export interface Cobro {
   pagos: CobroPagoItem[];
 }
 
+export interface MovimientoCaja {
+  id: number;
+  empresa_id: number;
+  sucursal_id: number;
+  turno_caja_id: number;
+  usuario_id: number;
+  usuario_nombre?: string;
+  tipo: 'ingreso' | 'egreso';
+  concepto: string;
+  moneda: 'USD' | 'VES' | 'EUR';
+  monto: number;
+  comprobante_adjunto?: string;
+  created_at: string;
+}
+
+export interface MetodoPagoResumen {
+  metodo: string;
+  nombre_legible: string;
+  moneda: string;
+  total_monto_origen: number;
+  total_equivalente_divisa: number;
+  cantidad_transacciones: number;
+  porcentaje: number;
+}
+
+export interface ConceptoResumen {
+  tipo_concepto: string;
+  nombre_legible: string;
+  total_divisa: number;
+  total_ves: number;
+  cantidad_items: number;
+  porcentaje: number;
+}
+
+export interface TopServicioResumen {
+  descripcion: string;
+  tipo_concepto: string;
+  total_divisa: number;
+  cantidad: number;
+}
+
+export interface ResumenAnaliticoCajaResponse {
+  fecha_desde?: string | null;
+  fecha_hasta?: string | null;
+  total_ventas_divisa: number;
+  total_ventas_ves: number;
+  total_cobros_count: number;
+  total_cobros_anulados: number;
+  total_descuentos_divisa: number;
+  total_ingresos_extra_usd: number;
+  total_egresos_extra_usd: number;
+  total_ingresos_extra_ves: number;
+  total_egresos_extra_ves: number;
+  por_metodo_pago: MetodoPagoResumen[];
+  por_concepto: ConceptoResumen[];
+  top_servicios: TopServicioResumen[];
+}
+
 export const cajasApi = {
   // Cajas
   listCajas: async (sucursal_id?: number): Promise<Caja[]> => {
@@ -155,13 +213,31 @@ export const cajasApi = {
     return res.data;
   },
 
+  listTurnos: async (params?: {
+    sucursal_id?: number;
+    caja_id?: number;
+    estado?: string;
+    fecha_desde?: string;
+    fecha_hasta?: string;
+    limit?: number;
+  }): Promise<TurnoCaja[]> => {
+    const res = await api.get<TurnoCaja[]>('/cajas/turnos', { params });
+    return res.data;
+  },
+
   // Cobros
   createCobro: async (data: CobroCreateInput): Promise<Cobro> => {
     const res = await api.post<Cobro>('/cajas/cobros', data);
     return res.data;
   },
 
-  listCobros: async (params?: { sucursal_id?: number; paciente_id?: number; fecha_desde?: string; fecha_hasta?: string; limit?: number }): Promise<Cobro[]> => {
+  listCobros: async (params?: {
+    sucursal_id?: number;
+    paciente_id?: number;
+    fecha_desde?: string;
+    fecha_hasta?: string;
+    limit?: number;
+  }): Promise<Cobro[]> => {
     const res = await api.get<Cobro[]>('/cajas/cobros', { params });
     return res.data;
   },
@@ -187,6 +263,29 @@ export const cajasApi = {
     comprobante_adjunto?: string;
   }) => {
     const res = await api.post('/cajas/movimientos', data);
+    return res.data;
+  },
+
+  listMovimientos: async (params?: {
+    sucursal_id?: number;
+    turno_caja_id?: number;
+    tipo?: string;
+    fecha_desde?: string;
+    fecha_hasta?: string;
+    limit?: number;
+  }): Promise<MovimientoCaja[]> => {
+    const res = await api.get<MovimientoCaja[]>('/cajas/movimientos', { params });
+    return res.data;
+  },
+
+  // Resumen Analítico & Clasificación
+  getResumenAnalitico: async (params?: {
+    sucursal_id?: number;
+    turno_caja_id?: number;
+    fecha_desde?: string;
+    fecha_hasta?: string;
+  }): Promise<ResumenAnaliticoCajaResponse> => {
+    const res = await api.get<ResumenAnaliticoCajaResponse>('/cajas/resumen-analitico', { params });
     return res.data;
   },
 };

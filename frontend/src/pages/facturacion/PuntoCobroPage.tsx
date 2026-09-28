@@ -51,6 +51,7 @@ import {
   Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 import { ModuleHeader } from '../../components/common/ModuleHeader';
 import { Button } from '../../components/ui/button';
@@ -116,6 +117,7 @@ const STORAGE_SOUND_KEY = 'medisoft_pos_sound_enabled';
 export const PuntoCobroPage: React.FC = () => {
   const { user, sucursalActiva } = useAuth();
   const currentSucursalId = sucursalActiva?.id || 1;
+  const navigate = useNavigate();
 
   // Estado del Turno de Caja y Cajas disponibles
   const [cajas, setCajas] = useState<Caja[]>([]);
@@ -1033,6 +1035,18 @@ export const PuntoCobroPage: React.FC = () => {
                 <VolumeX className="w-3.5 h-3.5 text-rose-500" />
               )}
               <span className="hidden xl:inline">{soundEnabled ? 'Sonido' : 'Silencio'}</span>
+            </Button>
+
+            {/* Acceso al Centro de Control de Cajas & Arqueos */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/facturacion/cajas')}
+              className="gap-1.5 text-xs h-9 cursor-pointer text-indigo-700 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/30 hover:bg-indigo-100 border-indigo-200 dark:border-indigo-800 font-bold"
+              title="Ir al Control de Cajas, Turnos y Clasificación Financiera"
+            >
+              <Wallet className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="hidden sm:inline">Control de Cajas</span>
             </Button>
 
             {/* Atajo F4 Historial de Últimos Recibos */}

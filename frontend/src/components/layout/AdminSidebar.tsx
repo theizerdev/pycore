@@ -189,7 +189,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           icon: CircleDollarSign,
         },
         {
-          title: 'Historial de Recibos',
+          title: 'Control de Cajas & Arqueos',
+          href: '/facturacion/cajas',
+          icon: Wallet,
+        },
+        {
+          title: 'Historial de Recibos y Ventas',
           href: '/facturacion/recibos',
           icon: Receipt,
         },

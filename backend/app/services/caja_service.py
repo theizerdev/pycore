@@ -467,3 +467,226 @@ class CajaService:
         await db.commit()
         await db.refresh(cobro)
         return cobro
+
+    @staticmethod
+    async def get_turnos(
+        empresa_id: int,
+        sucursal_id: Optional[int] = None,
+        caja_id: Optional[int] = None,
+        estado: Optional[str] = None,
+        fecha_desde: Optional[date] = None,
+        fecha_hasta: Optional[date] = None,
+        limit: int = 50,
+        db: AsyncSession = None
+    ) -> List[TurnoCaja]:
+        """Consulta historial de turnos y arqueos de caja."""
+        stmt = select(TurnoCaja).where(TurnoCaja.empresa_id == empresa_id)
+        if sucursal_id:
+            stmt = stmt.where(TurnoCaja.sucursal_id == sucursal_id)
+        if caja_id:
+            stmt = stmt.where(TurnoCaja.caja_id == caja_id)
+        if estado:
+            stmt = stmt.where(TurnoCaja.estado == estado)
+        if fecha_desde:
+            stmt = stmt.where(func.date(TurnoCaja.apertura_at) >= fecha_desde)
+        if fecha_hasta:
+            stmt = stmt.where(func.date(TurnoCaja.apertura_at) <= fecha_hasta)
+
+        stmt = stmt.order_by(desc(TurnoCaja.apertura_at)).limit(limit)
+        res = await db.execute(stmt)
+        return list(res.scalars().all())
+
+    @staticmethod
+    async def get_movimientos(
+        empresa_id: int,
+        sucursal_id: Optional[int] = None,
+        turno_caja_id: Optional[int] = None,
+        tipo: Optional[str] = None,
+        fecha_desde: Optional[date] = None,
+        fecha_hasta: Optional[date] = None,
+        limit: int = 100,
+        db: AsyncSession = None
+    ) -> List[MovimientoCaja]:
+        """Consulta historial de movimientos menores (entradas y salidas de efectivo)."""
+        stmt = select(MovimientoCaja).where(MovimientoCaja.empresa_id == empresa_id)
+        if sucursal_id:
+            stmt = stmt.where(MovimientoCaja.sucursal_id == sucursal_id)
+        if turno_caja_id:
+            stmt = stmt.where(MovimientoCaja.turno_caja_id == turno_caja_id)
+        if tipo:
+            stmt = stmt.where(MovimientoCaja.tipo == tipo.lower())
+        if fecha_desde:
+            stmt = stmt.where(func.date(MovimientoCaja.created_at) >= fecha_desde)
+        if fecha_hasta:
+            stmt = stmt.where(func.date(MovimientoCaja.created_at) <= fecha_hasta)
+
+        stmt = stmt.order_by(desc(MovimientoCaja.created_at)).limit(limit)
+        res = await db.execute(stmt)
+        return list(res.scalars().all())
+
+    @staticmethod
+    async def get_resumen_analitico(
+        empresa_id: int,
+        sucursal_id: Optional[int] = None,
+        turno_caja_id: Optional[int] = None,
+        fecha_desde: Optional[date] = None,
+        fecha_hasta: Optional[date] = None,
+        db: AsyncSession = None
+    ) -> Dict[str, Any]:
+        """Calcula el resumen financiero consolidado: métodos de pago, conceptos y top servicios."""
+        # 1. Cobros en rango
+        stmt_cobros = select(Cobro).where(Cobro.empresa_id == empresa_id)
+        if sucursal_id:
+            stmt_cobros = stmt_cobros.where(Cobro.sucursal_id == sucursal_id)
+        if turno_caja_id:
+            stmt_cobros = stmt_cobros.where(Cobro.turno_caja_id == turno_caja_id)
+        if fecha_desde:
+            stmt_cobros = stmt_cobros.where(func.date(Cobro.fecha_emision) >= fecha_desde)
+        if fecha_hasta:
+            stmt_cobros = stmt_cobros.where(func.date(Cobro.fecha_emision) <= fecha_hasta)
+
+        res_cobros = await db.execute(stmt_cobros)
+        todos_cobros = list(res_cobros.scalars().all())
+
+        cobros_completados = [c for c in todos_cobros if c.estado != "anulado"]
+        cobros_anulados = [c for c in todos_cobros if c.estado == "anulado"]
+
+        total_ventas_divisa = sum(float(c.total_divisa or 0) for c in cobros_completados)
+        total_ventas_ves = sum(float(c.total_ves or 0) for c in cobros_completados)
+        total_descuentos_divisa = sum(float(c.descuento_divisa or 0) for c in cobros_completados)
+
+        # 2. Desglose por método de pago
+        nombres_metodos = {
+            "efectivo_usd": ("Efectivo Dólares ($)", "USD"),
+            "efectivo_ves": ("Efectivo Bolívares (Bs.)", "VES"),
+            "efectivo_eur": ("Efectivo Euros (€)", "EUR"),
+            "pago_movil": ("Pago Móvil (VES)", "VES"),
+            "punto_venta": ("Punto de Venta / Tarjeta", "VES"),
+            "transferencia": ("Transferencia Bancaria", "VES"),
+            "zelle": ("Zelle ($)", "USD"),
+            "seguro_medico": ("Seguro Médico / Póliza", "USD"),
+        }
+
+        metodos_map: Dict[str, Dict[str, Any]] = {}
+        for c in cobros_completados:
+            for p in c.pagos:
+                met = p.metodo or "otro"
+                if met not in metodos_map:
+                    nombre, mon_default = nombres_metodos.get(met, (met.replace("_", " ").title(), p.moneda or "USD"))
+                    metodos_map[met] = {
+                        "metodo": met,
+                        "nombre_legible": nombre,
+                        "moneda": p.moneda or mon_default,
+                        "total_monto_origen": 0.0,
+                        "total_equivalente_divisa": 0.0,
+                        "cantidad_transacciones": 0,
+                    }
+                metodos_map[met]["total_monto_origen"] += float(p.monto_moneda_origen or 0)
+                metodos_map[met]["total_equivalente_divisa"] += float(p.monto_equivalente_divisa or 0)
+                metodos_map[met]["cantidad_transacciones"] += 1
+
+        lista_metodos = []
+        for m in metodos_map.values():
+            pct = round((m["total_equivalente_divisa"] / total_ventas_divisa * 100), 1) if total_ventas_divisa > 0 else 0.0
+            lista_metodos.append({
+                **m,
+                "total_monto_origen": round(m["total_monto_origen"], 2),
+                "total_equivalente_divisa": round(m["total_equivalente_divisa"], 2),
+                "porcentaje": pct
+            })
+        lista_metodos.sort(key=lambda x: x["total_equivalente_divisa"], reverse=True)
+
+        # 3. Desglose por concepto
+        nombres_conceptos = {
+            "consulta": "Consultas Médicas",
+            "odontologia": "Tratamientos Odontológicos",
+            "servicio": "Servicios Clínicos Especializados",
+            "estudio": "Estudios & Diagnósticos",
+            "insumo": "Insumos & Medicamentos",
+            "otro": "Otros Conceptos",
+        }
+
+        conceptos_map: Dict[str, Dict[str, Any]] = {}
+        top_servicios_map: Dict[str, Dict[str, Any]] = {}
+
+        for c in cobros_completados:
+            for d in c.detalles:
+                tipo = d.tipo_concepto or "servicio"
+                if tipo not in conceptos_map:
+                    conceptos_map[tipo] = {
+                        "tipo_concepto": tipo,
+                        "nombre_legible": nombres_conceptos.get(tipo, tipo.title()),
+                        "total_divisa": 0.0,
+                        "total_ves": 0.0,
+                        "cantidad_items": 0,
+                    }
+                conceptos_map[tipo]["total_divisa"] += float(d.subtotal_divisa or 0)
+                conceptos_map[tipo]["total_ves"] += float(d.subtotal_ves or 0)
+                conceptos_map[tipo]["cantidad_items"] += int(d.cantidad or 1)
+
+                desc = (d.descripcion or "Servicio").strip()
+                if desc not in top_servicios_map:
+                    top_servicios_map[desc] = {
+                        "descripcion": desc,
+                        "tipo_concepto": tipo,
+                        "total_divisa": 0.0,
+                        "cantidad": 0,
+                    }
+                top_servicios_map[desc]["total_divisa"] += float(d.subtotal_divisa or 0)
+                top_servicios_map[desc]["cantidad"] += int(d.cantidad or 1)
+
+        lista_conceptos = []
+        for con in conceptos_map.values():
+            pct = round((con["total_divisa"] / total_ventas_divisa * 100), 1) if total_ventas_divisa > 0 else 0.0
+            lista_conceptos.append({
+                **con,
+                "total_divisa": round(con["total_divisa"], 2),
+                "total_ves": round(con["total_ves"], 2),
+                "porcentaje": pct
+            })
+        lista_conceptos.sort(key=lambda x: x["total_divisa"], reverse=True)
+
+        # Top servicios
+        top_servicios_lista = list(top_servicios_map.values())
+        top_servicios_lista.sort(key=lambda x: x["total_divisa"], reverse=True)
+        top_servicios_lista = [
+            {**s, "total_divisa": round(s["total_divisa"], 2)}
+            for s in top_servicios_lista[:10]
+        ]
+
+        # 4. Movimientos extraordinarios de efectivo
+        stmt_movs = select(MovimientoCaja).where(MovimientoCaja.empresa_id == empresa_id)
+        if sucursal_id:
+            stmt_movs = stmt_movs.where(MovimientoCaja.sucursal_id == sucursal_id)
+        if turno_caja_id:
+            stmt_movs = stmt_movs.where(MovimientoCaja.turno_caja_id == turno_caja_id)
+        if fecha_desde:
+            stmt_movs = stmt_movs.where(func.date(MovimientoCaja.created_at) >= fecha_desde)
+        if fecha_hasta:
+            stmt_movs = stmt_movs.where(func.date(MovimientoCaja.created_at) <= fecha_hasta)
+
+        res_movs = await db.execute(stmt_movs)
+        movs = list(res_movs.scalars().all())
+
+        total_ingresos_usd = sum(float(m.monto or 0) for m in movs if m.tipo == "ingreso" and m.moneda == "USD")
+        total_egresos_usd = sum(float(m.monto or 0) for m in movs if m.tipo == "egreso" and m.moneda == "USD")
+        total_ingresos_ves = sum(float(m.monto or 0) for m in movs if m.tipo == "ingreso" and m.moneda == "VES")
+        total_egresos_ves = sum(float(m.monto or 0) for m in movs if m.tipo == "egreso" and m.moneda == "VES")
+
+        return {
+            "fecha_desde": str(fecha_desde) if fecha_desde else None,
+            "fecha_hasta": str(fecha_hasta) if fecha_hasta else None,
+            "total_ventas_divisa": round(total_ventas_divisa, 2),
+            "total_ventas_ves": round(total_ventas_ves, 2),
+            "total_cobros_count": len(cobros_completados),
+            "total_cobros_anulados": len(cobros_anulados),
+            "total_descuentos_divisa": round(total_descuentos_divisa, 2),
+            "total_ingresos_extra_usd": round(total_ingresos_usd, 2),
+            "total_egresos_extra_usd": round(total_egresos_usd, 2),
+            "total_ingresos_extra_ves": round(total_ingresos_ves, 2),
+            "total_egresos_extra_ves": round(total_egresos_ves, 2),
+            "por_metodo_pago": lista_metodos,
+            "por_concepto": lista_conceptos,
+            "top_servicios": top_servicios_lista,
+        }
+
