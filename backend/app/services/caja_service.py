@@ -322,6 +322,7 @@ class CajaService:
             paciente_id=data.paciente_id,
             medico_id=data.medico_id,
             cita_id=data.cita_id,
+            consulta_id=data.consulta_id,
             numero_recibo=numero_recibo,
             fecha_emision=datetime.utcnow(),
             moneda_referencia=moneda_ref,

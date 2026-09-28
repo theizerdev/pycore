@@ -133,6 +133,7 @@ class CobroCreateRequest(BaseModel):
     paciente_id: int
     medico_id: Optional[int] = None
     cita_id: Optional[int] = None
+    consulta_id: Optional[int] = None
     descuento_divisa: float = Field(0.00, ge=0)
     detalles: List[CobroDetalleItemRequest]
     pagos: List[CobroPagoItemRequest]
@@ -186,6 +187,7 @@ class CobroResponse(BaseModel):
     medico_id: Optional[int] = None
     medico_nombre: Optional[str] = None
     cita_id: Optional[int] = None
+    consulta_id: Optional[int] = None
     numero_recibo: str
     fecha_emision: datetime
     moneda_referencia: str

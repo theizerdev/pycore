@@ -75,6 +75,7 @@ class Cobro(Base, TimestampMixin):
     paciente_id = Column(Integer, ForeignKey("pacientes.id", ondelete="RESTRICT"), nullable=False, index=True)
     medico_id = Column(Integer, ForeignKey("medicos.id", ondelete="SET NULL"), nullable=True, index=True)
     cita_id = Column(Integer, ForeignKey("citas_medicas.id", ondelete="SET NULL"), nullable=True, index=True)
+    consulta_id = Column(Integer, ForeignKey("consultas_medicas.id", ondelete="SET NULL"), nullable=True, index=True)
 
     numero_recibo = Column(String(50), nullable=False, index=True)  # Ej. "REC-2026-00001"
     fecha_emision = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -107,8 +108,43 @@ class Cobro(Base, TimestampMixin):
     paciente = relationship("Paciente", lazy="selectin")
     medico = relationship("Medico", lazy="selectin")
     cita = relationship("CitaMedica", lazy="selectin")
+    consulta = relationship("ConsultaMedica", lazy="selectin")
     detalles = relationship("CobroDetalle", back_populates="cobro", cascade="all, delete-orphan", lazy="selectin")
     pagos = relationship("CobroPago", back_populates="cobro", cascade="all, delete-orphan", lazy="selectin")
+
+    # Propiedades calculadas para serialización
+    @property
+    def cajero_nombre(self):
+        if self.cajero:
+            nom = f"{self.cajero.nombre or ''} {self.cajero.apellido or ''}".strip()
+            return nom or self.cajero.email
+        return None
+
+    @property
+    def paciente_nombre(self):
+        if self.paciente:
+            return f"{self.paciente.nombres or ''} {self.paciente.apellidos or ''}".strip()
+        return None
+
+    @property
+    def paciente_documento(self):
+        if self.paciente:
+            td = self.paciente.tipo_documento or ""
+            doc = self.paciente.documento_identidad or ""
+            return f"{td}-{doc}" if td and doc else doc
+        return None
+
+    @property
+    def paciente_telefono(self):
+        if self.paciente:
+            return self.paciente.telefono
+        return None
+
+    @property
+    def medico_nombre(self):
+        if self.medico:
+            return f"{self.medico.nombres or ''} {self.medico.apellidos or ''}".strip()
+        return None
 
 
 class CobroDetalle(Base, TimestampMixin):

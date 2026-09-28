@@ -85,6 +85,7 @@ export interface CobroCreateInput {
   paciente_id: number;
   medico_id?: number | null;
   cita_id?: number | null;
+  consulta_id?: number | null;
   descuento_divisa?: number;
   detalles: CobroDetalleItem[];
   pagos: CobroPagoItem[];
@@ -105,6 +106,7 @@ export interface Cobro {
   medico_id?: number | null;
   medico_nombre?: string | null;
   cita_id?: number | null;
+  consulta_id?: number | null;
   numero_recibo: string;
   fecha_emision: string;
   moneda_referencia: 'USD' | 'EUR';
