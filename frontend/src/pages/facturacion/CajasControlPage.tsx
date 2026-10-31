@@ -34,6 +34,7 @@ import {
   ChevronRight,
   Eye,
   Percent,
+  Power,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -65,6 +66,7 @@ import {
   cajasApi,
   type Caja,
   type TurnoCaja,
+  type TurnoDetalleResumen,
   type Cobro,
   type MovimientoCaja,
   type ResumenAnaliticoCajaResponse,
@@ -73,7 +75,21 @@ import { useAuth } from '../../context/AuthContext';
 import { CobroReciboModal } from '../../components/facturacion/CobroReciboModal';
 import { TurnoAperturaModal } from '../../components/facturacion/TurnoAperturaModal';
 import { TurnoCierreModal } from '../../components/facturacion/TurnoCierreModal';
+import { CorteCajaTicketModal } from '../../components/facturacion/CorteCajaTicketModal';
+import {
+  TurnoDetalleView,
+  canUserCloseTurno,
+} from '../../components/facturacion/TurnoDetalleView';
 import { cn } from '../../lib/utils';
+
+const CATEGORIAS_MOVIMIENTO = [
+  'Gasto Operacional',
+  'Compra de Insumos',
+  'Aporte de Sencillo',
+  'Retiro Parcial / Bóveda',
+  'Ajuste de Caja',
+  'Otro',
+] as const;
 
 export const CajasControlPage: React.FC = () => {
   const navigate = useNavigate();
@@ -100,11 +116,31 @@ export const CajasControlPage: React.FC = () => {
   const [searchVentasQuery, setSearchVentasQuery] = useState('');
   const [filtroEstadoVenta, setFiltroEstadoVenta] = useState<'todos' | 'completado' | 'anulado'>('todos');
 
-  // Modales
+  // Filtros de Turnos y Movimientos (Réplica FixSale POS)
+  const [searchTurnosQuery, setSearchTurnosQuery] = useState('');
+  const [filtroEstadoTurno, setFiltroEstadoTurno] = useState<'todos' | 'abierta' | 'cerrada'>('todos');
+  const [searchMovsQuery, setSearchMovsQuery] = useState('');
+  const [filtroTipoMov, setFiltroTipoMov] = useState<'todos' | 'ingreso' | 'egreso'>('todos');
+
+  // Vista Detallada de un Turno Específico (Réplica CashRegisters/Show.tsx)
+  const [selectedDetalleTurnoId, setSelectedDetalleTurnoId] = useState<number | null>(null);
+  const [detalleRefreshSignal, setDetalleRefreshSignal] = useState<number>(0);
+
+  // Modales de Apertura, Cierre, Recibo y Comprobante de Corte X/Z
   const [aperturaModalOpen, setAperturaModalOpen] = useState(false);
   const [cierreModalOpen, setCierreModalOpen] = useState(false);
+  const [turnoParaCerrar, setTurnoParaCerrar] = useState<TurnoCaja | null>(null);
   const [reciboModalOpen, setReciboModalOpen] = useState(false);
   const [selectedCobro, setSelectedCobro] = useState<Cobro | null>(null);
+
+  const [corteTicketModalOpen, setCorteTicketModalOpen] = useState(false);
+  const [corteTicketTurnoId, setCorteTicketTurnoId] = useState<number | null>(null);
+  const [corteTicketInitialDetalle, setCorteTicketInitialDetalle] =
+    useState<TurnoDetalleResumen | null>(null);
+  const [corteTicketFallbackTurno, setCorteTicketFallbackTurno] = useState<TurnoCaja | null>(
+    null
+  );
+  const [corteTicketAutoPrint, setCorteTicketAutoPrint] = useState(false);
 
   // Modal Nueva Caja
   const [newCajaModalOpen, setNewCajaModalOpen] = useState(false);
@@ -114,9 +150,11 @@ export const CajasControlPage: React.FC = () => {
 
   // Modal Nuevo Movimiento de Caja Chica
   const [movModalOpen, setMovModalOpen] = useState(false);
+  const [turnoParaMovimiento, setTurnoParaMovimiento] = useState<TurnoCaja | null>(null);
   const [movTipo, setMovTipo] = useState<'ingreso' | 'egreso'>('egreso');
+  const [movCategoria, setMovCategoria] = useState<string>('Gasto Operacional');
   const [movConcepto, setMovConcepto] = useState('');
-  const [movMoneda, setMovMoneda] = useState<'USD' | 'VES'>('USD');
+  const [movMoneda, setMovMoneda] = useState<'USD' | 'VES'>('VES');
   const [movMonto, setMovMonto] = useState('');
   const [savingMov, setSavingMov] = useState(false);
 
@@ -164,7 +202,7 @@ export const CajasControlPage: React.FC = () => {
             sucursal_id: currentSucursalId,
             fecha_desde: fechaDesde || undefined,
             fecha_hasta: fechaHasta || undefined,
-            limit: 50,
+            limit: 100,
           }),
           cajasApi.getActiveTurno(),
           cajasApi.listCobros({
@@ -205,6 +243,55 @@ export const CajasControlPage: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
+  const handleOpenPrintCorte = (
+    turnoObj: TurnoCaja,
+    detalleObj: TurnoDetalleResumen | null = null,
+    autoPrint = false
+  ) => {
+    setCorteTicketTurnoId(turnoObj.id);
+    setCorteTicketInitialDetalle(detalleObj);
+    setCorteTicketFallbackTurno(turnoObj);
+    setCorteTicketAutoPrint(autoPrint);
+    setCorteTicketModalOpen(true);
+  };
+
+  const handleOpenCerrarTurno = (turnoObj: TurnoCaja) => {
+    if (!canUserCloseTurno(turnoObj, user)) {
+      toast.error(
+        `Solo ${turnoObj.cajero_nombre || 'el cajero titular'} o un Administrador puede cerrar esta caja`
+      );
+      return;
+    }
+    setTurnoParaCerrar(turnoObj);
+    setCierreModalOpen(true);
+  };
+
+  const handleOpenRegistrarMovimiento = (turnoObj?: TurnoCaja | null) => {
+    const target = turnoObj || turnoActivo;
+    if (!target) {
+      toast.error('Debe existir un turno abierto para registrar movimientos');
+      return;
+    }
+    setTurnoParaMovimiento(target);
+    setMovTipo('egreso');
+    setMovCategoria('Gasto Operacional');
+    setMovConcepto('');
+    setMovMonto('');
+    setMovModalOpen(true);
+  };
+
+  const handleToggleCajaActiva = async (caja: Caja) => {
+    try {
+      await cajasApi.updateCaja(caja.id, { activa: !caja.activa });
+      toast.success(
+        `Caja "${caja.nombre}" ${!caja.activa ? 'activada' : 'desactivada'} correctamente`
+      );
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'No se pudo actualizar el estado de la caja');
+    }
+  };
+
   // Manejo de Creación de Caja
   const handleCreateCaja = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,7 +322,8 @@ export const CajasControlPage: React.FC = () => {
   // Manejo de Movimiento de Caja Chica
   const handleCreateMovimiento = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!turnoActivo) {
+    const targetTurno = turnoParaMovimiento || turnoActivo;
+    if (!targetTurno) {
       toast.error('Debe haber un turno de caja abierto para registrar movimientos');
       return;
     }
@@ -244,18 +332,18 @@ export const CajasControlPage: React.FC = () => {
       toast.error('Ingrese un monto válido');
       return;
     }
-    if (!movConcepto.trim()) {
-      toast.error('Indique el concepto o motivo del movimiento');
-      return;
-    }
+    const detalleTxt = movConcepto.trim();
+    const conceptoFinal = detalleTxt
+      ? `${movCategoria}: ${detalleTxt}`
+      : movCategoria;
 
     try {
       setSavingMov(true);
       await cajasApi.createMovimiento({
-        turno_caja_id: turnoActivo.id,
-        sucursal_id: currentSucursalId,
+        turno_caja_id: targetTurno.id,
+        sucursal_id: targetTurno.sucursal_id || currentSucursalId,
         tipo: movTipo,
-        concepto: movConcepto.trim(),
+        concepto: conceptoFinal,
         moneda: movMoneda,
         monto: montoNum,
       });
@@ -263,6 +351,7 @@ export const CajasControlPage: React.FC = () => {
       setMovConcepto('');
       setMovMonto('');
       setMovModalOpen(false);
+      setDetalleRefreshSignal((s) => s + 1);
       await fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Error al registrar movimiento');
@@ -282,10 +371,11 @@ export const CajasControlPage: React.FC = () => {
     try {
       setAnulando(true);
       await cajasApi.anularCobro(cobroToAnular.id, motivoAnulacion.trim());
-      toast.success(`Recibo ${cobroToAnular.numero_recibo} anulado correctamente`);
+      toast.success(`Recibo ${cobroToAnular.numero_recibo} anulado y conciliado en caja`);
       setAnularModalOpen(false);
       setCobroToAnular(null);
       setMotivoAnulacion('');
+      setDetalleRefreshSignal((s) => s + 1);
       await fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Error al anular el recibo');
@@ -293,6 +383,34 @@ export const CajasControlPage: React.FC = () => {
       setAnulando(false);
     }
   };
+
+  // Filtrado de Turnos en Memoria
+  const filteredTurnos = useMemo(() => {
+    return turnos.filter((t) => {
+      const matchEst = filtroEstadoTurno === 'todos' || t.estado === filtroEstadoTurno;
+      const q = searchTurnosQuery.trim().toLowerCase();
+      const matchQ =
+        !q ||
+        String(t.id).includes(q) ||
+        (t.caja_nombre && t.caja_nombre.toLowerCase().includes(q)) ||
+        (t.cajero_nombre && t.cajero_nombre.toLowerCase().includes(q));
+      return matchEst && matchQ;
+    });
+  }, [turnos, filtroEstadoTurno, searchTurnosQuery]);
+
+  // Filtrado de Movimientos en Memoria
+  const filteredMovimientos = useMemo(() => {
+    return movimientos.filter((m) => {
+      const matchTipo = filtroTipoMov === 'todos' || m.tipo === filtroTipoMov;
+      const q = searchMovsQuery.trim().toLowerCase();
+      const matchQ =
+        !q ||
+        m.concepto.toLowerCase().includes(q) ||
+        String(m.turno_caja_id).includes(q) ||
+        (m.usuario_nombre && m.usuario_nombre.toLowerCase().includes(q));
+      return matchTipo && matchQ;
+    });
+  }, [movimientos, filtroTipoMov, searchMovsQuery]);
 
   // Filtrado de Ventas en Memoria
   const filteredCobros = useMemo(() => {
@@ -324,7 +442,7 @@ export const CajasControlPage: React.FC = () => {
       {/* Header del Módulo */}
       <ModuleHeader
         title="Gestión Integral de Cajas & Arqueos"
-        description="Supervisión en tiempo real de cajas registradoras, turnos operativos, detalle de ventas, egresos y clasificación del dinero multimoneda."
+        description="Supervisión en tiempo real de cajas registradoras, apertura con tasa BCV, control de turnos, arqueo parcial (Corte X) y cierre de turno (Corte Z)."
         icon={<Wallet className="h-6 w-6 text-white" />}
       >
         <div className="flex items-center gap-2 flex-wrap">
@@ -337,12 +455,28 @@ export const CajasControlPage: React.FC = () => {
             <span>Terminal POS de Cobro [F1]</span>
           </Button>
 
+          {/* Acceso directo a Mi Caja Abierta (Réplica FixSale POS Index.tsx) */}
+          {turnoActivo && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedDetalleTurnoId(turnoActivo.id)}
+              className="h-9 text-xs font-extrabold gap-1.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 cursor-pointer"
+            >
+              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Mi Caja Abierta (#{turnoActivo.id})</span>
+            </Button>
+          )}
+
           {/* Botón Refrescar */}
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchData}
-            disabled={refreshing}
+            onClick={() => {
+              fetchData();
+              if (selectedDetalleTurnoId) setDetalleRefreshSignal((s) => s + 1);
+            }}
+            disabled={refreshing || loading}
             className="h-9 text-xs gap-1.5 cursor-pointer"
           >
             <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
@@ -364,7 +498,7 @@ export const CajasControlPage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setMovModalOpen(true)}
+            onClick={() => handleOpenRegistrarMovimiento(turnoActivo)}
             disabled={!turnoActivo}
             className="h-9 text-xs font-bold gap-1.5 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-50 cursor-pointer disabled:opacity-50"
           >
@@ -377,11 +511,11 @@ export const CajasControlPage: React.FC = () => {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => setCierreModalOpen(true)}
+              onClick={() => handleOpenCerrarTurno(turnoActivo)}
               className="h-9 text-xs font-black gap-1.5 rounded-xl cursor-pointer"
             >
               <Lock className="w-3.5 h-3.5" />
-              <span>Cerrar Turno (Arqueo)</span>
+              <span>Cerrar Turno (Corte Z)</span>
             </Button>
           ) : (
             <Button
@@ -395,6 +529,28 @@ export const CajasControlPage: React.FC = () => {
           )}
         </div>
       </ModuleHeader>
+
+      {selectedDetalleTurnoId !== null ? (
+        <TurnoDetalleView
+          turnoId={selectedDetalleTurnoId}
+          currentUser={user}
+          refreshSignal={detalleRefreshSignal}
+          onBack={() => setSelectedDetalleTurnoId(null)}
+          onOpenPrintCorte={(t, det) => handleOpenPrintCorte(t, det, false)}
+          onOpenCerrarTurno={(t) => handleOpenCerrarTurno(t)}
+          onOpenRegistrarMovimiento={(t) => handleOpenRegistrarMovimiento(t)}
+          onOpenReciboCobro={(c) => {
+            setSelectedCobro(c);
+            setReciboModalOpen(true);
+          }}
+          onOpenAnularCobro={(c) => {
+            setCobroToAnular(c);
+            setMotivoAnulacion('');
+            setAnularModalOpen(true);
+          }}
+        />
+      ) : (
+        <>
 
       {/* Tarjetas KPI Financieras */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -626,10 +782,13 @@ export const CajasControlPage: React.FC = () => {
                 return (
                   <div
                     key={caja.id}
-                    className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden"
+                    className={cn(
+                      'p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden transition-opacity',
+                      !caja.activa && !turnoDeEstaCaja && 'opacity-70'
+                    )}
                   >
                     <div className="space-y-1.5">
-                      <div className="flex items-start justify-between">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 text-xs">
                             #{caja.id}
@@ -650,10 +809,16 @@ export const CajasControlPage: React.FC = () => {
                             'text-[10px] font-bold',
                             turnoDeEstaCaja
                               ? 'border-emerald-500 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40'
-                              : 'border-slate-300 text-slate-500 bg-slate-50 dark:bg-slate-800'
+                              : !caja.activa
+                                ? 'border-rose-300 text-rose-600 bg-rose-50 dark:bg-rose-950/30'
+                                : 'border-slate-300 text-slate-500 bg-slate-50 dark:bg-slate-800'
                           )}
                         >
-                          {turnoDeEstaCaja ? '● Abierta' : '○ Cerrada'}
+                          {turnoDeEstaCaja
+                            ? '● Abierta'
+                            : !caja.activa
+                              ? '○ Inactiva'
+                              : '○ Disponible'}
                         </Badge>
                       </div>
 
@@ -662,39 +827,91 @@ export const CajasControlPage: React.FC = () => {
                         <div className="p-2.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-500/20 text-xs space-y-1 text-emerald-900 dark:text-emerald-200">
                           <div className="flex justify-between items-center">
                             <span className="text-[11px] text-slate-500">Cajero en turno:</span>
-                            <span className="font-bold">{turnoDeEstaCaja.cajero_nombre}</span>
+                            <span className="font-bold">
+                              {turnoDeEstaCaja.cajero_nombre} (#{turnoDeEstaCaja.id})
+                            </span>
                           </div>
                           <div className="flex justify-between items-center font-mono">
-                            <span className="text-[11px] text-slate-500">Fondo Inicial:</span>
-                            <span className="font-bold">${turnoDeEstaCaja.fondo_inicial_usd.toFixed(2)}</span>
+                            <span className="text-[11px] text-slate-500">Fondo Apertura:</span>
+                            <span className="font-bold">
+                              Bs.{turnoDeEstaCaja.fondo_inicial_ves.toFixed(2)} + $
+                              {turnoDeEstaCaja.fondo_inicial_usd.toFixed(2)}
+                            </span>
                           </div>
                           <div className="flex justify-between items-center font-mono">
-                            <span className="text-[11px] text-slate-500">Ventas en Turno:</span>
+                            <span className="text-[11px] text-slate-500">Efectivo Recaudado:</span>
                             <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                              ${turnoDeEstaCaja.total_ingresos_usd.toFixed(2)}
+                              Bs.{turnoDeEstaCaja.total_ingresos_ves.toFixed(2)} + $
+                              {turnoDeEstaCaja.total_ingresos_usd.toFixed(2)}
                             </span>
                           </div>
                         </div>
                       ) : (
                         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 text-xs text-slate-400 text-center">
-                          Esta caja no tiene turno abierto en este momento.
+                          {caja.activa
+                            ? 'Caja libre y disponible para apertura de turno.'
+                            : 'Caja deshabilitada temporalmente.'}
                         </div>
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-                      <span className="text-[10px] text-slate-400">
-                        {caja.activa ? 'Caja activa para operaciones' : 'Caja inactiva'}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => navigate('/facturacion/cobro')}
-                        className="h-7 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 cursor-pointer gap-1"
-                      >
-                        Cobrar aquí
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </Button>
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs">
+                      {!turnoDeEstaCaja ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleCajaActiva(caja)}
+                          className="text-[10.5px] font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 cursor-pointer"
+                          title="Activar o desactivar esta caja física"
+                        >
+                          <Power className="w-3 h-3" />
+                          <span>{caja.activa ? 'Desactivar' : 'Activar'}</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDetalleTurnoId(turnoDeEstaCaja.id)}
+                          className="text-[11px] font-extrabold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Ver Arqueo</span>
+                        </button>
+                      )}
+
+                      <div className="flex items-center gap-1">
+                        {turnoDeEstaCaja && canUserCloseTurno(turnoDeEstaCaja, user) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenCerrarTurno(turnoDeEstaCaja)}
+                            className="h-7 px-2 text-[11px] font-bold text-rose-600 border-rose-200 hover:bg-rose-50 cursor-pointer"
+                          >
+                            <Lock className="w-3 h-3 mr-1" />
+                            Corte Z
+                          </Button>
+                        )}
+
+                        {!turnoDeEstaCaja && !turnoActivo && caja.activa ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setAperturaModalOpen(true)}
+                            className="h-7 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 cursor-pointer gap-1"
+                          >
+                            <LockOpen className="w-3.5 h-3.5" />
+                            Aperturar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => navigate('/facturacion/cobro')}
+                            className="h-7 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 cursor-pointer gap-1"
+                          >
+                            Ir a POS
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -702,16 +919,50 @@ export const CajasControlPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Historial de Turnos de Caja (Arqueos) */}
+          {/* Historial de Turnos de Caja (Arqueos) con Filtros y Acciones (Réplica FixSale POS) */}
           <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-emerald-600" />
-                Historial de Turnos & Arqueos de Caja
+                Historial de Turnos & Arqueos de Caja ({filteredTurnos.length})
               </h3>
-              <span className="text-xs text-slate-400 font-mono">
-                {turnos.length} turno(s) registrado(s)
-              </span>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-56">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                  <Input
+                    type="text"
+                    value={searchTurnosQuery}
+                    onChange={(e) => setSearchTurnosQuery(e.target.value)}
+                    placeholder="Buscar #turno, caja o cajero..."
+                    className="pl-8 h-8 text-xs rounded-xl bg-slate-50 dark:bg-slate-800"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl text-xs">
+                  {(
+                    [
+                      { id: 'todos', label: 'Todos' },
+                      { id: 'abierta', label: 'Abiertas' },
+                      { id: 'cerrada', label: 'Cerradas' },
+                    ] as const
+                  ).map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => setFiltroEstadoTurno(st.id)}
+                      className={cn(
+                        'px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer',
+                        filtroEstadoTurno === st.id
+                          ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-400 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      )}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
@@ -724,29 +975,43 @@ export const CajasControlPage: React.FC = () => {
                     <th className="py-2.5 px-3">Cierre</th>
                     <th className="py-2.5 px-3">Estado</th>
                     <th className="py-2.5 px-3 text-right">Fondo Inicial</th>
-                    <th className="py-2.5 px-3 text-right">Ingresos</th>
-                    <th className="py-2.5 px-3 text-right">Egresos</th>
+                    <th className="py-2.5 px-3 text-right">Ingresos Efec.</th>
+                    <th className="py-2.5 px-3 text-right">Salidas</th>
                     <th className="py-2.5 px-3 text-right">Arqueo Declarado</th>
                     <th className="py-2.5 px-3 text-right">Diferencia</th>
+                    <th className="py-2.5 px-3 text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {turnos.length === 0 ? (
+                  {filteredTurnos.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-8 text-center text-slate-400">
-                        No hay turnos registrados en este período.
+                      <td colSpan={11} className="py-8 text-center text-slate-400">
+                        No hay turnos registrados con estos criterios.
                       </td>
                     </tr>
                   ) : (
-                    turnos.map((t) => {
+                    filteredTurnos.map((t) => {
                       const difUsd = t.diferencia_usd ?? 0;
+                      const difVes = t.diferencia_ves ?? 0;
+                      const canCloseRow = canUserCloseTurno(t, user);
                       return (
-                        <tr key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                        <tr
+                          key={t.id}
+                          className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
+                        >
                           <td className="py-2.5 px-3 font-bold font-mono">
-                            <span className="text-emerald-700 dark:text-emerald-400">#{t.id}</span>
-                            <span className="text-slate-400 block text-[10px] font-sans">
-                              {t.caja_nombre || 'Caja'}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDetalleTurnoId(t.id)}
+                              className="text-left hover:underline cursor-pointer"
+                            >
+                              <span className="text-emerald-700 dark:text-emerald-400">
+                                #{t.id}
+                              </span>
+                              <span className="text-slate-400 block text-[10px] font-sans">
+                                {t.caja_nombre || 'Caja'}
+                              </span>
+                            </button>
                           </td>
                           <td className="py-2.5 px-3">
                             <span className="font-semibold text-slate-800 dark:text-slate-200">
@@ -754,14 +1019,14 @@ export const CajasControlPage: React.FC = () => {
                             </span>
                           </td>
                           <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
-                            {new Date(t.apertura_at).toLocaleString('es-ES', {
+                            {new Date(t.apertura_at).toLocaleString('es-VE', {
                               dateStyle: 'short',
                               timeStyle: 'short',
                             })}
                           </td>
                           <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 font-mono text-[11px]">
                             {t.cierre_at
-                              ? new Date(t.cierre_at).toLocaleString('es-ES', {
+                              ? new Date(t.cierre_at).toLocaleString('es-VE', {
                                   dateStyle: 'short',
                                   timeStyle: 'short',
                                 })
@@ -773,41 +1038,117 @@ export const CajasControlPage: React.FC = () => {
                               className={cn(
                                 'text-[10px] font-bold',
                                 t.estado === 'abierta'
-                                  ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
-                                  : 'border-slate-300 text-slate-600 bg-slate-100'
+                                  ? 'border-emerald-500 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40'
+                                  : 'border-slate-300 text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300'
                               )}
                             >
-                              {t.estado === 'abierta' ? 'Abierta' : 'Cerrada'}
+                              {t.estado === 'abierta' ? '● Abierta' : 'Cerrada'}
                             </Badge>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold">
-                            ${t.fondo_inicial_usd.toFixed(2)}
+                            <span className="block">Bs. {t.fondo_inicial_ves.toFixed(2)}</span>
+                            <span className="text-[10px] text-slate-400">
+                              +${t.fondo_inicial_usd.toFixed(2)}
+                            </span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
-                            ${t.total_ingresos_usd.toFixed(2)}
+                            <span className="block">Bs. {t.total_ingresos_ves.toFixed(2)}</span>
+                            <span className="text-[10px] text-emerald-600/80">
+                              +${t.total_ingresos_usd.toFixed(2)}
+                            </span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-500">
-                            ${t.total_egresos_usd.toFixed(2)}
+                            <span className="block">Bs. {t.total_egresos_ves.toFixed(2)}</span>
+                            <span className="text-[10px] text-rose-400">
+                              -${t.total_egresos_usd.toFixed(2)}
+                            </span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold">
-                            {t.arqueo_declarado_usd != null ? `$${Number(t.arqueo_declarado_usd).toFixed(2)}` : '—'}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold">
-                            {t.diferencia_usd != null ? (
-                              <span
-                                className={cn(
-                                  difUsd === 0
-                                    ? 'text-slate-500'
-                                    : difUsd > 0
-                                    ? 'text-emerald-600'
-                                    : 'text-rose-600'
-                                )}
-                              >
-                                {difUsd > 0 ? `+${difUsd.toFixed(2)}` : difUsd.toFixed(2)}
-                              </span>
+                            {t.arqueo_declarado_ves != null || t.arqueo_declarado_usd != null ? (
+                              <>
+                                <span className="block">
+                                  Bs. {Number(t.arqueo_declarado_ves || 0).toFixed(2)}
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  +${Number(t.arqueo_declarado_usd || 0).toFixed(2)}
+                                </span>
+                              </>
                             ) : (
                               '—'
                             )}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold">
+                            {t.diferencia_ves != null || t.diferencia_usd != null ? (
+                              <div>
+                                <span
+                                  className={cn(
+                                    'block',
+                                    Math.abs(difVes) < 0.01
+                                      ? 'text-slate-500'
+                                      : difVes > 0
+                                        ? 'text-emerald-600'
+                                        : 'text-rose-600'
+                                  )}
+                                >
+                                  Bs. {difVes > 0 ? `+${difVes.toFixed(2)}` : difVes.toFixed(2)}
+                                </span>
+                                <span
+                                  className={cn(
+                                    'text-[10px]',
+                                    Math.abs(difUsd) < 0.01
+                                      ? 'text-slate-400'
+                                      : difUsd > 0
+                                        ? 'text-emerald-600'
+                                        : 'text-rose-500'
+                                  )}
+                                >
+                                  ${difUsd > 0 ? `+${difUsd.toFixed(2)}` : difUsd.toFixed(2)}
+                                </span>
+                              </div>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedDetalleTurnoId(t.id)}
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-primary hover:bg-primary/10 cursor-pointer transition-colors"
+                                title="Ver Detalle Financiero y Arqueo del Turno"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPrintCorte(t, null, false)}
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                                title={
+                                  t.estado === 'abierta'
+                                    ? 'Imprimir Arqueo Parcial (Corte X en Bs.)'
+                                    : 'Imprimir Comprobante de Corte Z (Bs.)'
+                                }
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+
+                              {t.estado === 'abierta' && (
+                                <button
+                                  type="button"
+                                  disabled={!canCloseRow}
+                                  onClick={() => handleOpenCerrarTurno(t)}
+                                  className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+                                  title={
+                                    canCloseRow
+                                      ? 'Ejecutar Corte Z y Cerrar Caja'
+                                      : `Solo ${t.cajero_nombre} o un Administrador puede cerrar esta caja`
+                                  }
+                                >
+                                  <Lock className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1044,26 +1385,63 @@ export const CajasControlPage: React.FC = () => {
         {/* ======================================================== */}
         <TabsContent value="movimientos" className="space-y-4 outline-none">
           <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 space-y-3.5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-                  Movimientos Extraordinarios de Caja Chica
+                  Movimientos Extraordinarios de Caja Chica ({filteredMovimientos.length})
                 </h3>
                 <span className="text-xs text-slate-400">
-                  Control de compras menores, insumos de emergencia y aportes de cambio.
+                  Control de compras menores, insumos de emergencia, retiros parciales y aportes de cambio.
                 </span>
               </div>
 
-              <Button
-                size="sm"
-                onClick={() => setMovModalOpen(true)}
-                disabled={!turnoActivo}
-                className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white gap-1.5 rounded-xl cursor-pointer disabled:opacity-50"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Registrar Entrada / Salida
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-56">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                  <Input
+                    type="text"
+                    value={searchMovsQuery}
+                    onChange={(e) => setSearchMovsQuery(e.target.value)}
+                    placeholder="Buscar concepto, #turno o usuario..."
+                    className="pl-8 h-8 text-xs rounded-xl bg-slate-50 dark:bg-slate-800"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl text-xs">
+                  {(
+                    [
+                      { id: 'todos', label: 'Todos' },
+                      { id: 'ingreso', label: 'Entradas (+)' },
+                      { id: 'egreso', label: 'Salidas (-)' },
+                    ] as const
+                  ).map((tm) => (
+                    <button
+                      key={tm.id}
+                      type="button"
+                      onClick={() => setFiltroTipoMov(tm.id)}
+                      className={cn(
+                        'px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer',
+                        filtroTipoMov === tm.id
+                          ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-400 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      )}
+                    >
+                      {tm.label}
+                    </button>
+                  ))}
+                </div>
+
+                <Button
+                  size="sm"
+                  onClick={() => handleOpenRegistrarMovimiento(turnoActivo)}
+                  disabled={!turnoActivo}
+                  className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white gap-1.5 rounded-xl cursor-pointer disabled:opacity-50"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Registrar Entrada / Salida
+                </Button>
+              </div>
             </div>
 
             {/* Tabla de Movimientos */}
@@ -1080,25 +1458,31 @@ export const CajasControlPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {movimientos.length === 0 ? (
+                  {filteredMovimientos.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-400">
-                        No hay movimientos extraordinarios registrados en este período.
+                        No hay movimientos extraordinarios registrados con estos filtros.
                       </td>
                     </tr>
                   ) : (
-                    movimientos.map((m) => {
+                    filteredMovimientos.map((m) => {
                       const isIngreso = m.tipo === 'ingreso';
                       return (
                         <tr key={m.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
                           <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-400">
-                            {new Date(m.created_at).toLocaleString('es-ES', {
+                            {new Date(m.created_at).toLocaleString('es-VE', {
                               dateStyle: 'short',
                               timeStyle: 'short',
                             })}
                           </td>
                           <td className="py-2.5 px-3 font-mono font-bold text-slate-700 dark:text-slate-300">
-                            Turno #{m.turno_caja_id}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDetalleTurnoId(m.turno_caja_id)}
+                              className="text-primary hover:underline cursor-pointer"
+                            >
+                              Turno #{m.turno_caja_id}
+                            </button>
                           </td>
                           <td className="py-2.5 px-3">
                             <Badge
@@ -1106,8 +1490,8 @@ export const CajasControlPage: React.FC = () => {
                               className={cn(
                                 'text-[10px] font-bold gap-1',
                                 isIngreso
-                                  ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
-                                  : 'border-rose-500 text-rose-700 bg-rose-50'
+                                  ? 'border-emerald-500 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40'
+                                  : 'border-rose-500 text-rose-700 bg-rose-50 dark:bg-rose-950/40'
                               )}
                             >
                               {isIngreso ? (
@@ -1315,6 +1699,8 @@ export const CajasControlPage: React.FC = () => {
           </div>
         </TabsContent>
       </Tabs>
+        </>
+      )}
 
       {/* ======================================================== */}
       {/* MODAL NUEVA CAJA FÍSICA */}
@@ -1382,14 +1768,19 @@ export const CajasControlPage: React.FC = () => {
       {/* MODAL REGISTRAR MOVIMIENTO EXTRAORDINARIO DE CAJA */}
       {/* ======================================================== */}
       <Dialog open={movModalOpen} onOpenChange={setMovModalOpen}>
-        <DialogContent className="sm:max-w-[460px] rounded-2xl">
+        <DialogContent className="sm:max-w-[480px] rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowUpRight className="w-5 h-5 text-amber-600" />
               Movimiento de Caja Chica
+              {(turnoParaMovimiento || turnoActivo) && (
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  Turno #{(turnoParaMovimiento || turnoActivo)?.id}
+                </Badge>
+              )}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Registre un gasto menor operativo o un ingreso de efectivo para fondo de cambio.
+              Registre un gasto menor operativo, retiro parcial o aporte de sencillo en efectivo.
             </DialogDescription>
           </DialogHeader>
 
@@ -1399,70 +1790,93 @@ export const CajasControlPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setMovTipo('egreso')}
+                  onClick={() => {
+                    setMovTipo('egreso');
+                    if (movCategoria === 'Aporte de Sencillo') {
+                      setMovCategoria('Gasto Operacional');
+                    }
+                  }}
                   className={cn(
                     'py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all',
                     movTipo === 'egreso'
-                      ? 'bg-rose-50 border-rose-500 text-rose-700 ring-1 ring-rose-500'
+                      ? 'bg-rose-50 border-rose-500 text-rose-700 ring-1 ring-rose-500 dark:bg-rose-950/40 dark:text-rose-300'
                       : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600'
                   )}
                 >
                   <ArrowDownRight className="w-4 h-4 text-rose-600" />
-                  <span>Salida / Gasto</span>
+                  <span>Salida / Gasto (-)</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMovTipo('ingreso')}
+                  onClick={() => {
+                    setMovTipo('ingreso');
+                    setMovCategoria('Aporte de Sencillo');
+                  }}
                   className={cn(
                     'py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all',
                     movTipo === 'ingreso'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-700 ring-1 ring-emerald-500'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-700 ring-1 ring-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-300'
                       : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600'
                   )}
                 >
                   <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-                  <span>Entrada / Aporte</span>
+                  <span>Entrada / Aporte (+)</span>
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold">Moneda *</Label>
-                <Select value={movMoneda} onValueChange={(v: any) => setMovMoneda(v)}>
+                <Label className="text-xs font-bold">Categoría *</Label>
+                <Select value={movCategoria} onValueChange={setMovCategoria}>
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="text-xs">
-                    <SelectItem value="USD">Dólares ($ USD)</SelectItem>
-                    <SelectItem value="VES">Bolívares (Bs. VES)</SelectItem>
+                    {CATEGORIAS_MOVIMIENTO.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-bold">Monto *</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="0.00"
-                  value={movMonto}
-                  onChange={(e) => setMovMonto(e.target.value)}
-                  required
-                  className="h-9 text-xs font-mono font-bold"
-                />
+                <Label className="text-xs font-bold">Gaveta / Moneda *</Label>
+                <Select value={movMoneda} onValueChange={(v: any) => setMovMoneda(v)}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs">
+                    <SelectItem value="VES">Bolívares (Bs. VES)</SelectItem>
+                    <SelectItem value="USD">Divisas ($ USD)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-bold">Concepto / Motivo *</Label>
+              <Label className="text-xs font-bold">Monto *</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={movMonto}
+                onChange={(e) => setMovMonto(e.target.value)}
+                required
+                className="h-9 text-xs font-mono font-bold"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Detalle / Justificación</Label>
               <Input
                 type="text"
-                placeholder="Ej. Insumos de limpieza, reposición de sencillo..."
+                placeholder="Ej. Compra de agua mineral, cambio para taquilla..."
                 value={movConcepto}
                 onChange={(e) => setMovConcepto(e.target.value)}
-                required
                 className="h-9 text-xs"
               />
             </div>
@@ -1504,7 +1918,7 @@ export const CajasControlPage: React.FC = () => {
               Anulación de Recibo
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Esta acción revertirá los pagos y volverá a marcar la cita o consulta como pendiente de pago.
+              Esta acción conciliará automáticamente el efectivo en caja y revertirá el estado de pago de la cita o consulta.
             </DialogDescription>
           </DialogHeader>
 
@@ -1516,8 +1930,10 @@ export const CajasControlPage: React.FC = () => {
                   <span className="font-bold">{cobroToAnular.numero_recibo}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Total:</span>
-                  <span className="font-bold">${cobroToAnular.total_divisa.toFixed(2)}</span>
+                  <span className="text-slate-500">Total Bs.:</span>
+                  <span className="font-bold">
+                    Bs. {cobroToAnular.total_ves.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Paciente:</span>
@@ -1528,7 +1944,7 @@ export const CajasControlPage: React.FC = () => {
               <div className="space-y-1">
                 <Label className="text-xs font-bold">Motivo de Anulación *</Label>
                 <Textarea
-                  placeholder="Indique la justificación para anular esta venta..."
+                  placeholder="Indique la justificación para anular esta operación..."
                   value={motivoAnulacion}
                   onChange={(e) => setMotivoAnulacion(e.target.value)}
                   required
@@ -1562,28 +1978,44 @@ export const CajasControlPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Modales de Apertura y Cierre */}
+      {/* Modales de Apertura y Cierre (Corte Z) */}
       <TurnoAperturaModal
         open={aperturaModalOpen}
         onOpenChange={setAperturaModalOpen}
         cajas={cajas}
         sucursalId={currentSucursalId}
-        onTurnoOpened={() => {
+        onTurnoOpened={(nuevo) => {
           fetchData();
+          setSelectedDetalleTurnoId(nuevo.id);
         }}
       />
-      {turnoActivo && (
-        <TurnoCierreModal
-          open={cierreModalOpen}
-          onOpenChange={setCierreModalOpen}
-          turno={turnoActivo}
-          onTurnoClosed={() => {
-            fetchData();
-          }}
-        />
-      )}
 
-      {/* Modal Recibo 80mm */}
+      <TurnoCierreModal
+        open={cierreModalOpen}
+        onOpenChange={setCierreModalOpen}
+        turno={turnoParaCerrar || turnoActivo}
+        onTurnoClosed={() => {
+          setTurnoParaCerrar(null);
+          setDetalleRefreshSignal((s) => s + 1);
+          fetchData();
+        }}
+        onRequestPrintCorte={(turnoCerrado, autoPrint) => {
+          handleOpenPrintCorte(turnoCerrado, null, autoPrint);
+        }}
+      />
+
+      {/* Modal Comprobante Térmico 80mm / 58mm de Arqueo X o Corte Z (100% en Bs.) */}
+      <CorteCajaTicketModal
+        open={corteTicketModalOpen}
+        onOpenChange={setCorteTicketModalOpen}
+        turnoId={corteTicketTurnoId}
+        initialDetalle={corteTicketInitialDetalle}
+        fallbackTurno={corteTicketFallbackTurno}
+        autoTriggerPrint={corteTicketAutoPrint}
+        onAutoPrintHandled={() => setCorteTicketAutoPrint(false)}
+      />
+
+      {/* Modal Recibo de Venta 80mm / 58mm (100% en Bs.) */}
       <CobroReciboModal
         open={reciboModalOpen}
         onOpenChange={setReciboModalOpen}

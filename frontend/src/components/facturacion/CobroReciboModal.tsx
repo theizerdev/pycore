@@ -1,17 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Printer,
   Share2,
   CheckCircle2,
-  ShieldCheck,
-  CreditCard,
-  Building2,
-  MapPin,
-  Phone,
-  Mail,
-  User,
-  Stethoscope,
-  Receipt
+  Ban,
+  Receipt,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -23,58 +16,128 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import type { Cobro } from '../../api/cajas';
+import type { Cobro, CobroDetalleItem, CobroPagoItem } from '../../api/cajas';
 import { useAuth } from '../../context/AuthContext';
+import { cn } from '../../lib/utils';
+import {
+  type PosPrinterConfig,
+  DEFAULT_POS_PRINTER_CONFIG,
+  loadPosPrinterConfig,
+  savePosPrinterConfig,
+  formatTicketBs,
+} from './pos/posPrinterConfig';
+
+/**
+ * Normaliza las etiquetas de métodos de pago para que jamás impriman menciones
+ * a divisas extranjeras (USD, EUR, $, €, Zelle, etc.) en el ticket térmico.
+ */
+function getLegalPaymentMethodLabel(metodo?: string | null): string {
+  const m = (metodo || '').toLowerCase().trim();
+  if (m.includes('efectivo')) return 'EFECTIVO';
+  if (m === 'pago_movil' || m.includes('movil')) return 'PAGO MÓVIL';
+  if (m === 'punto_venta' || m.includes('punto') || m.includes('tarjeta')) {
+    return 'PUNTO DE VENTA / TARJETA';
+  }
+  if (m === 'seguro_medico' || m.includes('seguro') || m.includes('poliza')) {
+    return 'COBERTURA PÓLIZA / SEGURO';
+  }
+  if (m === 'transferencia' || m === 'zelle' || m === 'pasarela') {
+    return 'TRANSFERENCIA / PAGO DIGITAL';
+  }
+  return (
+    m
+      .replace(/usd|eur|zelle|dolar|dólar|divisa|\$|€/gi, '')
+      .replace(/_/g, ' ')
+      .trim()
+      .toUpperCase() || 'CONTADO'
+  );
+}
+
+/**
+ * Limpia referencias o notas libres por si contienen menciones accidentales a divisas.
+ */
+function sanitizeLegalNote(text?: string | null): string {
+  if (!text) return '';
+  return text
+    .replace(/\b(USD|EUR|USDT|ZELLE)\b/gi, '')
+    .replace(/[$€]/g, 'Bs. ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
 interface CobroReciboModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cobro: Cobro | null;
+  autoTriggerPrint?: boolean;
+  onAutoPrintHandled?: () => void;
 }
 
 export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
   open,
   onOpenChange,
   cobro,
+  autoTriggerPrint = false,
+  onAutoPrintHandled,
 }) => {
   const { user, sucursalActiva } = useAuth();
   const ticketRef = useRef<HTMLDivElement>(null);
+  const [printerConfig, setPrinterConfig] = useState<PosPrinterConfig>(() =>
+    loadPosPrinterConfig()
+  );
 
-  if (!cobro) return null;
-
-  // Datos de la empresa del usuario logueado
-  const empresa = user?.empresa;
-  const empresaNombre = empresa?.nombre || 'CLÍNICA MÉDICA & ODONTOLÓGICA';
-  const empresaRif = empresa?.identificacion_fiscal || empresa?.documento || 'J-00000000-0';
-  const empresaDireccion = empresa?.direccion || '';
-  const empresaCiudad = empresa?.ciudad || '';
-  const empresaTelefono = empresa?.telefono || '';
-  const empresaEmail = empresa?.email || '';
-  const empresaLogo = empresa?.logo_url || empresa?.logo_mini_url || empresa?.logo || null;
-  const sucursalNombre = sucursalActiva?.nombre || 'Sede Principal';
-
-  // Fecha y hora formateadas
-  const fechaHora = (() => {
-    try {
-      const d = new Date(cobro.fecha_emision);
-      return d.toLocaleDateString('es-ES', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      });
-    } catch {
-      return cobro.fecha_emision;
+  // Recargar configuración de ticketera cada vez que se abre el modal
+  useEffect(() => {
+    if (open) {
+      setPrinterConfig(loadPosPrinterConfig());
     }
-  })();
+  }, [open]);
 
-  const monedaSimbolo = cobro.moneda_referencia === 'EUR' ? '€' : '$';
+  const handleSwitchPaperSize = (size: '80mm' | '58mm') => {
+    const updated: PosPrinterConfig = { ...printerConfig, paperSize: size };
+    setPrinterConfig(updated);
+    savePosPrinterConfig(updated);
+  };
 
-  // Impresión dedicada estilo Ticket 80mm
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank', 'width=450,height=750');
+  // Cálculo 100% en Bolívares usando la tasa aplicada internamente a la operación
+  const tasa = cobro && Number(cobro.tasa_bcv_aplicada) > 0 ? Number(cobro.tasa_bcv_aplicada) : 1;
+
+  const getDetalleSubtotalBs = (d: CobroDetalleItem): number => {
+    if (Number(d.subtotal_ves) > 0) return Number(d.subtotal_ves);
+    const subtDiv =
+      Number(d.subtotal_divisa) > 0
+        ? Number(d.subtotal_divisa)
+        : (Number(d.precio_unitario_divisa) || 0) * (Number(d.cantidad) || 1);
+    return Math.round(subtDiv * tasa * 100) / 100;
+  };
+
+  const getDetallePrecioUnitBs = (d: CobroDetalleItem): number => {
+    const cant = Math.max(1, Number(d.cantidad) || 1);
+    const subBs = getDetalleSubtotalBs(d);
+    return Math.round((subBs / cant) * 100) / 100;
+  };
+
+  const getPagoMontoBs = (p: CobroPagoItem): number => {
+    const moneda = (p.moneda || '').toUpperCase();
+    if (moneda === 'VES') {
+      return Math.round((Number(p.monto_moneda_origen) || 0) * 100) / 100;
+    }
+    const equivDiv =
+      Number(p.monto_equivalente_divisa) > 0
+        ? Number(p.monto_equivalente_divisa)
+        : Number(p.monto_moneda_origen) || 0;
+    return Math.round(equivDiv * tasa * 100) / 100;
+  };
+
+  // Impresión dedicada estilo Ticket Térmico (80mm o 58mm) exclusivamente en Bolívares
+  const handlePrint = useCallback(() => {
+    if (!cobro) return;
+    const is58 = printerConfig.paperSize === '58mm';
+    const pageWidth = is58 ? '58mm' : '80mm';
+    const wrapperWidth = is58 ? '53mm' : '74mm';
+    const baseFontSize = is58 ? '9.5px' : '11px';
+
+    const printWindow = window.open('', '_blank', 'width=450,height=760');
     if (!printWindow) {
       window.print();
       return;
@@ -88,10 +151,10 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
       <html lang="es">
         <head>
           <meta charset="UTF-8" />
-          <title>Ticket_${cobro.numero_recibo}</title>
+          <title>Comprobante_${cobro.numero_recibo}</title>
           <style>
             @page {
-              size: 80mm auto;
+              size: ${pageWidth} auto;
               margin: 0mm !important;
             }
             * {
@@ -100,29 +163,39 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
               padding: 0;
             }
             body {
-              width: 80mm;
-              max-width: 80mm;
+              width: ${pageWidth};
+              max-width: ${pageWidth};
               margin: 0 auto !important;
-              padding: 4mm 3mm 8mm 3mm !important;
+              padding: ${is58 ? '2mm 1.5mm 6mm 1.5mm' : '4mm 3mm 8mm 3mm'} !important;
               background-color: #ffffff !important;
               color: #000000 !important;
               font-family: 'Courier New', Courier, 'Lucida Console', monospace, system-ui !important;
-              font-size: 11px !important;
+              font-size: ${baseFontSize} !important;
               line-height: 1.25 !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
             .ticket-print-wrapper {
               width: 100% !important;
-              max-width: 74mm !important;
+              max-width: ${wrapperWidth} !important;
               margin: 0 auto !important;
             }
             .text-center { text-align: center !important; }
             .text-right { text-align: right !important; }
             .text-left { text-align: left !important; }
-            .font-bold { font-weight: bold !important; }
+            .font-bold { font-weight: 700 !important; }
+            .font-extrabold, .font-black { font-weight: 900 !important; }
             .font-mono { font-family: 'Courier New', Courier, monospace !important; }
             .uppercase { text-transform: uppercase !important; }
+            .flex { display: flex !important; }
+            .justify-between { justify-content: space-between !important; }
+            .justify-center { justify-content: center !important; }
+            .items-center { align-items: center !important; }
+            .items-start { align-items: flex-start !important; }
+            .items-baseline { align-items: baseline !important; }
+            .flex-col { flex-direction: column !important; }
+            .flex-wrap { flex-wrap: wrap !important; }
+            .block { display: block !important; }
             .dashed-divider {
               border-top: 1px dashed #000000 !important;
               margin: 5px 0 !important;
@@ -130,7 +203,7 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
             }
             .solid-divider {
               border-top: 1.5px solid #000000 !important;
-              margin: 6px 0 !important;
+              margin: 5px 0 !important;
               width: 100% !important;
             }
             table {
@@ -138,17 +211,37 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
               border-collapse: collapse !important;
             }
             th, td {
-              font-size: 10px !important;
+              font-size: ${is58 ? '8.5px' : '10px'} !important;
               padding: 2px 0 !important;
               vertical-align: top !important;
+              color: #000000 !important;
+            }
+            th {
+              border-bottom: 1px solid #000000 !important;
+            }
+            tbody tr {
+              border-bottom: 1px dotted #999999 !important;
             }
             .logo-img {
-              max-height: 55px !important;
-              max-width: 160px !important;
+              max-height: ${is58 ? '42px' : '52px'} !important;
+              max-width: ${is58 ? '120px' : '155px'} !important;
               object-fit: contain !important;
               margin: 0 auto 4px auto !important;
               display: block !important;
               filter: grayscale(100%) contrast(150%) !important;
+            }
+            .anulado-box {
+              border: 2px solid #000000 !important;
+              padding: 3px !important;
+              margin: 4px 0 !important;
+              text-align: center !important;
+              font-weight: 900 !important;
+            }
+            .total-highlight {
+              border-top: 1.5px solid #000000 !important;
+              border-bottom: 1.5px solid #000000 !important;
+              padding: 4px 0 !important;
+              margin: 4px 0 !important;
             }
             .no-print {
               display: none !important;
@@ -172,8 +265,66 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
       </html>
     `);
     printWindow.document.close();
-  };
+  }, [cobro, printerConfig.paperSize]);
 
+  // Disparo automático si viene de [F11] Cobrar y Ticket con auto-impresión activa
+  useEffect(() => {
+    if (open && cobro && autoTriggerPrint) {
+      const timer = setTimeout(() => {
+        handlePrint();
+        onAutoPrintHandled?.();
+      }, 280);
+      return () => clearTimeout(timer);
+    }
+  }, [open, cobro, autoTriggerPrint, handlePrint, onAutoPrintHandled]);
+
+  if (!cobro) return null;
+
+  // Datos de la empresa y sede activa
+  const empresa = user?.empresa;
+  const empresaNombre = empresa?.nombre || 'CENTRO MÉDICO & ODONTOLÓGICO';
+  const empresaRif = empresa?.identificacion_fiscal || empresa?.documento || 'J-00000000-0';
+  const empresaDireccion = sucursalActiva?.direccion || empresa?.direccion || '';
+  const empresaCiudad = sucursalActiva?.ciudad || empresa?.ciudad || '';
+  const empresaTelefono = sucursalActiva?.telefono || empresa?.telefono || '';
+  const empresaEmail = empresa?.email || '';
+  const empresaLogo = empresa?.logo_url || empresa?.logo_mini_url || empresa?.logo || null;
+  const sucursalNombre = sucursalActiva?.nombre || 'Sede Principal';
+
+  const fechaHora = (() => {
+    try {
+      const d = new Date(cobro.fecha_emision);
+      return d.toLocaleDateString('es-VE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return cobro.fecha_emision;
+    }
+  })();
+
+  // Totales estrictamente en Bolívares (Bs.)
+  const subtotalItemsBs = cobro.detalles.reduce((acc, d) => acc + getDetalleSubtotalBs(d), 0);
+  const descuentoBs = Math.round((Number(cobro.descuento_divisa) || 0) * tasa * 100) / 100;
+  const subtotalBs =
+    subtotalItemsBs > 0
+      ? subtotalItemsBs
+      : Math.round((Number(cobro.subtotal_divisa) || 0) * tasa * 100) / 100;
+  const totalPagadoBs =
+    Number(cobro.total_ves) > 0
+      ? Number(cobro.total_ves)
+      : Math.max(0, Math.round((subtotalBs - descuentoBs) * 100) / 100);
+
+  const montoRecibidoBs = cobro.pagos.reduce((acc, p) => acc + getPagoMontoBs(p), 0);
+  const vueltoBs =
+    Number(cobro.monto_vuelto_ves) > 0
+      ? Number(cobro.monto_vuelto_ves)
+      : Math.round((Number(cobro.monto_vuelto_divisa) || 0) * tasa * 100) / 100;
+
+  // Comprobante por WhatsApp 100% expresado en Bolívares (Bs.)
   const handleSendWhatsApp = () => {
     if (!cobro.paciente_telefono) {
       toast.error('El paciente no tiene un número telefónico registrado para WhatsApp');
@@ -182,53 +333,105 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
 
     const cleanPhone = cobro.paciente_telefono.replace(/[^0-9]/g, '');
     const itemsText = cobro.detalles
-      .map((d) => `• ${d.cantidad}x ${d.descripcion}: ${monedaSimbolo}${Number(d.subtotal_divisa || 0).toFixed(2)} (Bs. ${Number(d.subtotal_ves || 0).toFixed(2)})`)
+      .map(
+        (d) =>
+          `• ${d.cantidad}x ${d.descripcion}${d.diente_fdi ? ` (Pieza ${d.diente_fdi})` : ''}: ${formatTicketBs(getDetalleSubtotalBs(d))}`
+      )
       .join('\n');
 
     const message = encodeURIComponent(
-      `🏥 *COMPROBANTE DE PAGO (TICKET 80mm)*\n` +
-      `*${empresaNombre}*\n` +
-      `RIF: ${empresaRif}\n\n` +
-      `📄 *Recibo:* ${cobro.numero_recibo}\n` +
-      `📅 *Fecha:* ${fechaHora}\n` +
-      `👤 *Paciente:* ${cobro.paciente_nombre || 'Particular'} ${cobro.paciente_documento ? `(${cobro.paciente_documento})` : ''}\n` +
-      (cobro.medico_nombre ? `👨‍⚕️ *Médico:* Dr(a). ${cobro.medico_nombre}\n` : '') +
-      `💱 *Tasa Oficial BCV:* 1 ${cobro.moneda_referencia} = Bs. ${Number(cobro.tasa_bcv_aplicada).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}\n\n` +
-      `📋 *Detalle de Servicios:*\n${itemsText}\n\n` +
-      `💵 *TOTAL PAGADO:* ${monedaSimbolo}${cobro.total_divisa.toFixed(2)} / Bs. ${Number(cobro.total_ves).toLocaleString('es-ES', { minimumFractionDigits: 2 })}\n\n` +
-      `¡Gracias por su confianza en nuestra atención de salud!`
+      `🏥 *COMPROBANTE DE PAGO*\n` +
+        `*${empresaNombre}*\n` +
+        `RIF: ${empresaRif}\n\n` +
+        `📄 *Comprobante:* ${cobro.numero_recibo}\n` +
+        `📅 *Fecha:* ${fechaHora}\n` +
+        `👤 *Paciente:* ${cobro.paciente_nombre || 'Particular'}${cobro.paciente_documento ? ` (${cobro.paciente_documento})` : ''}\n` +
+        (cobro.medico_nombre ? `👨‍⚕️ *Especialista:* Dr(a). ${cobro.medico_nombre}\n` : '') +
+        `\n📋 *Detalle de Conceptos:*\n${itemsText}\n\n` +
+        (descuentoBs > 0 ? `🏷️ *Descuento:* -${formatTicketBs(descuentoBs)}\n` : '') +
+        `💳 *TOTAL CANCELADO:* *${formatTicketBs(totalPagadoBs)}*\n\n` +
+        `${printerConfig.footerMsg || DEFAULT_POS_PRINTER_CONFIG.footerMsg}`
     );
 
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
   };
 
+  const notaLimpia = sanitizeLegalNote(cobro.notas);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 print:p-0 print:m-0 print:border-none print:shadow-none bg-slate-100 dark:bg-slate-950">
-        <DialogHeader className="print:hidden pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="w-5 h-5" />
-              <DialogTitle className="text-base font-bold">Comprobante de Pago Emitido</DialogTitle>
+      <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-5 print:p-0 print:m-0 print:border-none print:shadow-none bg-slate-100 dark:bg-slate-950 rounded-2xl">
+        <DialogHeader className="print:hidden pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-primary">
+              {cobro.estado === 'anulado' ? (
+                <Ban className="w-5 h-5 text-rose-600" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              )}
+              <DialogTitle className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
+                {cobro.estado === 'anulado'
+                  ? 'Comprobante Anulado'
+                  : 'Ticket de Pago Emitido'}
+              </DialogTitle>
             </div>
-            <Badge className="bg-emerald-600 text-white font-mono text-xs">
-              80mm POS
+
+            {/* Selector rápido de papel térmico 80mm / 58mm */}
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => handleSwitchPaperSize('80mm')}
+                className={cn(
+                  'px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer',
+                  printerConfig.paperSize === '80mm'
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                )}
+              >
+                80mm
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchPaperSize('58mm')}
+                className={cn(
+                  'px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer',
+                  printerConfig.paperSize === '58mm'
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                )}
+              >
+                58mm
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Formato legal expresado 100% en Bolívares (Bs.).
+            </p>
+            <Badge
+              variant="outline"
+              className="text-[9.5px] font-mono border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10"
+            >
+              Solo Bs. (VES)
             </Badge>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Vista previa del ticket térmico listo para impresora de 80mm.
-          </p>
         </DialogHeader>
 
-        {/* CONTENEDOR VISUAL ESTILO TICKET TÉRMICO 80MM */}
-        <div className="flex justify-center my-1 print:m-0">
+        {/* CONTENEDOR VISUAL ESTILO TICKET TÉRMICO (80MM / 58MM) */}
+        <div className="flex justify-center my-1.5 print:m-0">
           <div
             ref={ticketRef}
-            className="w-full max-w-[340px] bg-white text-slate-950 p-4 rounded-xl shadow-md border border-slate-300 font-mono text-[11px] leading-tight select-text print:shadow-none print:border-none print:p-0 print:max-w-[74mm]"
+            className={cn(
+              'bg-white text-black p-4 rounded-xl shadow-md border border-slate-300 font-mono leading-tight select-text print:shadow-none print:border-none print:p-0 transition-all',
+              printerConfig.paperSize === '58mm'
+                ? 'w-full max-w-[255px] text-[10px]'
+                : 'w-full max-w-[345px] text-[11px]'
+            )}
           >
-            {/* 1. LOGO DE LA EMPRESA */}
+            {/* 1. LOGO E IDENTIDAD FISCAL */}
             {empresaLogo && (
-              <div className="text-center mb-2">
+              <div className="text-center mb-1.5">
                 <img
                   src={empresaLogo}
                   alt={empresaNombre}
@@ -237,299 +440,257 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
               </div>
             )}
 
-            {/* 2. DATOS DE LA EMPRESA DEL USUARIO LOGUEADO */}
-            <div className="text-center space-y-0.5 pb-2">
-              <h1 className="font-extrabold text-[13px] uppercase tracking-tight text-black">
+            <div className="text-center space-y-0.5 pb-1.5">
+              <div className="font-extrabold text-[12.5px] uppercase tracking-tight text-black">
                 {empresaNombre}
-              </h1>
-              <p className="font-bold text-[10.5px] text-slate-800">
-                RIF / ID FISCAL: {empresaRif}
-              </p>
+              </div>
+              <div className="font-bold text-[10px] text-black">RIF: {empresaRif}</div>
               {empresaDireccion && (
-                <p className="text-[10px] text-slate-700 leading-tight">
-                  {empresaDireccion}{empresaCiudad ? `, ${empresaCiudad}` : ''}
-                </p>
+                <div className="text-[9.5px] text-slate-800 leading-tight">
+                  {empresaDireccion}
+                  {empresaCiudad ? ` - ${empresaCiudad}` : ''}
+                </div>
               )}
-              <div className="text-[9.5px] text-slate-600 flex flex-wrap justify-center gap-x-2">
-                {empresaTelefono && <span>Telf: {empresaTelefono}</span>}
-                {empresaEmail && <span>Email: {empresaEmail}</span>}
+              <div className="text-[9px] text-slate-700">
+                {empresaTelefono ? `Tel: ${empresaTelefono}` : ''}
+                {empresaTelefono && empresaEmail ? ' | ' : ''}
+                {empresaEmail ? empresaEmail : ''}
               </div>
-              <p className="text-[9.5px] text-slate-500 font-medium">
-                {sucursalNombre}
-              </p>
+              <div className="text-[9px] font-bold text-slate-700 uppercase">{sucursalNombre}</div>
+              {printerConfig.headerMsg && (
+                <div className="text-[9px] text-slate-800 pt-0.5 font-medium">
+                  {sanitizeLegalNote(printerConfig.headerMsg)}
+                </div>
+              )}
             </div>
 
-            {/* LÍNEA DE CORTE / SEPARADOR */}
-            <div className="dashed-divider border-t border-dashed border-slate-400 my-2" />
-
-            {/* 3. METADATOS DEL TICKET */}
-            <div className="text-center font-bold text-[11px] uppercase tracking-wide">
-              RECIBO DE CAJA / TICKET POS
-            </div>
-            <div className="text-center font-extrabold text-[12px] text-black">
-              {cobro.numero_recibo}
-            </div>
-
-            <div className="space-y-1 my-2 text-[10.5px]">
-              <div className="flex justify-between">
-                <span className="text-slate-600">FECHA:</span>
-                <span className="font-bold">{fechaHora}</span>
+            {cobro.estado === 'anulado' && (
+              <div className="anulado-box border-2 border-black py-1 my-1.5 text-center font-black text-[11px] uppercase tracking-wider">
+                *** COMPROBANTE ANULADO ***
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">CAJERO:</span>
-                <span className="font-bold truncate max-w-[180px]">
-                  {cobro.cajero_nombre || user?.nombre || 'Caja Recepción'}
+            )}
+
+            <div className="dashed-divider border-t border-dashed border-black my-1.5" />
+
+            {/* 2. ENCABEZADO DEL COMPROBANTE */}
+            <div className="text-center font-extrabold text-[11px] uppercase tracking-wide">
+              COMPROBANTE DE PAGO
+            </div>
+            <div className="flex justify-between text-[10px] font-bold mt-1">
+              <span>NRO: {cobro.numero_recibo}</span>
+              <span>{fechaHora}</span>
+            </div>
+
+            <div className="space-y-0.5 mt-1 text-[10px]">
+              <div className="flex justify-between gap-2">
+                <span className="font-bold">PACIENTE:</span>
+                <span className="text-right font-bold truncate">
+                  {cobro.paciente_nombre || 'Particular'}
                 </span>
               </div>
-
-              {/* DATOS DEL PACIENTE */}
-              <div className="border-t border-dotted border-slate-300 pt-1 mt-1">
+              {cobro.paciente_documento && (
                 <div className="flex justify-between">
-                  <span className="text-slate-600">PACIENTE:</span>
-                  <span className="font-bold text-right truncate max-w-[180px]">
-                    {cobro.paciente_nombre || 'Cliente Particular'}
-                  </span>
-                </div>
-                {cobro.paciente_documento && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-600">DOC/CI:</span>
-                    <span className="font-bold">{cobro.paciente_documento}</span>
-                  </div>
-                )}
-                {cobro.paciente_telefono && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-600">TELÉFONO:</span>
-                    <span>{cobro.paciente_telefono}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* DATOS DEL MÉDICO / CONSULTA */}
-              {(cobro.medico_nombre || cobro.consulta_id) && (
-                <div className="border-t border-dotted border-slate-300 pt-1 mt-1">
-                  {cobro.medico_nombre && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">MÉDICO:</span>
-                      <span className="font-bold text-right truncate max-w-[180px]">
-                        Dr(a). {cobro.medico_nombre}
-                      </span>
-                    </div>
-                  )}
-                  {cobro.consulta_id && (
-                    <div className="flex justify-between text-[10px]">
-                      <span className="text-slate-600">CONSULTA:</span>
-                      <span className="font-bold"># {cobro.consulta_id}</span>
-                    </div>
-                  )}
+                  <span>DOC / CI:</span>
+                  <span className="font-bold">{cobro.paciente_documento}</span>
                 </div>
               )}
+              {cobro.medico_nombre && (
+                <div className="flex justify-between gap-2">
+                  <span>ATENDIÓ:</span>
+                  <span className="text-right font-bold truncate">
+                    Dr(a). {cobro.medico_nombre}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between gap-2">
+                <span>CAJERO:</span>
+                <span className="text-right truncate">
+                  {cobro.cajero_nombre || user?.nombre || 'Recepción POS'}
+                </span>
+              </div>
             </div>
 
-            {/* LÍNEA DE CORTE */}
-            <div className="dashed-divider border-t border-dashed border-slate-400 my-2" />
+            <div className="dashed-divider border-t border-dashed border-black my-1.5" />
 
-            {/* 4. TABLA DE CONCEPTOS / SERVICIOS FACTURADOS */}
-            <table className="w-full text-[10px]">
+            {/* 3. TABLA DE CONCEPTOS FACTURADOS (100% EN BOLÍVARES) */}
+            <table className="w-full text-[9.5px]">
               <thead>
-                <tr className="border-b border-dashed border-slate-400 text-slate-700">
-                  <th className="text-left font-bold py-1 w-8">CANT</th>
-                  <th className="text-left font-bold py-1">DESCRIPCIÓN</th>
-                  <th className="text-right font-bold py-1 w-16">TOTAL</th>
+                <tr className="border-b border-black font-extrabold text-black">
+                  <th className="text-left py-1 w-6">CANT</th>
+                  <th className="text-left py-1">DESCRIPCIÓN</th>
+                  <th className="text-right py-1 w-20">P.U. (Bs.)</th>
+                  <th className="text-right py-1 w-22">TOTAL (Bs.)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-dotted divide-slate-200">
-                {cobro.detalles.map((d, i) => (
-                  <tr key={i}>
-                    <td className="py-1 text-center font-bold align-top">{d.cantidad}</td>
-                    <td className="py-1 pr-1 align-top">
-                      <span className="font-bold block leading-tight">{d.descripcion}</span>
-                      {d.diente_fdi && (
-                        <span className="text-[9px] text-teal-800 font-bold block">
-                          Pieza FDI: {d.diente_fdi}
+              <tbody className="divide-y divide-dotted divide-slate-400">
+                {cobro.detalles.map((d, idx) => {
+                  const unitBs = getDetallePrecioUnitBs(d);
+                  const lineBs = getDetalleSubtotalBs(d);
+                  return (
+                    <tr key={idx}>
+                      <td className="py-1 font-bold align-top">{d.cantidad}</td>
+                      <td className="py-1 pr-1 align-top">
+                        <span className="font-bold block leading-tight">
+                          {sanitizeLegalNote(d.descripcion)}
                         </span>
-                      )}
-                      <span className="text-[9px] text-slate-500 block">
-                        P.U: {monedaSimbolo}{Number(d.precio_unitario_divisa).toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="py-1 text-right align-top">
-                      <span className="font-bold block">
-                        {monedaSimbolo}{Number(d.subtotal_divisa).toFixed(2)}
-                      </span>
-                      <span className="text-[8.5px] text-slate-500 block">
-                        Bs. {Number(d.subtotal_ves).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                        {d.diente_fdi && (
+                          <span className="text-[8.5px] font-bold block">
+                            Pieza FDI: {d.diente_fdi}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1 text-right align-top whitespace-nowrap">
+                        {unitBs.toLocaleString('es-VE', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="py-1 text-right font-bold align-top whitespace-nowrap">
+                        {lineBs.toLocaleString('es-VE', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
-            {/* LÍNEA DE CORTE */}
-            <div className="dashed-divider border-t border-dashed border-slate-400 my-2" />
+            <div className="dashed-divider border-t border-dashed border-black my-1.5" />
 
-            {/* 5. TOTALES Y TASA BCV */}
-            <div className="space-y-1 text-[11px]">
+            {/* 4. TOTALES ESTRICTAMENTE EN BOLÍVARES */}
+            <div className="space-y-0.5 text-[10.5px]">
               <div className="flex justify-between">
                 <span>SUBTOTAL:</span>
-                <span>{monedaSimbolo}{Number(cobro.subtotal_divisa).toFixed(2)}</span>
+                <span className="font-bold">{formatTicketBs(subtotalBs)}</span>
               </div>
-              {Number(cobro.descuento_divisa) > 0 && (
-                <div className="flex justify-between text-rose-700">
+
+              {descuentoBs > 0 && (
+                <div className="flex justify-between">
                   <span>DESCUENTO:</span>
-                  <span>-{monedaSimbolo}{Number(cobro.descuento_divisa).toFixed(2)}</span>
+                  <span className="font-bold">-{formatTicketBs(descuentoBs)}</span>
                 </div>
               )}
 
-              {/* TOTAL DESTACADO */}
-              <div className="border-t-2 border-black pt-1 my-1">
-                <div className="flex justify-between items-baseline font-extrabold text-[13px]">
-                  <span>TOTAL PAGADO:</span>
-                  <span>{monedaSimbolo}{Number(cobro.total_divisa).toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* TASA OFICIAL APLICADA */}
-              <div className="p-1 rounded bg-slate-100 text-[10px] space-y-0.5 border border-slate-200">
-                <div className="flex justify-between">
-                  <span className="text-slate-600 font-medium">TASA OFICIAL BCV ({cobro.moneda_referencia}):</span>
-                  <span className="font-bold">
-                    Bs. {Number(cobro.tasa_bcv_aplicada).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                  </span>
-                </div>
-                <div className="flex justify-between font-bold text-[11px] text-black">
-                  <span>TOTAL EN BOLÍVARES:</span>
-                  <span>Bs. {Number(cobro.total_ves).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
-                </div>
+              <div className="total-highlight border-t-2 border-b-2 border-black py-1 my-1 flex justify-between items-baseline font-black text-[12.5px]">
+                <span>TOTAL A PAGAR:</span>
+                <span>{formatTicketBs(totalPagadoBs)}</span>
               </div>
             </div>
 
-            {/* LÍNEA DE CORTE */}
-            <div className="dashed-divider border-t border-dashed border-slate-400 my-2" />
-
-            {/* 6. FORMAS DE PAGO / PAGO MIXTO */}
-            <div className="space-y-1">
-              <span className="font-bold text-[10px] uppercase block tracking-wider text-slate-700">
-                FORMAS DE PAGO:
-              </span>
-              <div className="space-y-1">
-                {cobro.pagos.map((p, idx) => (
-                  <div key={idx} className="flex justify-between items-start text-[10px]">
+            {/* 5. DESGLOSE DE FORMAS DE PAGO (EXPRESADO EN BOLÍVARES) */}
+            <div className="space-y-0.5 text-[10px] pt-0.5">
+              <div className="font-extrabold uppercase">PAGADO CON:</div>
+              {cobro.pagos.map((p, pidx) => {
+                const montoPagoBs = getPagoMontoBs(p);
+                const refClean = sanitizeLegalNote(p.referencia);
+                return (
+                  <div key={pidx} className="flex justify-between items-start gap-2">
                     <div>
-                      <span className="font-bold uppercase block">
-                        • {p.metodo.replace('_', ' ')}
-                      </span>
-                      {p.referencia && (
-                        <span className="text-[9px] text-slate-600 block">
-                          Ref: {p.referencia}
-                        </span>
+                      <span className="font-bold">{getLegalPaymentMethodLabel(p.metodo)}</span>
+                      {refClean && (
+                        <span className="block text-[8.5px] text-slate-700">Ref: {refClean}</span>
                       )}
                     </div>
-                    <div className="text-right">
-                      <span className="font-bold">
-                        {p.moneda === 'USD' ? '$' : p.moneda === 'EUR' ? '€' : 'Bs.'}{' '}
-                        {Number(p.monto_moneda_origen).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
-                      </span>
-                      {p.moneda !== cobro.moneda_referencia && (
-                        <span className="text-[9px] text-slate-500 block">
-                          (Equiv: {monedaSimbolo}{Number(p.monto_equivalente_divisa).toFixed(2)})
-                        </span>
-                      )}
-                    </div>
+                    <span className="font-bold whitespace-nowrap">
+                      {formatTicketBs(montoPagoBs)}
+                    </span>
                   </div>
-                ))}
-              </div>
+                );
+              })}
+
+              {montoRecibidoBs > 0 && (
+                <div className="flex justify-between pt-0.5 border-t border-dotted border-slate-400">
+                  <span>MONTO RECIBIDO:</span>
+                  <span className="font-bold">{formatTicketBs(montoRecibidoBs)}</span>
+                </div>
+              )}
+
+              {vueltoBs > 0 && (
+                <div className="flex justify-between font-extrabold">
+                  <span>CAMBIO / VUELTO:</span>
+                  <span>{formatTicketBs(vueltoBs)}</span>
+                </div>
+              )}
             </div>
 
-            {/* VUELTO SI APLICA */}
-            {(Number(cobro.monto_vuelto_divisa) > 0 || Number(cobro.monto_vuelto_ves) > 0) && (
-              <div className="mt-2 p-1.5 rounded bg-slate-100 border border-slate-300 flex justify-between font-bold text-[10.5px]">
-                <span>CAMBIO / VUELTO:</span>
-                <span>
-                  {monedaSimbolo}{Number(cobro.monto_vuelto_divisa).toFixed(2)} (Bs. {Number(cobro.monto_vuelto_ves).toFixed(2)})
-                </span>
+            {notaLimpia && (
+              <div className="mt-1.5 text-[9px] italic text-slate-700 border-t border-dotted border-slate-400 pt-1">
+                Obs: {notaLimpia}
               </div>
             )}
 
-            {/* NOTAS SI EXISTEN */}
-            {cobro.notas && (
-              <div className="mt-2 text-[9.5px] italic text-slate-600 border-t border-dotted border-slate-300 pt-1">
-                Nota: {cobro.notas}
+            <div className="dashed-divider border-t border-dashed border-black my-2" />
+
+            {/* 6. CÓDIGO DE BARRAS Y PIE DE PÁGINA */}
+            <div className="text-center space-y-1 text-[9.5px]">
+              <div className="font-extrabold text-[10px] uppercase text-black">
+                {sanitizeLegalNote(printerConfig.footerMsg) ||
+                  DEFAULT_POS_PRINTER_CONFIG.footerMsg}
               </div>
-            )}
+              <div className="text-[8.5px] text-slate-700 leading-tight">
+                Conserve este comprobante como soporte de su atención médica.
+              </div>
 
-            {/* LÍNEA DE CORTE FINAL */}
-            <div className="dashed-divider border-t border-dashed border-slate-400 my-2.5" />
-
-            {/* 7. PIE DE TICKET TÉRMICO */}
-            <div className="text-center space-y-1 text-[9.5px] text-slate-700">
-              <p className="font-bold text-[10.5px] text-black uppercase">
-                ¡GRACIAS POR SU PREFERENCIA!
-              </p>
-              <p className="leading-tight">
-                Conserve este comprobante como soporte de pago de su atención médica.
-              </p>
-
-              {/* SIMULACIÓN DE CÓDIGO DE BARRAS TÉRMICO (SVG) */}
               <div className="py-1 flex flex-col items-center justify-center">
-                <svg className="h-9 w-44" viewBox="0 0 200 40">
-                  {/* Patrón de barras estilo Code128 */}
-                  <rect x="0" y="0" width="3" height="35" fill="black" />
-                  <rect x="5" y="0" width="2" height="35" fill="black" />
-                  <rect x="10" y="0" width="4" height="35" fill="black" />
-                  <rect x="17" y="0" width="2" height="35" fill="black" />
-                  <rect x="22" y="0" width="5" height="35" fill="black" />
-                  <rect x="30" y="0" width="2" height="35" fill="black" />
-                  <rect x="35" y="0" width="3" height="35" fill="black" />
-                  <rect x="41" y="0" width="4" height="35" fill="black" />
-                  <rect x="48" y="0" width="2" height="35" fill="black" />
-                  <rect x="53" y="0" width="5" height="35" fill="black" />
-                  <rect x="61" y="0" width="3" height="35" fill="black" />
-                  <rect x="67" y="0" width="2" height="35" fill="black" />
-                  <rect x="72" y="0" width="4" height="35" fill="black" />
-                  <rect x="79" y="0" width="2" height="35" fill="black" />
-                  <rect x="84" y="0" width="5" height="35" fill="black" />
-                  <rect x="92" y="0" width="3" height="35" fill="black" />
-                  <rect x="98" y="0" width="2" height="35" fill="black" />
-                  <rect x="103" y="0" width="4" height="35" fill="black" />
-                  <rect x="110" y="0" width="3" height="35" fill="black" />
-                  <rect x="116" y="0" width="5" height="35" fill="black" />
-                  <rect x="124" y="0" width="2" height="35" fill="black" />
-                  <rect x="129" y="0" width="4" height="35" fill="black" />
-                  <rect x="136" y="0" width="3" height="35" fill="black" />
-                  <rect x="142" y="0" width="5" height="35" fill="black" />
-                  <rect x="150" y="0" width="2" height="35" fill="black" />
-                  <rect x="155" y="0" width="4" height="35" fill="black" />
-                  <rect x="162" y="0" width="3" height="35" fill="black" />
-                  <rect x="168" y="0" width="5" height="35" fill="black" />
-                  <rect x="176" y="0" width="2" height="35" fill="black" />
-                  <rect x="181" y="0" width="4" height="35" fill="black" />
-                  <rect x="188" y="0" width="3" height="35" fill="black" />
-                  <rect x="194" y="0" width="4" height="35" fill="black" />
+                <svg className="h-8 w-40" viewBox="0 0 200 36">
+                  <rect x="0" y="0" width="3" height="32" fill="black" />
+                  <rect x="5" y="0" width="2" height="32" fill="black" />
+                  <rect x="10" y="0" width="4" height="32" fill="black" />
+                  <rect x="17" y="0" width="2" height="32" fill="black" />
+                  <rect x="22" y="0" width="5" height="32" fill="black" />
+                  <rect x="30" y="0" width="2" height="32" fill="black" />
+                  <rect x="35" y="0" width="3" height="32" fill="black" />
+                  <rect x="41" y="0" width="4" height="32" fill="black" />
+                  <rect x="48" y="0" width="2" height="32" fill="black" />
+                  <rect x="53" y="0" width="5" height="32" fill="black" />
+                  <rect x="61" y="0" width="3" height="32" fill="black" />
+                  <rect x="67" y="0" width="2" height="32" fill="black" />
+                  <rect x="72" y="0" width="4" height="32" fill="black" />
+                  <rect x="79" y="0" width="2" height="32" fill="black" />
+                  <rect x="84" y="0" width="5" height="32" fill="black" />
+                  <rect x="92" y="0" width="3" height="32" fill="black" />
+                  <rect x="98" y="0" width="2" height="32" fill="black" />
+                  <rect x="103" y="0" width="4" height="32" fill="black" />
+                  <rect x="110" y="0" width="3" height="32" fill="black" />
+                  <rect x="116" y="0" width="5" height="32" fill="black" />
+                  <rect x="124" y="0" width="2" height="32" fill="black" />
+                  <rect x="129" y="0" width="4" height="32" fill="black" />
+                  <rect x="136" y="0" width="3" height="32" fill="black" />
+                  <rect x="142" y="0" width="5" height="32" fill="black" />
+                  <rect x="150" y="0" width="2" height="32" fill="black" />
+                  <rect x="155" y="0" width="4" height="32" fill="black" />
+                  <rect x="162" y="0" width="3" height="32" fill="black" />
+                  <rect x="168" y="0" width="5" height="32" fill="black" />
+                  <rect x="176" y="0" width="2" height="32" fill="black" />
+                  <rect x="181" y="0" width="4" height="32" fill="black" />
+                  <rect x="188" y="0" width="3" height="32" fill="black" />
+                  <rect x="194" y="0" width="4" height="32" fill="black" />
                 </svg>
-                <span className="font-mono text-[8.5px] text-slate-500 tracking-wider">
+                <span className="font-mono text-[8px] text-slate-700 tracking-widest mt-0.5">
                   {cobro.numero_recibo}
                 </span>
               </div>
 
-              <p className="text-[8px] text-slate-400 font-sans">
-                Medisoft Suite POS • Impreso: {fechaHora}
-              </p>
+              <div className="text-[8px] text-slate-600">
+                MediSoft POS ({printerConfig.paperSize}) • Montos expresados en Bolívares (Bs.)
+              </div>
             </div>
           </div>
         </div>
 
-        {/* ACCIONES DEL MODAL */}
+        {/* BOTONES DE ACCIÓN */}
         <DialogFooter className="gap-2 sm:gap-2 print:hidden pt-3 border-t border-slate-200 dark:border-slate-800">
           {cobro.paciente_telefono && (
             <Button
               type="button"
               variant="outline"
               onClick={handleSendWhatsApp}
-              className="gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 cursor-pointer text-xs"
+              className="gap-1.5 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 cursor-pointer text-xs"
             >
-              <Share2 className="w-4 h-4" />
-              WhatsApp
+              <Share2 className="w-3.5 h-3.5" />
+              WhatsApp (Bs.)
             </Button>
           )}
 
@@ -537,18 +698,19 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
             type="button"
             variant="default"
             onClick={handlePrint}
-            className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100 cursor-pointer shadow-md text-xs"
+            className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer shadow-sm text-xs font-bold"
           >
-            <Printer className="w-4 h-4" />
-            Imprimir Ticket 80mm
+            <Printer className="w-3.5 h-3.5" />
+            Imprimir Ticket ({printerConfig.paperSize})
           </Button>
 
           <Button
             type="button"
             variant="secondary"
             onClick={() => onOpenChange(false)}
-            className="text-xs"
+            className="text-xs cursor-pointer"
           >
+            <Receipt className="w-3.5 h-3.5 mr-1" />
             Cerrar
           </Button>
         </DialogFooter>

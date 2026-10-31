@@ -14,6 +14,8 @@ import {
   HeartPulse,
   Stethoscope,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   X,
   Settings,
   Activity,
@@ -57,6 +59,8 @@ import { Badge } from '../ui/badge';
 
 interface AdminSidebarProps {
   collapsed: boolean;
+  sidebarHidden?: boolean;
+  onToggleCollapse?: () => void;
   mobileMenuOpen: boolean;
   onCloseMobileMenu: () => void;
 }
@@ -88,6 +92,8 @@ export interface SectorMenuItem {
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   collapsed,
+  sidebarHidden = false,
+  onToggleCollapse,
   mobileMenuOpen,
   onCloseMobileMenu,
 }) => {
@@ -403,12 +409,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-300",
           collapsed ? "lg:w-20" : "lg:w-64",
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+          mobileMenuOpen
+            ? "translate-x-0"
+            : sidebarHidden
+            ? "-translate-x-full lg:-translate-x-full lg:pointer-events-none"
+            : "-translate-x-full lg:translate-x-0",
           "w-64"
         )}
       >
         {/* Logo area */}
-        <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
+        <div
+          className={cn(
+            "flex h-16 items-center border-b border-sidebar-border",
+            collapsed ? "justify-center px-2" : "justify-between px-4"
+          )}
+        >
           <Link
             to={isDoctorUser ? '/medico/dashboard' : isSuperAdmin ? '/admin/dashboard' : '/dashboard'}
             className="flex items-center gap-3 overflow-hidden"
@@ -445,6 +460,30 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               </div>
             )}
           </Link>
+
+          {/* Botón contraer/expandir modo compacto en escritorio */}
+          {onToggleCollapse && !collapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden lg:inline-flex h-7 w-7 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground cursor-pointer shrink-0"
+              onClick={onToggleCollapse}
+              title="Modo iconos compacto"
+            >
+              <ChevronsLeft className="size-4" />
+            </Button>
+          )}
+
+          {onToggleCollapse && collapsed && !sidebarHidden && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="hidden lg:flex absolute -right-3 top-5 z-50 h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground/80 hover:text-primary shadow-md cursor-pointer transition-transform hover:scale-110"
+              title="Expandir menú lateral"
+            >
+              <ChevronsRight className="size-3.5" />
+            </button>
+          )}
 
           {/* Botón cerrar en móvil */}
           <Button

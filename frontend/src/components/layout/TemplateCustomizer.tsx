@@ -33,6 +33,7 @@ export const TemplateCustomizer: React.FC = () => {
     appearance,
     updateAppearance,
     updateSetting,
+    updateSettings,
     resetSettings,
   } = useTemplateSettings();
 
@@ -241,42 +242,59 @@ export const TemplateCustomizer: React.FC = () => {
                 </span>
               </div>
 
-              {/* Navegación: Expandido vs Colapsado */}
+              {/* Navegación: Expandido vs Compacto vs Oculto */}
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-foreground">
                   Menú de Navegación
                 </label>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-3 gap-2">
                   {[
-                    { key: false, label: 'Expandido (w-64)' },
-                    { key: true, label: 'Colapsado (w-20)' },
-                  ].map((opt) => {
-                    const isActive = settings.collapsed === opt.key;
-                    return (
-                      <button
-                        key={String(opt.key)}
-                        onClick={() => updateSetting('collapsed', opt.key)}
-                        className={cn(
-                          'flex flex-col p-2.5 rounded-lg border bg-card hover:bg-muted text-left cursor-pointer transition-all gap-2',
-                          isActive ? 'border-primary ring-1 ring-primary/20 bg-primary/5' : 'border-border'
-                        )}
-                      >
-                        <div className="flex h-10 w-full gap-1 rounded p-1 bg-muted border border-border">
+                    {
+                      id: 'expanded',
+                      label: 'Expandido',
+                      active: !settings.sidebarHidden && !settings.collapsed,
+                      apply: () => updateSettings({ collapsed: false, sidebarHidden: false }),
+                    },
+                    {
+                      id: 'collapsed',
+                      label: 'Compacto',
+                      active: !settings.sidebarHidden && settings.collapsed,
+                      apply: () => updateSettings({ collapsed: true, sidebarHidden: false }),
+                    },
+                    {
+                      id: 'hidden',
+                      label: 'Oculto',
+                      active: settings.sidebarHidden,
+                      apply: () => updateSettings({ sidebarHidden: true }),
+                    },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={opt.apply}
+                      className={cn(
+                        'flex flex-col p-2 rounded-lg border bg-card hover:bg-muted text-left cursor-pointer transition-all gap-1.5',
+                        opt.active
+                          ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
+                          : 'border-border'
+                      )}
+                    >
+                      <div className="flex h-10 w-full gap-1 rounded p-1 bg-muted border border-border">
+                        {opt.id !== 'hidden' && (
                           <div
                             className={cn(
                               'rounded bg-primary/60 transition-all shrink-0',
-                              opt.key ? 'w-2' : 'w-1/4'
+                              opt.id === 'collapsed' ? 'w-2' : 'w-1/4'
                             )}
                           ></div>
-                          <div className="flex-1 flex flex-col gap-1">
-                            <div className="h-2 rounded bg-muted-foreground/30 w-full"></div>
-                            <div className="flex-1 rounded bg-muted-foreground/15 w-full"></div>
-                          </div>
+                        )}
+                        <div className="flex-1 flex flex-col gap-1">
+                          <div className="h-2 rounded bg-muted-foreground/30 w-full"></div>
+                          <div className="flex-1 rounded bg-muted-foreground/15 w-full"></div>
                         </div>
-                        <span className="text-xs font-semibold">{opt.label}</span>
-                      </button>
-                    );
-                  })}
+                      </div>
+                      <span className="text-[11px] font-semibold">{opt.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 

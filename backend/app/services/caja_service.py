@@ -82,6 +82,41 @@ class CajaService:
         return caja
 
     @staticmethod
+    async def update_caja(empresa_id: int, caja_id: int, data: CajaUpdate, db: AsyncSession) -> Caja:
+        stmt = select(Caja).where(Caja.id == caja_id, Caja.empresa_id == empresa_id)
+        res = await db.execute(stmt)
+        caja = res.scalar_one_or_none()
+        if not caja:
+            raise ValueError("Caja física no encontrada")
+
+        if data.nombre is not None:
+            caja.nombre = data.nombre.strip()
+        if data.descripcion is not None:
+            caja.descripcion = data.descripcion.strip() or None
+        if data.activa is not None:
+            caja.activa = data.activa
+        if data.sucursal_id is not None:
+            caja.sucursal_id = data.sucursal_id
+
+        await db.commit()
+        await db.refresh(caja)
+        return caja
+
+    @staticmethod
+    def _user_can_manage_any_turno(user: Optional[Usuario]) -> bool:
+        """Determina si el usuario es Administrador o Superadmin para cierre administrativo de cajas."""
+        if not user:
+            return False
+        if getattr(user, "es_superadmin", False):
+            return True
+        rol = getattr(user, "rol", None)
+        if rol and getattr(rol, "slug", None):
+            slug = rol.slug.lower().strip()
+            if slug in ("admin", "administrador", "superadmin", "gerente", "director"):
+                return True
+        return False
+
+    @staticmethod
     async def get_active_turno(empresa_id: int, usuario_id: int, db: AsyncSession) -> Optional[TurnoCaja]:
         """Consulta si el usuario actual tiene un turno de caja abierto."""
         stmt = select(TurnoCaja).where(
@@ -94,11 +129,40 @@ class CajaService:
 
     @staticmethod
     async def open_turno(empresa_id: int, usuario_id: int, data: TurnoAperturaRequest, db: AsyncSession) -> TurnoCaja:
-        """Abre un nuevo turno de caja con fondo inicial."""
+        """Abre un nuevo turno de caja con fondo inicial, validando disponibilidad física de la caja."""
         # Verificar si el usuario ya tiene un turno abierto
         existente = await CajaService.get_active_turno(empresa_id, usuario_id, db)
         if existente:
             return existente
+
+        # Validar que la caja física exista y esté activa
+        stmt_caja = select(Caja).where(
+            Caja.id == data.caja_id,
+            Caja.empresa_id == empresa_id
+        )
+        res_caja = await db.execute(stmt_caja)
+        caja_obj = res_caja.scalar_one_or_none()
+        if not caja_obj:
+            raise ValueError("La caja seleccionada no existe")
+        if not caja_obj.activa:
+            raise ValueError(f"La caja '{caja_obj.nombre}' se encuentra inactiva")
+
+        # Validar que otro cajero no tenga abierta esta misma caja física
+        stmt_ocupada = select(TurnoCaja).where(
+            TurnoCaja.empresa_id == empresa_id,
+            TurnoCaja.caja_id == data.caja_id,
+            TurnoCaja.estado == "abierta"
+        ).limit(1)
+        res_ocupada = await db.execute(stmt_ocupada)
+        turno_ocupado = res_ocupada.scalar_one_or_none()
+        if turno_ocupado and turno_ocupado.usuario_id != usuario_id:
+            cajero_ocupante = (
+                f"{turno_ocupado.usuario.nombre or ''} {turno_ocupado.usuario.apellido or ''}".strip()
+                if turno_ocupado.usuario else "otro cajero"
+            )
+            raise ValueError(
+                f"La caja '{caja_obj.nombre}' ya se encuentra abierta por {cajero_ocupante} (Turno #{turno_ocupado.id})."
+            )
 
         turno = TurnoCaja(
             empresa_id=empresa_id,
@@ -122,9 +186,10 @@ class CajaService:
         turno_id: int,
         usuario_id: int,
         data: TurnoCierreRequest,
-        db: AsyncSession
+        db: AsyncSession,
+        current_user: Optional[Usuario] = None
     ) -> TurnoCaja:
-        """Cierra el turno de caja, calculando el arqueo y las diferencias."""
+        """Cierra el turno de caja, validando titularidad/rol y conciliando arqueo exacto."""
         stmt = select(TurnoCaja).where(
             TurnoCaja.id == turno_id,
             TurnoCaja.empresa_id == empresa_id,
@@ -135,6 +200,31 @@ class CajaService:
         if not turno:
             raise ValueError("Turno de caja no encontrado o ya cerrado")
 
+        # Política de control interno (réplica FixSale POS): solo el cajero titular o un Admin puede cerrar
+        if turno.usuario_id != usuario_id and not CajaService._user_can_manage_any_turno(current_user):
+            cajero_titular = (
+                f"{turno.usuario.nombre or ''} {turno.usuario.apellido or ''}".strip()
+                if turno.usuario else "el cajero titular"
+            )
+            raise ValueError(
+                f"Por políticas de control interno, solo {cajero_titular} o un Administrador puede cerrar esta caja."
+            )
+
+        # Recalcular saldo esperado en vivo a partir de cobros vigentes y movimientos del turno
+        detalle = await CajaService.get_turno_detalle(empresa_id, turno_id, db)
+        esperado_usd = float(detalle["esperado_gaveta_usd"])
+        esperado_ves = float(detalle["esperado_gaveta_ves"])
+
+        # Sincronizar acumuladores de efectivo del turno para máxima consistencia histórica
+        turno.total_ingresos_usd = round(
+            float(detalle["efectivo_ventas_usd"]) + float(detalle["efectivo_ingresos_extra_usd"]), 2
+        )
+        turno.total_ingresos_ves = round(
+            float(detalle["efectivo_ventas_ves"]) + float(detalle["efectivo_ingresos_extra_ves"]), 2
+        )
+        turno.total_egresos_usd = round(float(detalle["efectivo_egresos_usd"]), 2)
+        turno.total_egresos_ves = round(float(detalle["efectivo_egresos_ves"]), 2)
+
         now = datetime.utcnow()
         turno.cierre_at = now
         turno.estado = "cerrada"
@@ -142,14 +232,8 @@ class CajaService:
         turno.arqueo_declarado_ves = data.arqueo_declarado_ves
         turno.notas_cierre = data.notas_cierre
 
-        # Conteo esperado de efectivo = Fondo Inicial + Ingresos Efectivo - Egresos Efectivo
-        # Para USD:
-        esperado_usd = float(turno.fondo_inicial_usd) + float(turno.total_ingresos_usd) - float(turno.total_egresos_usd)
-        # Para VES:
-        esperado_ves = float(turno.fondo_inicial_ves) + float(turno.total_ingresos_ves) - float(turno.total_egresos_ves)
-
-        turno.diferencia_usd = round(data.arqueo_declarado_usd - esperado_usd, 2)
-        turno.diferencia_ves = round(data.arqueo_declarado_ves - esperado_ves, 2)
+        turno.diferencia_usd = round(float(data.arqueo_declarado_usd) - esperado_usd, 2)
+        turno.diferencia_ves = round(float(data.arqueo_declarado_ves) - esperado_ves, 2)
 
         await db.commit()
         await db.refresh(turno)
@@ -383,6 +467,7 @@ class CajaService:
     async def get_cobros(
         empresa_id: int,
         sucursal_id: Optional[int] = None,
+        turno_caja_id: Optional[int] = None,
         paciente_id: Optional[int] = None,
         fecha_desde: Optional[date] = None,
         fecha_hasta: Optional[date] = None,
@@ -393,6 +478,8 @@ class CajaService:
         stmt = select(Cobro).where(Cobro.empresa_id == empresa_id)
         if sucursal_id:
             stmt = stmt.where(Cobro.sucursal_id == sucursal_id)
+        if turno_caja_id:
+            stmt = stmt.where(Cobro.turno_caja_id == turno_caja_id)
         if paciente_id:
             stmt = stmt.where(Cobro.paciente_id == paciente_id)
         if fecha_desde:
@@ -421,7 +508,7 @@ class CajaService:
         motivo: str,
         db: AsyncSession
     ) -> Cobro:
-        """Anula un cobro y revierte el estado de pago de la cita asociada."""
+        """Anula un cobro, concilia el efectivo del turno asociado y revierte la cita/consulta."""
         cobro = await CajaService.get_cobro_by_id(empresa_id, cobro_id, db)
         if not cobro:
             raise ValueError("Cobro no encontrado")
@@ -432,6 +519,34 @@ class CajaService:
         cobro.motivo_anulacion = motivo.strip()
         cobro.anulado_at = datetime.utcnow()
         cobro.anulado_por_id = usuario_id
+
+        # Conciliar efectivo del TurnoCaja (réplica FixSale POS: deducir anulaciones en efectivo del cajón)
+        if cobro.turno_caja_id:
+            stmt_turno = select(TurnoCaja).where(
+                TurnoCaja.id == cobro.turno_caja_id,
+                TurnoCaja.empresa_id == empresa_id
+            )
+            res_turno = await db.execute(stmt_turno)
+            turno = res_turno.scalar_one_or_none()
+            if turno:
+                for p in (cobro.pagos or []):
+                    if "efectivo" in (p.metodo or "").lower():
+                        moneda_p = (p.moneda or "USD").upper()
+                        monto_orig = float(p.monto_moneda_origen or 0.0)
+                        if moneda_p == "USD":
+                            turno.total_ingresos_usd = max(0.0, round(float(turno.total_ingresos_usd or 0) - monto_orig, 2))
+                        elif moneda_p == "EUR":
+                            turno.total_ingresos_eur = max(0.0, round(float(turno.total_ingresos_eur or 0) - monto_orig, 2))
+                        elif moneda_p == "VES":
+                            turno.total_ingresos_ves = max(0.0, round(float(turno.total_ingresos_ves or 0) - monto_orig, 2))
+
+                if turno.estado == "cerrada":
+                    if turno.arqueo_declarado_usd is not None:
+                        esp_usd = float(turno.fondo_inicial_usd or 0) + float(turno.total_ingresos_usd or 0) - float(turno.total_egresos_usd or 0)
+                        turno.diferencia_usd = round(float(turno.arqueo_declarado_usd) - esp_usd, 2)
+                    if turno.arqueo_declarado_ves is not None:
+                        esp_ves = float(turno.fondo_inicial_ves or 0) + float(turno.total_ingresos_ves or 0) - float(turno.total_egresos_ves or 0)
+                        turno.diferencia_ves = round(float(turno.arqueo_declarado_ves) - esp_ves, 2)
 
         # Revertir cita si existe
         if cobro.cita_id:
@@ -689,4 +804,225 @@ class CajaService:
             "por_concepto": lista_conceptos,
             "top_servicios": top_servicios_lista,
         }
+
+    @staticmethod
+    async def get_turno_detalle(
+        empresa_id: int,
+        turno_id: int,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """Obtiene el estado financiero integral de un turno (Arqueo X / Corte Z al estilo FixSale POS)."""
+        stmt_turno = select(TurnoCaja).where(
+            TurnoCaja.id == turno_id,
+            TurnoCaja.empresa_id == empresa_id
+        )
+        res_turno = await db.execute(stmt_turno)
+        turno = res_turno.scalar_one_or_none()
+        if not turno:
+            raise ValueError("Turno de caja no encontrado")
+
+        rate_info = await ExchangeRateService.get_active_billing_rate(empresa_id, db)
+        moneda_ref = rate_info.get("moneda", "USD")
+        tasa_bcv = float(rate_info.get("tasa", 1.0) or 1.0)
+
+        stmt_cobros = (
+            select(Cobro)
+            .where(Cobro.empresa_id == empresa_id, Cobro.turno_caja_id == turno_id)
+            .order_by(desc(Cobro.fecha_emision))
+        )
+        res_cobros = await db.execute(stmt_cobros)
+        cobros = list(res_cobros.scalars().all())
+
+        stmt_movs = (
+            select(MovimientoCaja)
+            .where(MovimientoCaja.empresa_id == empresa_id, MovimientoCaja.turno_caja_id == turno_id)
+            .order_by(desc(MovimientoCaja.created_at))
+        )
+        res_movs = await db.execute(stmt_movs)
+        movimientos = list(res_movs.scalars().all())
+
+        cobros_completados = [c for c in cobros if c.estado != "anulado"]
+        cobros_anulados = [c for c in cobros if c.estado == "anulado"]
+
+        # Si hay cobros en el turno y está cerrado, podemos usar la tasa promedio/última si tasa_bcv es 1
+        if cobros and tasa_bcv <= 1.0:
+            first_rate = float(cobros[0].tasa_bcv_aplicada or 0)
+            if first_rate > 1.0:
+                tasa_bcv = first_rate
+
+        ventas_netas_divisa = sum(float(c.total_divisa or 0) for c in cobros_completados)
+        ventas_netas_ves = sum(float(c.total_ves or 0) for c in cobros_completados)
+        total_anuladas_divisa = sum(float(c.total_divisa or 0) for c in cobros_anulados)
+        total_anuladas_ves = sum(float(c.total_ves or 0) for c in cobros_anulados)
+        ventas_brutas_divisa = ventas_netas_divisa + total_anuladas_divisa
+        ventas_brutas_ves = ventas_netas_ves + total_anuladas_ves
+
+        efectivo_ventas_ves = 0.0
+        efectivo_ventas_usd = 0.0
+        ingresos_electronicos_ves = 0.0
+        ingresos_electronicos_divisa = 0.0
+
+        for c in cobros_completados:
+            tasa_cobro = float(c.tasa_bcv_aplicada or tasa_bcv or 1.0)
+            overpaid = float(c.monto_pagado_divisa or 0) > (float(c.total_divisa or 0) + 0.01)
+
+            cash_ves_in_cobro = 0.0
+            cash_usd_in_cobro = 0.0
+
+            for p in (c.pagos or []):
+                met = (p.metodo or "").lower()
+                mon = (p.moneda or "USD").upper()
+                monto_orig = float(p.monto_moneda_origen or 0)
+                monto_equiv_div = float(p.monto_equivalente_divisa or 0)
+
+                if "efectivo" in met:
+                    if mon == "VES":
+                        cash_ves_in_cobro += monto_orig
+                    else:
+                        # USD o EUR en gaveta de divisas
+                        cash_usd_in_cobro += monto_orig
+                else:
+                    ingresos_electronicos_divisa += monto_equiv_div
+                    if mon == "VES":
+                        ingresos_electronicos_ves += monto_orig
+                    else:
+                        ingresos_electronicos_ves += round(monto_equiv_div * tasa_cobro, 2)
+
+            # Si el cobro registró pago mayor al total (vuelto en efectivo no descontado del renglón de pago)
+            if overpaid:
+                vuelto_ves = float(c.monto_vuelto_ves or 0)
+                vuelto_div = float(c.monto_vuelto_divisa or 0)
+                if cash_ves_in_cobro >= vuelto_ves and vuelto_ves > 0:
+                    cash_ves_in_cobro -= vuelto_ves
+                elif cash_usd_in_cobro >= vuelto_div and vuelto_div > 0:
+                    cash_usd_in_cobro -= vuelto_div
+
+            efectivo_ventas_ves += cash_ves_in_cobro
+            efectivo_ventas_usd += cash_usd_in_cobro
+
+        efectivo_anulaciones_ves = 0.0
+        efectivo_anulaciones_usd = 0.0
+        for c in cobros_anulados:
+            for p in (c.pagos or []):
+                if "efectivo" in (p.metodo or "").lower():
+                    mon = (p.moneda or "USD").upper()
+                    monto_orig = float(p.monto_moneda_origen or 0)
+                    if mon == "VES":
+                        efectivo_anulaciones_ves += monto_orig
+                    else:
+                        efectivo_anulaciones_usd += monto_orig
+
+        efectivo_ingresos_extra_usd = sum(
+            float(m.monto or 0) for m in movimientos if m.tipo == "ingreso" and (m.moneda or "").upper() != "VES"
+        )
+        efectivo_ingresos_extra_ves = sum(
+            float(m.monto or 0) for m in movimientos if m.tipo == "ingreso" and (m.moneda or "").upper() == "VES"
+        )
+        efectivo_egresos_usd = sum(
+            float(m.monto or 0) for m in movimientos if m.tipo == "egreso" and (m.moneda or "").upper() != "VES"
+        )
+        efectivo_egresos_ves = sum(
+            float(m.monto or 0) for m in movimientos if m.tipo == "egreso" and (m.moneda or "").upper() == "VES"
+        )
+
+        fondo_usd = float(turno.fondo_inicial_usd or 0)
+        fondo_ves = float(turno.fondo_inicial_ves or 0)
+
+        esperado_gaveta_usd = round(
+            fondo_usd + efectivo_ventas_usd + efectivo_ingresos_extra_usd - efectivo_egresos_usd, 2
+        )
+        esperado_gaveta_ves = round(
+            fondo_ves + efectivo_ventas_ves + efectivo_ingresos_extra_ves - efectivo_egresos_ves, 2
+        )
+
+        # Reutilizar clasificador analítico para métodos de pago y conceptos del turno
+        resumen_turno = await CajaService.get_resumen_analitico(
+            empresa_id=empresa_id,
+            turno_caja_id=turno_id,
+            db=db
+        )
+
+        cajero_nom = (
+            f"{turno.usuario.nombre or ''} {turno.usuario.apellido or ''}".strip()
+            if turno.usuario else "Cajero"
+        )
+
+        turno_dict = {
+            "id": turno.id,
+            "empresa_id": turno.empresa_id,
+            "sucursal_id": turno.sucursal_id,
+            "caja_id": turno.caja_id,
+            "caja_nombre": turno.caja.nombre if turno.caja else "Caja",
+            "usuario_id": turno.usuario_id,
+            "cajero_nombre": cajero_nom,
+            "apertura_at": turno.apertura_at,
+            "cierre_at": turno.cierre_at,
+            "estado": turno.estado,
+            "fondo_inicial_usd": fondo_usd,
+            "fondo_inicial_ves": fondo_ves,
+            "total_ingresos_usd": round(efectivo_ventas_usd + efectivo_ingresos_extra_usd, 2),
+            "total_ingresos_ves": round(efectivo_ventas_ves + efectivo_ingresos_extra_ves, 2),
+            "total_ingresos_eur": float(turno.total_ingresos_eur or 0),
+            "total_egresos_usd": round(efectivo_egresos_usd, 2),
+            "total_egresos_ves": round(efectivo_egresos_ves, 2),
+            "arqueo_declarado_usd": float(turno.arqueo_declarado_usd) if turno.arqueo_declarado_usd is not None else None,
+            "arqueo_declarado_ves": float(turno.arqueo_declarado_ves) if turno.arqueo_declarado_ves is not None else None,
+            "diferencia_usd": float(turno.diferencia_usd) if turno.diferencia_usd is not None else None,
+            "diferencia_ves": float(turno.diferencia_ves) if turno.diferencia_ves is not None else None,
+            "notas_apertura": turno.notas_apertura,
+            "notas_cierre": turno.notas_cierre,
+            "created_at": turno.created_at,
+        }
+
+        movimientos_serializados = [
+            {
+                "id": m.id,
+                "empresa_id": m.empresa_id,
+                "sucursal_id": m.sucursal_id,
+                "turno_caja_id": m.turno_caja_id,
+                "usuario_id": m.usuario_id,
+                "usuario_nombre": (
+                    f"{m.usuario.nombre or ''} {m.usuario.apellido or ''}".strip()
+                    if m.usuario else "Usuario"
+                ),
+                "tipo": m.tipo,
+                "concepto": m.concepto,
+                "moneda": m.moneda,
+                "monto": float(m.monto or 0),
+                "comprobante_adjunto": m.comprobante_adjunto,
+                "created_at": m.created_at,
+            }
+            for m in movimientos
+        ]
+
+        return {
+            "turno": turno_dict,
+            "tasa_bcv_actual": round(tasa_bcv, 4),
+            "moneda_referencia": moneda_ref,
+            "ventas_brutas_ves": round(ventas_brutas_ves, 2),
+            "ventas_brutas_divisa": round(ventas_brutas_divisa, 2),
+            "total_anuladas_ves": round(total_anuladas_ves, 2),
+            "total_anuladas_divisa": round(total_anuladas_divisa, 2),
+            "cantidad_anuladas": len(cobros_anulados),
+            "ventas_netas_ves": round(ventas_netas_ves, 2),
+            "ventas_netas_divisa": round(ventas_netas_divisa, 2),
+            "cantidad_completadas": len(cobros_completados),
+            "efectivo_ventas_ves": round(efectivo_ventas_ves, 2),
+            "efectivo_ventas_usd": round(efectivo_ventas_usd, 2),
+            "efectivo_anulaciones_ves": round(efectivo_anulaciones_ves, 2),
+            "efectivo_anulaciones_usd": round(efectivo_anulaciones_usd, 2),
+            "efectivo_ingresos_extra_ves": round(efectivo_ingresos_extra_ves, 2),
+            "efectivo_ingresos_extra_usd": round(efectivo_ingresos_extra_usd, 2),
+            "efectivo_egresos_ves": round(efectivo_egresos_ves, 2),
+            "efectivo_egresos_usd": round(efectivo_egresos_usd, 2),
+            "esperado_gaveta_ves": esperado_gaveta_ves,
+            "esperado_gaveta_usd": esperado_gaveta_usd,
+            "ingresos_electronicos_ves": round(ingresos_electronicos_ves, 2),
+            "ingresos_electronicos_divisa": round(ingresos_electronicos_divisa, 2),
+            "por_metodo_pago": resumen_turno["por_metodo_pago"],
+            "por_concepto": resumen_turno["por_concepto"],
+            "movimientos": movimientos_serializados,
+            "cobros": cobros,
+        }
+
 

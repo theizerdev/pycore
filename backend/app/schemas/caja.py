@@ -262,3 +262,43 @@ class ResumenAnaliticoCajaResponse(BaseModel):
     # Ranking de servicios más demandados
     top_servicios: List[TopServicioResumen]
 
+
+class TurnoDetalleResumenResponse(BaseModel):
+    """Resumen financiero integral de un turno de caja (Arqueo X / Corte Z estilo FixSale POS)."""
+    turno: TurnoCajaResponse
+    tasa_bcv_actual: float
+    moneda_referencia: str = "USD"
+
+    # Flujo de ventas del turno
+    ventas_brutas_ves: float = 0.0
+    ventas_brutas_divisa: float = 0.0
+    total_anuladas_ves: float = 0.0
+    total_anuladas_divisa: float = 0.0
+    cantidad_anuladas: int = 0
+    ventas_netas_ves: float = 0.0
+    ventas_netas_divisa: float = 0.0
+    cantidad_completadas: int = 0
+
+    # Conciliación exacta de efectivo físico en gaveta
+    efectivo_ventas_ves: float = 0.0
+    efectivo_ventas_usd: float = 0.0
+    efectivo_anulaciones_ves: float = 0.0
+    efectivo_anulaciones_usd: float = 0.0
+    efectivo_ingresos_extra_ves: float = 0.0
+    efectivo_ingresos_extra_usd: float = 0.0
+    efectivo_egresos_ves: float = 0.0
+    efectivo_egresos_usd: float = 0.0
+    esperado_gaveta_ves: float = 0.0
+    esperado_gaveta_usd: float = 0.0
+
+    # Medios electrónicos / bancarios (acreditados en banco, no en gaveta física)
+    ingresos_electronicos_ves: float = 0.0
+    ingresos_electronicos_divisa: float = 0.0
+
+    # Clasificaciones del turno
+    por_metodo_pago: List[MetodoPagoResumen] = []
+    por_concepto: List[ConceptoResumen] = []
+    movimientos: List[MovimientoCajaResponse] = []
+    cobros: List[CobroResponse] = []
+
+

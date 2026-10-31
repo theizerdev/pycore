@@ -8,10 +8,12 @@ from app.core.security import get_current_active_user
 from app.models.usuario import Usuario
 from app.schemas.caja import (
     CajaCreate,
+    CajaUpdate,
     CajaResponse,
     TurnoAperturaRequest,
     TurnoCierreRequest,
     TurnoCajaResponse,
+    TurnoDetalleResumenResponse,
     MovimientoCajaCreateRequest,
     MovimientoCajaResponse,
     CobroCreateRequest,
@@ -23,6 +25,41 @@ from app.services.caja_service import CajaService
 router = APIRouter(prefix="/cajas", tags=["Cajas & Facturación"])
 
 
+def _serialize_turno(t, fallback_user: Optional[Usuario] = None) -> TurnoCajaResponse:
+    cajero_nom = "Cajero"
+    if t.usuario:
+        cajero_nom = f"{t.usuario.nombre or ''} {t.usuario.apellido or ''}".strip() or t.usuario.email
+    elif fallback_user:
+        cajero_nom = f"{fallback_user.nombre or ''} {fallback_user.apellido or ''}".strip() or fallback_user.email
+
+    return TurnoCajaResponse(
+        id=t.id,
+        empresa_id=t.empresa_id,
+        sucursal_id=t.sucursal_id,
+        caja_id=t.caja_id,
+        caja_nombre=t.caja.nombre if t.caja else "Caja",
+        usuario_id=t.usuario_id,
+        cajero_nombre=cajero_nom,
+        apertura_at=t.apertura_at,
+        cierre_at=t.cierre_at,
+        estado=t.estado,
+        fondo_inicial_usd=float(t.fondo_inicial_usd or 0),
+        fondo_inicial_ves=float(t.fondo_inicial_ves or 0),
+        total_ingresos_usd=float(t.total_ingresos_usd or 0),
+        total_ingresos_ves=float(t.total_ingresos_ves or 0),
+        total_ingresos_eur=float(t.total_ingresos_eur or 0),
+        total_egresos_usd=float(t.total_egresos_usd or 0),
+        total_egresos_ves=float(t.total_egresos_ves or 0),
+        arqueo_declarado_usd=float(t.arqueo_declarado_usd) if t.arqueo_declarado_usd is not None else None,
+        arqueo_declarado_ves=float(t.arqueo_declarado_ves) if t.arqueo_declarado_ves is not None else None,
+        diferencia_usd=float(t.diferencia_usd) if t.diferencia_usd is not None else None,
+        diferencia_ves=float(t.diferencia_ves) if t.diferencia_ves is not None else None,
+        notas_apertura=t.notas_apertura,
+        notas_cierre=t.notas_cierre,
+        created_at=t.created_at
+    )
+
+
 # ── 1. CAJAS FÍSICAS O PUNTOS DE VENTA ──────────────────────────────
 @router.get("", response_model=List[CajaResponse])
 async def list_cajas(
@@ -32,7 +69,7 @@ async def list_cajas(
 ):
     """Lista las cajas registradas para la empresa/sucursal."""
     empresa_id = current_user.empresa_id or 1
-    target_sucursal = sucursal_id or current_user.sucursal_id
+    target_sucursal = sucursal_id or getattr(current_user, "sucursal_defecto_id", None)
     cajas = await CajaService.get_cajas(empresa_id, target_sucursal, db)
     return cajas
 
@@ -48,6 +85,21 @@ async def create_caja(
     return await CajaService.create_caja(empresa_id, payload, db)
 
 
+@router.patch("/{caja_id}", response_model=CajaResponse)
+async def update_caja(
+    caja_id: int,
+    payload: CajaUpdate,
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Actualiza el nombre, descripción o estado activo de una caja física."""
+    empresa_id = current_user.empresa_id or 1
+    try:
+        return await CajaService.update_caja(empresa_id, caja_id, payload, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 # ── 2. GESTIÓN DE TURNOS DE CAJA & ARQUEO ─────────────────────────────
 @router.get("/turno-activo", response_model=Optional[TurnoCajaResponse])
 async def get_active_turno(
@@ -60,32 +112,7 @@ async def get_active_turno(
     if not turno:
         return None
 
-    return TurnoCajaResponse(
-        id=turno.id,
-        empresa_id=turno.empresa_id,
-        sucursal_id=turno.sucursal_id,
-        caja_id=turno.caja_id,
-        caja_nombre=turno.caja.nombre if turno.caja else "Caja",
-        usuario_id=turno.usuario_id,
-        cajero_nombre=turno.usuario.nombre if turno.usuario else "Cajero",
-        apertura_at=turno.apertura_at,
-        cierre_at=turno.cierre_at,
-        estado=turno.estado,
-        fondo_inicial_usd=float(turno.fondo_inicial_usd),
-        fondo_inicial_ves=float(turno.fondo_inicial_ves),
-        total_ingresos_usd=float(turno.total_ingresos_usd),
-        total_ingresos_ves=float(turno.total_ingresos_ves),
-        total_ingresos_eur=float(turno.total_ingresos_eur),
-        total_egresos_usd=float(turno.total_egresos_usd),
-        total_egresos_ves=float(turno.total_egresos_ves),
-        arqueo_declarado_usd=float(turno.arqueo_declarado_usd) if turno.arqueo_declarado_usd is not None else None,
-        arqueo_declarado_ves=float(turno.arqueo_declarado_ves) if turno.arqueo_declarado_ves is not None else None,
-        diferencia_usd=float(turno.diferencia_usd) if turno.diferencia_usd is not None else None,
-        diferencia_ves=float(turno.diferencia_ves) if turno.diferencia_ves is not None else None,
-        notas_apertura=turno.notas_apertura,
-        notas_cierre=turno.notas_cierre,
-        created_at=turno.created_at
-    )
+    return _serialize_turno(turno, current_user)
 
 
 @router.post("/turnos/apertura", response_model=TurnoCajaResponse, status_code=status.HTTP_201_CREATED)
@@ -96,30 +123,25 @@ async def open_turno(
 ):
     """Abre un turno de caja con fondo inicial en USD y Bolívares."""
     empresa_id = current_user.empresa_id or 1
-    turno = await CajaService.open_turno(empresa_id, current_user.id, payload, db)
+    try:
+        turno = await CajaService.open_turno(empresa_id, current_user.id, payload, db)
+        return _serialize_turno(turno, current_user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    return TurnoCajaResponse(
-        id=turno.id,
-        empresa_id=turno.empresa_id,
-        sucursal_id=turno.sucursal_id,
-        caja_id=turno.caja_id,
-        caja_nombre=turno.caja.nombre if turno.caja else "Caja",
-        usuario_id=turno.usuario_id,
-        cajero_nombre=turno.usuario.nombre if turno.usuario else current_user.nombre,
-        apertura_at=turno.apertura_at,
-        cierre_at=turno.cierre_at,
-        estado=turno.estado,
-        fondo_inicial_usd=float(turno.fondo_inicial_usd),
-        fondo_inicial_ves=float(turno.fondo_inicial_ves),
-        total_ingresos_usd=float(turno.total_ingresos_usd),
-        total_ingresos_ves=float(turno.total_ingresos_ves),
-        total_ingresos_eur=float(turno.total_ingresos_eur),
-        total_egresos_usd=float(turno.total_egresos_usd),
-        total_egresos_ves=float(turno.total_egresos_ves),
-        notas_apertura=turno.notas_apertura,
-        notas_cierre=turno.notas_cierre,
-        created_at=turno.created_at
-    )
+
+@router.get("/turnos/{turno_id}/detalle", response_model=TurnoDetalleResumenResponse)
+async def get_turno_detalle(
+    turno_id: int,
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Obtiene el detalle financiero integral de un turno (Arqueo X / Corte Z)."""
+    empresa_id = current_user.empresa_id or 1
+    try:
+        return await CajaService.get_turno_detalle(empresa_id, turno_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/turnos/{turno_id}/cierre", response_model=TurnoCajaResponse)
@@ -132,33 +154,15 @@ async def close_turno(
     """Cierra el turno de caja con arqueo físico de efectivo y cálculo de diferencias."""
     empresa_id = current_user.empresa_id or 1
     try:
-        turno = await CajaService.close_turno(empresa_id, turno_id, current_user.id, payload, db)
-        return TurnoCajaResponse(
-            id=turno.id,
-            empresa_id=turno.empresa_id,
-            sucursal_id=turno.sucursal_id,
-            caja_id=turno.caja_id,
-            caja_nombre=turno.caja.nombre if turno.caja else "Caja",
-            usuario_id=turno.usuario_id,
-            cajero_nombre=turno.usuario.nombre if turno.usuario else current_user.nombre,
-            apertura_at=turno.apertura_at,
-            cierre_at=turno.cierre_at,
-            estado=turno.estado,
-            fondo_inicial_usd=float(turno.fondo_inicial_usd),
-            fondo_inicial_ves=float(turno.fondo_inicial_ves),
-            total_ingresos_usd=float(turno.total_ingresos_usd),
-            total_ingresos_ves=float(turno.total_ingresos_ves),
-            total_ingresos_eur=float(turno.total_ingresos_eur),
-            total_egresos_usd=float(turno.total_egresos_usd),
-            total_egresos_ves=float(turno.total_egresos_ves),
-            arqueo_declarado_usd=float(turno.arqueo_declarado_usd) if turno.arqueo_declarado_usd is not None else None,
-            arqueo_declarado_ves=float(turno.arqueo_declarado_ves) if turno.arqueo_declarado_ves is not None else None,
-            diferencia_usd=float(turno.diferencia_usd) if turno.diferencia_usd is not None else None,
-            diferencia_ves=float(turno.diferencia_ves) if turno.diferencia_ves is not None else None,
-            notas_apertura=turno.notas_apertura,
-            notas_cierre=turno.notas_cierre,
-            created_at=turno.created_at
+        turno = await CajaService.close_turno(
+            empresa_id=empresa_id,
+            turno_id=turno_id,
+            usuario_id=current_user.id,
+            data=payload,
+            db=db,
+            current_user=current_user,
         )
+        return _serialize_turno(turno, current_user)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -176,7 +180,7 @@ async def list_turnos(
 ):
     """Consulta el historial de turnos y arqueos de caja."""
     empresa_id = current_user.empresa_id or 1
-    target_sucursal = sucursal_id or current_user.sucursal_id
+    target_sucursal = sucursal_id or getattr(current_user, "sucursal_defecto_id", None)
     turnos = await CajaService.get_turnos(
         empresa_id=empresa_id,
         sucursal_id=target_sucursal,
@@ -187,35 +191,7 @@ async def list_turnos(
         limit=limit,
         db=db
     )
-    return [
-        TurnoCajaResponse(
-            id=t.id,
-            empresa_id=t.empresa_id,
-            sucursal_id=t.sucursal_id,
-            caja_id=t.caja_id,
-            caja_nombre=t.caja.nombre if t.caja else "Caja",
-            usuario_id=t.usuario_id,
-            cajero_nombre=f"{t.usuario.nombre or ''} {t.usuario.apellido or ''}".strip() if t.usuario else "Cajero",
-            apertura_at=t.apertura_at,
-            cierre_at=t.cierre_at,
-            estado=t.estado,
-            fondo_inicial_usd=float(t.fondo_inicial_usd or 0),
-            fondo_inicial_ves=float(t.fondo_inicial_ves or 0),
-            total_ingresos_usd=float(t.total_ingresos_usd or 0),
-            total_ingresos_ves=float(t.total_ingresos_ves or 0),
-            total_ingresos_eur=float(t.total_ingresos_eur or 0),
-            total_egresos_usd=float(t.total_egresos_usd or 0),
-            total_egresos_ves=float(t.total_egresos_ves or 0),
-            arqueo_declarado_usd=float(t.arqueo_declarado_usd) if t.arqueo_declarado_usd is not None else None,
-            arqueo_declarado_ves=float(t.arqueo_declarado_ves) if t.arqueo_declarado_ves is not None else None,
-            diferencia_usd=float(t.diferencia_usd) if t.diferencia_usd is not None else None,
-            diferencia_ves=float(t.diferencia_ves) if t.diferencia_ves is not None else None,
-            notas_apertura=t.notas_apertura,
-            notas_cierre=t.notas_cierre,
-            created_at=t.created_at
-        )
-        for t in turnos
-    ]
+    return [_serialize_turno(t) for t in turnos]
 
 
 # ── 3. MOVIMIENTOS EXTRAORDINARIOS DE CAJA ──────────────────────────
@@ -260,7 +236,7 @@ async def list_movimientos(
 ):
     """Consulta historial de movimientos menores (entradas y salidas de caja menor)."""
     empresa_id = current_user.empresa_id or 1
-    target_sucursal = sucursal_id or current_user.sucursal_id
+    target_sucursal = sucursal_id or getattr(current_user, "sucursal_defecto_id", None)
     movs = await CajaService.get_movimientos(
         empresa_id=empresa_id,
         sucursal_id=target_sucursal,
@@ -309,6 +285,7 @@ async def create_cobro(
 @router.get("/cobros", response_model=List[CobroResponse])
 async def list_cobros(
     sucursal_id: Optional[int] = Query(None),
+    turno_caja_id: Optional[int] = Query(None),
     paciente_id: Optional[int] = Query(None),
     fecha_desde: Optional[date] = Query(None),
     fecha_hasta: Optional[date] = Query(None),
@@ -321,6 +298,7 @@ async def list_cobros(
     cobros = await CajaService.get_cobros(
         empresa_id=empresa_id,
         sucursal_id=sucursal_id,
+        turno_caja_id=turno_caja_id,
         paciente_id=paciente_id,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
@@ -371,7 +349,7 @@ async def get_resumen_analitico_caja(
 ):
     """Genera el reporte consolidado: clasificación de cobros por método de pago y conceptos de servicio."""
     empresa_id = current_user.empresa_id or 1
-    target_sucursal = sucursal_id or current_user.sucursal_id
+    target_sucursal = sucursal_id or getattr(current_user, "sucursal_defecto_id", None)
     resumen = await CajaService.get_resumen_analitico(
         empresa_id=empresa_id,
         sucursal_id=target_sucursal,

@@ -185,6 +185,36 @@ export interface ResumenAnaliticoCajaResponse {
   top_servicios: TopServicioResumen[];
 }
 
+export interface TurnoDetalleResumen {
+  turno: TurnoCaja;
+  tasa_bcv_actual: number;
+  moneda_referencia: 'USD' | 'EUR' | string;
+  ventas_brutas_ves: number;
+  ventas_brutas_divisa: number;
+  total_anuladas_ves: number;
+  total_anuladas_divisa: number;
+  cantidad_anuladas: number;
+  ventas_netas_ves: number;
+  ventas_netas_divisa: number;
+  cantidad_completadas: number;
+  efectivo_ventas_ves: number;
+  efectivo_ventas_usd: number;
+  efectivo_anulaciones_ves: number;
+  efectivo_anulaciones_usd: number;
+  efectivo_ingresos_extra_ves: number;
+  efectivo_ingresos_extra_usd: number;
+  efectivo_egresos_ves: number;
+  efectivo_egresos_usd: number;
+  esperado_gaveta_ves: number;
+  esperado_gaveta_usd: number;
+  ingresos_electronicos_ves: number;
+  ingresos_electronicos_divisa: number;
+  por_metodo_pago: MetodoPagoResumen[];
+  por_concepto: ConceptoResumen[];
+  movimientos: MovimientoCaja[];
+  cobros: Cobro[];
+}
+
 export const cajasApi = {
   // Cajas
   listCajas: async (sucursal_id?: number): Promise<Caja[]> => {
@@ -197,6 +227,14 @@ export const cajasApi = {
     return res.data;
   },
 
+  updateCaja: async (
+    cajaId: number,
+    data: { nombre?: string; descripcion?: string; activa?: boolean; sucursal_id?: number }
+  ): Promise<Caja> => {
+    const res = await api.patch<Caja>(`/cajas/${cajaId}`, data);
+    return res.data;
+  },
+
   // Turnos
   getActiveTurno: async (): Promise<TurnoCaja | null> => {
     const res = await api.get<TurnoCaja | null>('/cajas/turno-activo');
@@ -205,6 +243,11 @@ export const cajasApi = {
 
   openTurno: async (data: TurnoAperturaInput): Promise<TurnoCaja> => {
     const res = await api.post<TurnoCaja>('/cajas/turnos/apertura', data);
+    return res.data;
+  },
+
+  getTurnoDetalle: async (turnoId: number): Promise<TurnoDetalleResumen> => {
+    const res = await api.get<TurnoDetalleResumen>(`/cajas/turnos/${turnoId}/detalle`);
     return res.data;
   },
 
@@ -233,6 +276,7 @@ export const cajasApi = {
 
   listCobros: async (params?: {
     sucursal_id?: number;
+    turno_caja_id?: number;
     paciente_id?: number;
     fecha_desde?: string;
     fecha_hasta?: string;

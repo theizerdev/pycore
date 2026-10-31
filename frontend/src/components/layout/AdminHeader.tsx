@@ -7,6 +7,7 @@ import { cn, getInitials } from '../../lib/utils';
 import { suscripcionesApi } from '../../api/suscripciones';
 import {
   Menu,
+  PanelLeftOpen,
   Sun,
   Moon,
   Bell,
@@ -49,9 +50,13 @@ import {
 interface AdminHeaderProps {
   onToggleMenu: () => void;
   collapsed?: boolean;
+  sidebarHidden?: boolean;
 }
 
-export const AdminHeader: React.FC<AdminHeaderProps> = ({ onToggleMenu, collapsed }) => {
+export const AdminHeader: React.FC<AdminHeaderProps> = ({
+  onToggleMenu,
+  sidebarHidden = false,
+}) => {
   const { user, sucursalActiva, setSucursalActiva, logout, hasPermission } = useAuth();
   const { appearance, resolvedAppearance, updateAppearance, settings } = useTemplateSettings();
   const {
@@ -169,7 +174,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ onToggleMenu, collapse
   return (
     <header
       className={cn(
-        "z-30 flex h-16 w-full items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-md transition-colors sm:px-6",
+        "z-30 flex h-16 shrink-0 w-full items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-md transition-colors sm:px-6",
         settings.navbarType === 'sticky' ? 'sticky top-0' : 'relative'
       )}
     >
@@ -178,11 +183,21 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ onToggleMenu, collapse
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground hover:bg-accent -ml-2 flex"
+          className={cn(
+            "text-muted-foreground hover:bg-accent -ml-2 flex cursor-pointer",
+            sidebarHidden && "lg:bg-primary/10 lg:text-primary lg:hover:bg-primary/20"
+          )}
           onClick={onToggleMenu}
-          title={collapsed ? "Mostrar menú" : "Ocultar menú"}
+          title={sidebarHidden ? "Mostrar menú lateral" : "Ocultar menú completamente"}
         >
-          <Menu className="size-5" />
+          {sidebarHidden ? (
+            <>
+              <Menu className="size-5 lg:hidden" />
+              <PanelLeftOpen className="size-5 hidden lg:block" />
+            </>
+          ) : (
+            <Menu className="size-5" />
+          )}
         </Button>
 
         {/* Migas de Pan (Breadcrumbs) */}
