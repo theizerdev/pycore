@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
+import { TooltipProvider } from './components/ui/tooltip';
 
 // Helper de lazy-loading tipo-seguro compatible con exportaciones por defecto y nombradas
 const lazyComponent = <P = Record<string, any>>(
@@ -90,6 +91,7 @@ export const App: React.FC = () => {
     <TemplateSettingsProvider>
       <AuthProvider>
         <RegionalProvider>
+          <TooltipProvider delayDuration={240}>
           <BrowserRouter>
             <Suspense fallback={<PageLoadingFallback />}>
               <Routes>
@@ -402,6 +404,7 @@ export const App: React.FC = () => {
           </Suspense>
           <Toaster />
         </BrowserRouter>
+          </TooltipProvider>
       </RegionalProvider>
     </AuthProvider>
   </TemplateSettingsProvider>

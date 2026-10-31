@@ -58,6 +58,7 @@ interface CitaFormModalProps {
   citaToEdit?: CitaMedica | null;
   initialDate?: string;
   initialTime?: string;
+  initialDuration?: number;
   initialMedicoId?: number;
   initialPacienteId?: number;
   existingCitas?: CitaMedica[];
@@ -70,6 +71,8 @@ const DURACIONES = [
   { value: 30, label: '30 minutos' },
   { value: 45, label: '45 minutos' },
   { value: 60, label: '1 hora' },
+  { value: 90, label: '1 hora 30 min' },
+  { value: 120, label: '2 horas' },
 ];
 
 const HORAS_DISPONIBLES = [
@@ -84,6 +87,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   citaToEdit,
   initialDate,
   initialTime,
+  initialDuration,
   initialMedicoId,
   initialPacienteId,
   existingCitas,
@@ -185,6 +189,9 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
           if (initialTime) {
             setHoraInicio(initialTime);
           }
+          if (initialDuration) {
+            setDuracionMinutos(initialDuration);
+          }
 
           // Si el usuario es doctor, SIEMPRE preseleccionar su médico e impedir que se pierda
           let targetMedId: number | null = null;
@@ -239,7 +246,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
     };
 
     loadData();
-  }, [open, citaToEdit, initialDate, initialTime, initialMedicoId, initialPacienteId, isDoctorUser, user]);
+  }, [open, citaToEdit, initialDate, initialTime, initialDuration, initialMedicoId, initialPacienteId, isDoctorUser, user]);
 
   // Sincronización reactiva: si el usuario es doctor y el catálogo de médicos ya cargó, asegurar selección
   useEffect(() => {
