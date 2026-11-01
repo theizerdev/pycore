@@ -64,6 +64,20 @@ class Empresa(Base, TimestampMixin):
     mercadopago_public_key = Column(String(255), nullable=True)
     mercadopago_access_token = Column(String(255), nullable=True)
 
+    # Integraciones: Jitsi Meet — Motor Principal de WorkSpace & Telemedicina
+    jitsi_active = Column(Boolean, default=True, nullable=False)
+    jitsi_provider = Column(String(30), default="public", nullable=False) # "public", "self_hosted", "jaas"
+    jitsi_domain = Column(String(255), default="meet.jit.si", nullable=True)
+    jitsi_app_id = Column(String(255), nullable=True)
+    jitsi_jwt_secret = Column(Text, nullable=True)
+    jitsi_key_id = Column(String(255), nullable=True) # kid opcional para JaaS (8x8.vc)
+    jitsi_room_prefix = Column(String(50), default="medisoft", nullable=True)
+    jitsi_lobby_enabled = Column(Boolean, default=True, nullable=False)
+    jitsi_recording_enabled = Column(Boolean, default=False, nullable=False)
+    jitsi_e2ee_enabled = Column(Boolean, default=False, nullable=False)
+    telemedicina_requiere_pago = Column(Boolean, default=True, nullable=False)
+    telemedicina_consentimiento_texto = Column(Text, nullable=True)
+
     # Métodos de Pago Nacionales (Transferencia Bancaria & Pago Móvil)
     banco_nombre = Column(String(100), nullable=True)
     banco_tipo_cuenta = Column(String(50), nullable=True)

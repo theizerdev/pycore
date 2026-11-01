@@ -270,12 +270,92 @@ export interface IntegracionesConfig {
   mercadopago_public_key?: string | null;
   mercadopago_access_token?: string | null;
 
+  // Jitsi Meet — Motor Principal WorkSpace & Telemedicina
+  jitsi_active?: boolean;
+  jitsi_provider?: 'public' | 'self_hosted' | 'jaas';
+  jitsi_domain?: string | null;
+  jitsi_app_id?: string | null;
+  jitsi_jwt_secret?: string | null;
+  jitsi_key_id?: string | null;
+  jitsi_room_prefix?: string | null;
+  jitsi_lobby_enabled?: boolean;
+  jitsi_recording_enabled?: boolean;
+  jitsi_e2ee_enabled?: boolean;
+  telemedicina_requiere_pago?: boolean;
+  telemedicina_consentimiento_texto?: string | null;
+
   bcv_rate_cached?: number | null;
   bcv_rate_updated_at?: string | null;
   is_sucursal?: boolean;
   sucursal_id?: number | null;
   sucursal_nombre?: string | null;
   using_fallback?: boolean;
+}
+
+export interface JitsiDiagnostic {
+  healthy: boolean;
+  service_online: boolean;
+  provider: 'public' | 'self_hosted' | 'jaas';
+  domain: string;
+  external_api_url: string;
+  http_status?: number | null;
+  latency_ms: number;
+  jwt_configured: boolean;
+  jwt_status_message: string;
+  error?: string | null;
+  checked_at: string;
+}
+
+export interface JitsiSessionConfig {
+  active: boolean;
+  provider: 'public' | 'self_hosted' | 'jaas';
+  domain: string;
+  external_api_url: string;
+  room_name: string;
+  room_slug: string;
+  meeting_url: string;
+  jwt?: string | null;
+  is_moderator: boolean;
+  subject: string;
+  user_info: {
+    displayName: string;
+    email?: string;
+    avatarURL?: string;
+  };
+  config_overwrite: Record<string, any>;
+  interface_config_overwrite: Record<string, any>;
+  warnings: string[];
+}
+
+export interface TeleconsultaPublicInfo {
+  token: string;
+  cita_id: number;
+  fecha: string;
+  fecha_formateada: string;
+  hora_inicio: string;
+  hora_fin: string;
+  estado_cita: string;
+  estado_pago: string;
+  precio_estimado: number;
+  requiere_pago: boolean;
+  autorizado: boolean;
+  mensaje_bloqueo?: string | null;
+  paciente_nombre: string;
+  paciente_documento?: string | null;
+  medico_nombre: string;
+  medico_avatar?: string | null;
+  especialidad_nombre: string;
+  empresa_nombre: string;
+  empresa_logo?: string | null;
+  empresa_telefono?: string | null;
+  empresa_email?: string | null;
+  sucursal_nombre?: string | null;
+  sala_virtual_id: string;
+  preconsulta_token?: string | null;
+  preconsulta_estado?: string | null;
+  paciente_conectado_at?: string | null;
+  consentimiento_texto: string;
+  jitsi_session?: JitsiSessionConfig | null;
 }
 
 export interface BcvRateData {
@@ -702,6 +782,8 @@ export type CitaEstado =
 
 export type CitaEstadoPago = 'pendiente' | 'pagado' | 'aseguradora' | 'exonerado';
 
+export type CitaModalidad = 'presencial' | 'telemedicina';
+
 export interface CitaMedica {
   id: number;
   empresa_id: number;
@@ -728,6 +810,15 @@ export interface CitaMedica {
   // Sobreturnos
   es_sobreturno?: boolean;
   motivo_sobreturno?: string | null;
+
+  // Modalidad Asistencial & Telemedicina (WorkSpace Jitsi)
+  modalidad?: CitaModalidad;
+  sala_virtual_id?: string | null;
+  teleconsulta_token?: string | null;
+  teleconsulta_url?: string | null;
+  paciente_conectado_at?: string | null;
+  link_teleconsulta_enviado?: boolean;
+  link_teleconsulta_enviado_at?: string | null;
 
   // Notificaciones WhatsApp
   whatsapp_notificado: boolean;
@@ -769,6 +860,7 @@ export interface CitaCreateInput {
   metodo_pago?: string | null;
   es_sobreturno?: boolean;
   motivo_sobreturno?: string;
+  modalidad?: CitaModalidad;
   notificar_whatsapp?: boolean;
 }
 
@@ -789,6 +881,7 @@ export interface CitaUpdateInput {
   metodo_pago?: string | null;
   es_sobreturno?: boolean;
   motivo_sobreturno?: string;
+  modalidad?: CitaModalidad;
 }
 
 export interface CitaNotificarWhatsAppResponse {
@@ -796,6 +889,7 @@ export interface CitaNotificarWhatsAppResponse {
   mensaje_enviado: string;
   destinatario: string;
   whatsapp_direct_url?: string;
+  teleconsulta_url?: string | null;
   detalle: string;
 }
 

@@ -308,6 +308,12 @@ export const CalendarEventCard: React.FC<CalendarEventCardProps> = ({
                 WA
               </span>
             )}
+            {cita.modalidad === 'telemedicina' && (
+              <span className="inline-flex items-center gap-0.5 rounded-md bg-sky-500/15 border border-sky-500/35 px-1.5 py-0.5 text-[9.5px] font-bold text-sky-800 dark:text-sky-300">
+                <MdiIcon icon="mdi:video" className="size-3" />
+                Telemedicina
+              </span>
+            )}
             {cita.es_sobreturno && (
               <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-700 dark:text-amber-300">
                 <MdiIcon icon="mdi:flash" className="size-3" />
@@ -374,6 +380,9 @@ export const CalendarEventCard: React.FC<CalendarEventCardProps> = ({
               </span>
               {cita.es_sobreturno && (
                 <MdiIcon icon="mdi:flash" className="size-3 text-amber-500 shrink-0" />
+              )}
+              {cita.modalidad === 'telemedicina' && (
+                <MdiIcon icon="mdi:video" className="size-3 text-sky-600 dark:text-sky-400 shrink-0" />
               )}
             </div>
 
@@ -490,6 +499,12 @@ export const CalendarEventCard: React.FC<CalendarEventCardProps> = ({
                   <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1 py-0.5 text-[8.5px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0">
                     <MdiIcon icon="mdi:flash" className="size-2.5" />
                     ST
+                  </span>
+                )}
+                {cita.modalidad === 'telemedicina' && (
+                  <span className="inline-flex items-center gap-0.5 rounded bg-sky-500/20 border border-sky-500/40 px-1 py-0.5 text-[8.5px] font-extrabold text-sky-800 dark:text-sky-300 shrink-0">
+                    <MdiIcon icon="mdi:video" className="size-2.5" />
+                    Tele
                   </span>
                 )}
                 {cita.paciente_documento && (
@@ -632,6 +647,9 @@ export const CalendarEventCard: React.FC<CalendarEventCardProps> = ({
                     {cita.es_sobreturno && (
                       <MdiIcon icon="mdi:flash" className="size-3 text-amber-500" />
                     )}
+                    {cita.modalidad === 'telemedicina' && (
+                      <MdiIcon icon="mdi:video" className="size-3 text-sky-600 dark:text-sky-400" />
+                    )}
                     <MdiIcon icon={pagoMeta.icon} className="size-3 text-muted-foreground" />
                   </div>
                 </div>
@@ -665,6 +683,12 @@ export const CalendarEventCard: React.FC<CalendarEventCardProps> = ({
                       <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1 py-0 text-[8.5px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0">
                         <MdiIcon icon="mdi:flash" className="size-2.5" />
                         Sobreturno
+                      </span>
+                    )}
+                    {cita.modalidad === 'telemedicina' && (
+                      <span className="inline-flex items-center gap-0.5 rounded bg-sky-500/20 border border-sky-500/40 px-1 py-0 text-[8.5px] font-extrabold text-sky-800 dark:text-sky-300 shrink-0">
+                        <MdiIcon icon="mdi:video" className="size-2.5" />
+                        Tele
                       </span>
                     )}
                     {cita.paciente_documento && (
@@ -850,6 +874,9 @@ export const CalendarEventCard: React.FC<CalendarEventCardProps> = ({
                     {cita.es_sobreturno && (
                       <MdiIcon icon="mdi:flash" className="size-3 text-amber-500 shrink-0" />
                     )}
+                    {cita.modalidad === 'telemedicina' && (
+                      <MdiIcon icon="mdi:video" className="size-3 text-sky-600 dark:text-sky-400 shrink-0" />
+                    )}
                   </div>
                   <p className="text-[10.5px] font-semibold text-foreground/80 leading-tight truncate">
                     {doctorLabel}
@@ -926,6 +953,12 @@ export const CalendarEventCard: React.FC<CalendarEventCardProps> = ({
                       <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 px-1.5 py-0 text-[9px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0">
                         <MdiIcon icon="mdi:flash" className="size-2.5" />
                         Sobreturno
+                      </span>
+                    )}
+                    {cita.modalidad === 'telemedicina' && (
+                      <span className="inline-flex items-center gap-0.5 rounded-md bg-sky-500/20 border border-sky-500/40 px-1.5 py-0 text-[9px] font-extrabold text-sky-800 dark:text-sky-300 shrink-0">
+                        <MdiIcon icon="mdi:video" className="size-2.5" />
+                        Telemedicina
                       </span>
                     )}
 
@@ -1227,6 +1260,12 @@ export const CalendarEventCard: React.FC<CalendarEventCardProps> = ({
                         <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-500/20 border border-amber-500/45 px-1.5 py-0.5 text-[9.5px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0">
                           <MdiIcon icon="mdi:flash" className="size-3" />
                           Sobreturno
+                        </span>
+                      )}
+                      {cita.modalidad === 'telemedicina' && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/20 border border-sky-500/45 px-1.5 py-0.5 text-[9.5px] font-extrabold text-sky-800 dark:text-sky-300 shrink-0">
+                          <MdiIcon icon="mdi:video" className="size-3" />
+                          Telemedicina WorkSpace
                         </span>
                       )}
 

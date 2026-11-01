@@ -4,7 +4,9 @@ import type {
   BcvRateData,
   WhatsAppStatus,
   WhatsAppTemplate,
-  WhatsAppMessage
+  WhatsAppMessage,
+  JitsiDiagnostic,
+  JitsiSessionConfig,
 } from '../types';
 
 export interface QueueStats {
@@ -249,6 +251,54 @@ export const integracionesApi = {
   }, sucursal_id?: number | null): Promise<{ success: boolean; dispatched_count: number; message: string }> => {
     const params = sucursal_id ? `?sucursal_id=${sucursal_id}` : '';
     const res = await client.post(`/integraciones/whatsapp/broadcast/dispatch${params}`, data);
+    return res.data;
+  },
+
+  // Jitsi Meet — Motor Principal WorkSpace & Telemedicina
+  updateJitsi: async (data: {
+    jitsi_active: boolean;
+    jitsi_provider: 'public' | 'self_hosted' | 'jaas';
+    jitsi_domain: string;
+    jitsi_app_id?: string | null;
+    jitsi_jwt_secret?: string | null;
+    jitsi_key_id?: string | null;
+    jitsi_room_prefix?: string;
+    jitsi_lobby_enabled: boolean;
+    jitsi_recording_enabled: boolean;
+    jitsi_e2ee_enabled: boolean;
+    telemedicina_requiere_pago: boolean;
+    telemedicina_consentimiento_texto?: string | null;
+  }): Promise<IntegracionesConfig> => {
+    const res = await client.put<IntegracionesConfig>('/integraciones/jitsi', data);
+    return res.data;
+  },
+
+  diagnoseJitsi: async (): Promise<JitsiDiagnostic> => {
+    const res = await client.get<JitsiDiagnostic>('/integraciones/jitsi/diagnostic');
+    return res.data;
+  },
+
+  generateJitsiSecret: async (): Promise<{ jitsi_app_id: string; jitsi_jwt_secret: string }> => {
+    const res = await client.post<{ jitsi_app_id: string; jitsi_jwt_secret: string }>(
+      '/integraciones/jitsi/generate-secret'
+    );
+    return res.data;
+  },
+
+  createJitsiSession: async (data?: {
+    context_type?: 'test' | 'workspace' | 'teleconsulta' | 'interconsulta';
+    reference_id?: number | null;
+    custom_room?: string | null;
+    subject?: string | null;
+    as_moderator?: boolean;
+  }): Promise<JitsiSessionConfig> => {
+    const res = await client.post<JitsiSessionConfig>('/integraciones/jitsi/session', {
+      context_type: data?.context_type || 'workspace',
+      reference_id: data?.reference_id ?? null,
+      custom_room: data?.custom_room ?? null,
+      subject: data?.subject ?? null,
+      as_moderator: data?.as_moderator ?? true,
+    });
     return res.data;
   },
 };

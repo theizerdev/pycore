@@ -84,7 +84,17 @@ import {
   Eye,
   Droplet,
   Download,
+  Video,
+  Minimize2,
+  Maximize2,
+  Columns2,
+  PhoneOff,
+
+  X,
 } from 'lucide-react';
+
+import { JitsiMeetingEmbed } from '../../components/telemedicina/JitsiMeetingEmbed';
+import type { JitsiSessionConfig } from '../../types';
 
 interface ConsultaAtencionPageProps {
   readOnly?: boolean;
@@ -503,6 +513,55 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const handleAbrirImpresion = (tipo: TipoDocumentoClinico = 'informe') => {
     setDocumentoInicialImpresion(tipo);
     setImpresionModalOpen(true);
+  };
+
+  // ── ESTADOS DE VIDEOCONSULTA JITSI MEET (TELEMEDICINA WORKSPACE) ──
+  const [jitsiSession, setJitsiSession] = useState<JitsiSessionConfig | null>(null);
+  const [jitsiActive, setJitsiActive] = useState<boolean>(false);
+  const [jitsiLoading, setJitsiLoading] = useState<boolean>(false);
+  const [jitsiViewMode, setJitsiViewMode] = useState<'split' | 'pip' | 'modal'>('split');
+
+  const isTelemedicina = Boolean(
+    consulta?.cita?.modalidad === 'telemedicina' ||
+    consulta?.cita?.sala_virtual_id
+  );
+
+  const handleToggleJitsi = async () => {
+    if (jitsiActive) {
+      setJitsiActive(false);
+      return;
+    }
+
+    if (jitsiSession) {
+      setJitsiActive(true);
+      return;
+    }
+
+    if (!consulta) return;
+
+    setJitsiLoading(true);
+    try {
+      const session = await consultasApi.crearSesionTeleconsulta(consulta.id);
+      setJitsiSession(session);
+      setJitsiActive(true);
+      setJitsiViewMode('split');
+      toast.success('Cabina de telemedicina conectada', {
+        description: `Sala: ${session.room_name} • Modo Moderador`,
+      });
+    } catch (err: any) {
+      console.error('Error abriendo videoconsulta:', err);
+      toast.error(err.response?.data?.detail || 'No se pudo inicializar la sala de videoconsulta');
+    } finally {
+      setJitsiLoading(false);
+    }
+  };
+
+  const handleHangupJitsi = (durationSeconds: number) => {
+    toast.info('Llamada de teleconsulta finalizada', {
+      description: `Duración: ${Math.floor(durationSeconds / 60)} min ${durationSeconds % 60} seg`,
+    });
+    setJitsiActive(false);
+    setJitsiSession(null);
   };
 
   // ── ESTADOS DE LA CONSULTA MÉDICA ──
@@ -1223,6 +1282,38 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 <span>{saving ? 'Guardando...' : 'Guardar Borrador'}</span>
               </Button>
             )}
+
+            {/* ── BOTÓN DE TELEMEDICINA JITSI MEET ── */}
+            <Button
+              variant={jitsiActive ? 'default' : isTelemedicina ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleToggleJitsi}
+              disabled={jitsiLoading}
+              className={`gap-1.5 h-9 font-semibold cursor-pointer ${
+                jitsiActive
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
+                  : isTelemedicina
+                  ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-xs'
+                  : 'text-sky-600 dark:text-sky-400 border-sky-500/30 hover:bg-sky-50 dark:hover:bg-sky-950/30'
+              }`}
+            >
+              <Video className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {jitsiLoading
+                  ? 'Conectando...'
+                  : jitsiActive
+                  ? 'Ocultar Cabina'
+                  : isTelemedicina
+                  ? 'Videoconsulta Jitsi'
+                  : 'Iniciar Video'}
+              </span>
+              <span className="sm:hidden">Video</span>
+              {isTelemedicina && !jitsiActive && (
+                <span className="size-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+              )}
+            </Button>
+
+
           </div>
         </div>
 
@@ -1248,6 +1339,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                     {consulta.codigo && (
                       <Badge variant="outline" className="text-xs font-mono bg-muted/50">
                         {consulta.codigo}
+                      </Badge>
+                    )}
+
+                    {isTelemedicina && (
+                      <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30 font-bold gap-1">
+                        <Video className="h-3 w-3 text-sky-600" />
+                        Telemedicina Online
+                      </Badge>
+                    )}
+                    {Boolean(consulta.cita?.paciente_conectado_at) && (
+                      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold gap-1">
+                        <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Paciente en Sala Virtual
                       </Badge>
                     )}
 
@@ -1504,7 +1608,89 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         )}
       </div>
 
-      {/* ── BARRA DE PROGRESO DE LOS PASOS CONFIGURADOS ── */}
+      {/* ── CONTENEDOR PRINCIPAL: HISTORIA CLÍNICA & DOCK DE TELEMEDICINA JITSI MEET ── */}
+      <div
+        className={cn(
+          'transition-all duration-300',
+          jitsiActive && jitsiSession && jitsiViewMode === 'split'
+            ? 'grid grid-cols-1 lg:grid-cols-12 gap-6 items-start'
+            : 'space-y-6'
+        )}
+      >
+        {/* CABINA JITSI EN MODO SPLIT-SCREEN (COLUMNA IZQUIERDA) */}
+        {jitsiActive && jitsiSession && jitsiViewMode === 'split' && (
+          <div className="lg:col-span-5 sticky top-20 z-20 space-y-2">
+            <Card className="border-2 border-sky-500/60 shadow-xl overflow-hidden bg-slate-950 flex flex-col h-[640px] rounded-2xl">
+              {/* Barra superior de la cabina */}
+              <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="size-7 rounded-lg bg-sky-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                    <Video className="size-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold block truncate">
+                      Cabina de Telemedicina
+                    </span>
+                    <span className="text-[10px] text-slate-400 block truncate">
+                      {consulta.paciente
+                        ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}`
+                        : 'Paciente'} • Moderador
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setJitsiViewMode('pip')}
+                    className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    title="Minimizar a Ventana Flotante (PiP)"
+                  >
+                    <Minimize2 className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setJitsiViewMode('modal')}
+                    className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    title="Maximizar a Pantalla Completa"
+                  >
+                    <Maximize2 className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setJitsiActive(false)}
+                    className="size-7 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 cursor-pointer"
+                    title="Cerrar Cabina"
+                  >
+                    <PhoneOff className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Jitsi Meet Embebido */}
+              <div className="flex-1 w-full min-h-0 bg-black">
+                <JitsiMeetingEmbed
+                  session={jitsiSession}
+                  className="w-full h-full"
+                  onHangup={handleHangupJitsi}
+                />
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* COLUMNA CLÍNICA (DERECHA EN SPLIT, 100% EN NORMAL/PIP) */}
+        <div
+          className={cn(
+            jitsiActive && jitsiSession && jitsiViewMode === 'split'
+              ? 'lg:col-span-7 min-w-0 space-y-6'
+              : 'space-y-6'
+          )}
+        >
+          {/* ── BARRA DE PROGRESO DE LOS PASOS CONFIGURADOS ── */}
       <Card className="border-border/80 shadow-xs overflow-hidden">
         <CardContent className="p-3">
           <div className="flex items-center justify-between overflow-x-auto gap-2">
@@ -3161,6 +3347,8 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
               </Button>
             )}
 
+
+
             {!isLastStep && nextStep !== null ? (
               <Button
                 type="button"
@@ -3195,6 +3383,120 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
           </div>
         </div>
       </div>
+
+        </div>
+      </div>
+
+      {/* ── CABINA JITSI FLOTANTE (MODO PICTURE-IN-PICTURE / PiP) ── */}
+      {jitsiActive && jitsiSession && jitsiViewMode === 'pip' && (
+        <div className="fixed bottom-4 right-4 z-50 w-[420px] max-w-[calc(100vw-2rem)] h-[300px] shadow-2xl rounded-2xl border-2 border-sky-500/60 bg-slate-950 overflow-hidden flex flex-col animate-in slide-in-from-bottom-6">
+          <div className="p-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="size-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-xs font-bold truncate">
+                Telemedicina • {consulta.paciente ? consulta.paciente.nombres : 'Paciente'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setJitsiViewMode('split')}
+                className="size-6 text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
+                title="Dividir Pantalla con Historia Clínica"
+              >
+                <Columns2 className="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setJitsiViewMode('modal')}
+                className="size-6 text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
+                title="Maximizar Pantalla Completa"
+              >
+                <Maximize2 className="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setJitsiActive(false)}
+                className="size-6 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 cursor-pointer"
+                title="Cerrar"
+              >
+                <PhoneOff className="size-3" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 w-full min-h-0 bg-black">
+            <JitsiMeetingEmbed
+              session={jitsiSession}
+              className="w-full h-full"
+              onHangup={handleHangupJitsi}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── CABINA JITSI MODAL COMPLETO (MODO EXAMEN DETALLADO) ── */}
+      {jitsiActive && jitsiSession && jitsiViewMode === 'modal' && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full h-[90vh] max-w-6xl rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-2xl flex flex-col">
+            <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="size-7 rounded-lg bg-sky-600 flex items-center justify-center text-white shrink-0">
+                  <Video className="size-3.5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold">
+                    Videoconsulta Médica • Pantalla Completa
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    {consulta.paciente
+                      ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}`
+                      : 'Paciente'} • {consulta.especialidad?.nombre}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setJitsiViewMode('split')}
+                  className="h-7 text-xs text-slate-300 hover:text-white hover:bg-slate-800 gap-1.5 cursor-pointer"
+                >
+                  <Columns2 className="size-3.5" />
+                  <span>Dividir Pantalla</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setJitsiViewMode('pip')}
+                  className="h-7 text-xs text-slate-300 hover:text-white hover:bg-slate-800 gap-1.5 cursor-pointer"
+                >
+                  <Minimize2 className="size-3.5" />
+                  <span>Ventana Flotante (PiP)</span>
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setJitsiActive(false)}
+                  className="h-7 text-xs gap-1 ml-2 cursor-pointer"
+                >
+                  <X className="size-3.5" />
+                  <span>Cerrar</span>
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 w-full min-h-0 bg-black">
+              <JitsiMeetingEmbed
+                session={jitsiSession}
+                className="w-full h-full"
+                onHangup={handleHangupJitsi}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL DE IMPRESIÓN DE DOCUMENTOS CLÍNICOS ── */}
       <DocumentosImpresionModal

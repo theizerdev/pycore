@@ -28,6 +28,12 @@ async def run_citas_migrations():
                 ("metodo_pago", "VARCHAR(50) NULL"),
                 ("es_sobreturno", "BOOLEAN DEFAULT 0"),
                 ("motivo_sobreturno", "VARCHAR(255) NULL"),
+                ("modalidad", "VARCHAR(30) DEFAULT 'presencial'"),
+                ("sala_virtual_id", "VARCHAR(120) NULL"),
+                ("teleconsulta_token", "VARCHAR(64) NULL"),
+                ("paciente_conectado_at", "DATETIME NULL"),
+                ("link_teleconsulta_enviado", "BOOLEAN DEFAULT 0"),
+                ("link_teleconsulta_enviado_at", "DATETIME NULL"),
                 ("recordatorio_enviado", "BOOLEAN DEFAULT 0"),
                 ("recordatorio_enviado_at", "DATETIME NULL"),
             ]
@@ -40,6 +46,18 @@ async def run_citas_migrations():
             # Columnas para empresas
             empresas_columns = [
                 ("moneda_principal", "VARCHAR(10) DEFAULT 'USD'"),
+                ("jitsi_active", "BOOLEAN DEFAULT 1"),
+                ("jitsi_provider", "VARCHAR(30) DEFAULT 'public'"),
+                ("jitsi_domain", "VARCHAR(255) DEFAULT 'meet.jit.si'"),
+                ("jitsi_app_id", "VARCHAR(255) NULL"),
+                ("jitsi_jwt_secret", "TEXT NULL"),
+                ("jitsi_key_id", "VARCHAR(255) NULL"),
+                ("jitsi_room_prefix", "VARCHAR(50) DEFAULT 'medisoft'"),
+                ("jitsi_lobby_enabled", "BOOLEAN DEFAULT 1"),
+                ("jitsi_recording_enabled", "BOOLEAN DEFAULT 0"),
+                ("jitsi_e2ee_enabled", "BOOLEAN DEFAULT 0"),
+                ("telemedicina_requiere_pago", "BOOLEAN DEFAULT 1"),
+                ("telemedicina_consentimiento_texto", "TEXT NULL"),
             ]
 
             if dialect_name == "mysql":

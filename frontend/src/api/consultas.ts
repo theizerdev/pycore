@@ -1,4 +1,5 @@
 import api from './client';
+import type { JitsiSessionConfig } from '../types';
 
 export interface PacienteMini {
   id: number;
@@ -64,6 +65,10 @@ export interface CitaMini {
   hora_fin?: string;
   estado?: string;
   motivo?: string;
+  modalidad?: 'presencial' | 'telemedicina';
+  sala_virtual_id?: string | null;
+  teleconsulta_token?: string | null;
+  paciente_conectado_at?: string | null;
   servicio?: {
     id?: number;
     nombre?: string;
@@ -259,6 +264,15 @@ export const consultasApi = {
 
   getOdontogramasPaciente: async (pacienteId: number): Promise<PrimerOdontogramaInfo[]> => {
     const response = await api.get<PrimerOdontogramaInfo[]>(`/consultas/paciente/${pacienteId}/odontogramas`);
+    return response.data;
+  },
+
+  crearSesionTeleconsulta: async (id: number): Promise<JitsiSessionConfig> => {
+    const response = await api.post<JitsiSessionConfig>(
+      `/consultas/${id}/teleconsulta-sesion`,
+      {},
+      { timeout: 15000 }
+    );
     return response.data;
   },
 };

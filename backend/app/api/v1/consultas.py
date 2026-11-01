@@ -17,7 +17,11 @@ from app.models.preconsulta import Preconsulta
 from app.models.paciente import Paciente
 from app.models.medico import Medico
 from app.models.especialidad import Especialidad
+from app.models.empresa import Empresa
 from app.models.auditoria import AuditoriaLog
+from app.schemas.integracion import JitsiSessionResponse
+from app.services.jitsi_service import JitsiService
+from app.services.plan_quota_service import PlanQuotaService
 from app.schemas.consulta import (
     ConsultaCreate,
     ConsultaUpdate,
@@ -647,3 +651,100 @@ async def update_consulta(
     await db.commit()
 
     return await get_consulta(consulta.id, db, current_user)
+
+
+@router.post("/{id}/teleconsulta-sesion", response_model=JitsiSessionResponse)
+async def crear_sesion_teleconsulta_consulta(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("consultas.ver")),
+):
+    """
+    Genera la sesión firmada de Jitsi Meet (Moderador) para el médico directamente
+    desde la atención de la Consulta Médica. Si tiene cita vinculada, usa la misma sala virtual.
+    """
+    stmt = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.paciente),
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad),
+            selectinload(ConsultaMedica.empresa),
+            selectinload(ConsultaMedica.cita),
+        )
+        .where(ConsultaMedica.id == id)
+    )
+    if not current_user.es_superadmin:
+        stmt = stmt.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        stmt = stmt.where(ConsultaMedica.medico_id == doctor_auto_id)
+
+    res = await db.execute(stmt)
+    consulta = res.scalar_one_or_none()
+    if not consulta:
+        raise HTTPException(status_code=404, detail="Consulta médica no encontrada")
+
+    empresa = consulta.empresa
+    if not empresa:
+        empresa = await db.get(Empresa, consulta.empresa_id)
+
+    if not empresa or not getattr(empresa, "jitsi_active", True):
+        raise HTTPException(
+            status_code=400,
+            detail="El motor de videoconsulta Jitsi Meet está inactivo en Integraciones.",
+        )
+
+    await PlanQuotaService.check_telemedicina_access(db, consulta.empresa_id)
+
+    # Si tiene cita vinculada de telemedicina, asegurar credenciales de la cita
+    custom_room = None
+    if consulta.cita:
+        JitsiService.ensure_cita_credentials(consulta.cita, empresa)
+        custom_room = consulta.cita.sala_virtual_id
+        await db.commit()
+
+    pac_nombre = (
+        f"{consulta.paciente.nombres} {consulta.paciente.apellidos}".strip()
+        if consulta.paciente
+        else "Paciente"
+    )
+    esp_nombre = consulta.especialidad.nombre if consulta.especialidad else "Consulta Médica"
+
+    if consulta.medico and current_user.id == consulta.medico.usuario_id:
+        display_name = f"Dr(a). {consulta.medico.nombres} {consulta.medico.apellidos}".strip()
+    else:
+        display_name = f"{current_user.nombre} {current_user.apellido or ''}".strip() or current_user.email
+
+    jitsi = JitsiService.from_empresa(empresa)
+    session_data = jitsi.build_session(
+        user_id=str(current_user.id),
+        display_name=display_name,
+        email=current_user.email,
+        avatar_url=getattr(current_user, "avatar_url", None),
+        is_moderator=True,
+        context_type="consulta",
+        reference_id=consulta.id,
+        custom_room=custom_room,
+        subject=f"Consulta #{consulta.codigo or consulta.id} • {pac_nombre} ({esp_nombre})",
+    )
+
+    db.add(
+        AuditoriaLog(
+            empresa_id=consulta.empresa_id,
+            usuario_id=current_user.id,
+            accion="INICIAR_CABINA_TELECONSULTA_MEDICO",
+            modulo="telemedicina",
+            detalles={
+                "consulta_id": consulta.id,
+                "sala_virtual_id": custom_room or session_data.get("room_slug"),
+                "paciente_id": consulta.paciente_id,
+                "provider": session_data.get("provider"),
+            },
+        )
+    )
+    await db.commit()
+
+    return JitsiSessionResponse(**session_data)
+

@@ -150,6 +150,7 @@ export const AgendaCalendarioPage: React.FC = () => {
   const [selectedMedico, setSelectedMedico] = useState<string>('all');
   const [selectedEspecialidad, setSelectedEspecialidad] = useState<string>('all');
   const [selectedEstado, setSelectedEstado] = useState<string>('all');
+  const [selectedModalidad, setSelectedModalidad] = useState<string>('all');
   const [filtroPuntualidad, setFiltroPuntualidad] = useState<
     'all' | 'paciente_retrasado' | 'doctor_retrasado' | 'alertas'
   >('all');
@@ -435,6 +436,7 @@ export const AgendaCalendarioPage: React.FC = () => {
         return false;
       }
       if (selectedEstado !== 'all' && c.estado !== selectedEstado) return false;
+      if (selectedModalidad !== 'all' && (c.modalidad || 'presencial') !== selectedModalidad) return false;
 
       if (filtroPuntualidad !== 'all') {
         const p = evaluarPuntualidadCita(c, currentTime);
@@ -804,6 +806,7 @@ export const AgendaCalendarioPage: React.FC = () => {
     setSelectedEspecialidad('all');
     setSelectedSucursal('all');
     setSelectedEstado('all');
+    setSelectedModalidad('all');
     setFiltroPuntualidad('all');
     updatePref('showCancelled', true);
   };
@@ -839,6 +842,8 @@ export const AgendaCalendarioPage: React.FC = () => {
         onSelectedSucursalChange={setSelectedSucursal}
         selectedEstado={selectedEstado}
         onSelectedEstadoChange={setSelectedEstado}
+        selectedModalidad={selectedModalidad}
+        onSelectedModalidadChange={setSelectedModalidad}
         filtroPuntualidad={filtroPuntualidad}
         onFiltroPuntualidadChange={setFiltroPuntualidad}
         showCancelled={prefs.showCancelled}

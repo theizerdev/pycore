@@ -76,6 +76,10 @@ class CitaMini(BaseModel):
     hora_fin: Optional[str] = None
     estado: Optional[str] = None
     motivo: Optional[str] = None
+    modalidad: Optional[str] = "presencial"
+    sala_virtual_id: Optional[str] = None
+    teleconsulta_token: Optional[str] = None
+    paciente_conectado_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

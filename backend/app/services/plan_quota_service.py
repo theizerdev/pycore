@@ -122,3 +122,70 @@ class PlanQuotaService:
                     f"Tu plan '{plan_nombre}' ha llegado al tope mensual. Actualiza tu plan para aumentar la cuota de mensajería."
                 )
             )
+
+    @staticmethod
+    async def check_telemedicina_access(db: AsyncSession, empresa_id: int) -> None:
+        """
+        Verifica si la empresa cuenta con suscripción activa y acceso al módulo
+        de Telemedicina y MediSoft WorkSpace (Jitsi Meet).
+        """
+        stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
+        res_emp = await db.execute(stmt_emp)
+        empresa = res_emp.scalar_one_or_none()
+
+        if not empresa or empresa.is_exempt_from_subscription():
+            return
+
+        if empresa.plan_estado == "vencido":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Suscripción vencida. Actualice su suscripción en Planes & Facturación para utilizar el módulo de Telemedicina y videoconsultas en vivo.",
+            )
+
+        plan = empresa.plan
+        if plan and plan.modulos_permitidos:
+            modulos = [str(m).lower() for m in plan.modulos_permitidos]
+            if (
+                "telemedicina" not in modulos
+                and "workspace" not in modulos
+                and "*" not in modulos
+                and "todos" not in modulos
+            ):
+                plan_nombre = plan.nombre or "Plan Básico"
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        f"El módulo de Telemedicina y WorkSpace no está habilitado en tu plan actual ('{plan_nombre}'). "
+                        "Para activar videoconsultas médicas encriptadas Jitsi Meet y comités en vivo, actualiza a un plan superior en Planes & Facturación."
+                    ),
+                )
+
+    @staticmethod
+    async def get_telemedicina_stats(db: AsyncSession, empresa_id: int) -> dict:
+        """Retorna estadísticas de consumo mensual de telemedicina para monitoreo."""
+        from app.models.cita import CitaMedica
+        now = datetime.now()
+        first_day_month = datetime(now.year, now.month, 1)
+
+        stmt_count = select(func.count(CitaMedica.id)).where(
+            CitaMedica.empresa_id == empresa_id,
+            CitaMedica.modalidad == "telemedicina",
+            CitaMedica.created_at >= first_day_month,
+        )
+        res = await db.execute(stmt_count)
+        total_mes = res.scalar() or 0
+
+        stmt_con = select(func.count(CitaMedica.id)).where(
+            CitaMedica.empresa_id == empresa_id,
+            CitaMedica.modalidad == "telemedicina",
+            CitaMedica.paciente_conectado_at.is_not(None),
+            CitaMedica.created_at >= first_day_month,
+        )
+        res_con = await db.execute(stmt_con)
+        total_conectadas = res_con.scalar() or 0
+
+        return {
+            "teleconsultas_mes": total_mes,
+            "teleconsultas_conectadas": total_conectadas,
+            "periodo": f"{now.strftime('%B %Y')}",
+        }

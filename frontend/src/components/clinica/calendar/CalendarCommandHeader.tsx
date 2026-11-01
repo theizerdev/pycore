@@ -66,6 +66,8 @@ interface CalendarCommandHeaderProps {
   onSelectedSucursalChange: (v: string) => void;
   selectedEstado: string;
   onSelectedEstadoChange: (v: string) => void;
+  selectedModalidad?: string;
+  onSelectedModalidadChange?: (v: string) => void;
   filtroPuntualidad: 'all' | 'paciente_retrasado' | 'doctor_retrasado' | 'alertas';
   onFiltroPuntualidadChange: (
     v: 'all' | 'paciente_retrasado' | 'doctor_retrasado' | 'alertas'
@@ -133,6 +135,8 @@ export const CalendarCommandHeader: React.FC<CalendarCommandHeaderProps> = ({
   onSelectedSucursalChange,
   selectedEstado,
   onSelectedEstadoChange,
+  selectedModalidad = 'all',
+  onSelectedModalidadChange,
   filtroPuntualidad,
   onFiltroPuntualidadChange,
   showCancelled,
@@ -169,6 +173,7 @@ export const CalendarCommandHeader: React.FC<CalendarCommandHeaderProps> = ({
     selectedEspecialidad !== 'all',
     selectedSucursal !== 'all',
     selectedEstado !== 'all',
+    selectedModalidad !== 'all',
     filtroPuntualidad !== 'all',
     !showCancelled,
     Boolean(searchQuery.trim()),
@@ -549,6 +554,25 @@ export const CalendarCommandHeader: React.FC<CalendarCommandHeaderProps> = ({
                     <SelectItem value="atendida">Atendidas</SelectItem>
                     <SelectItem value="no_asistio">No Asistió</SelectItem>
                     <SelectItem value="cancelada">Canceladas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10.5px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Modalidad
+                </label>
+                <Select
+                  value={selectedModalidad}
+                  onValueChange={(v) => onSelectedModalidadChange?.(v)}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    <SelectItem value="presencial">🏥 Presencial</SelectItem>
+                    <SelectItem value="telemedicina">📹 Telemedicina</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

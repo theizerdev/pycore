@@ -438,6 +438,18 @@ class CajaService:
             if cita:
                 cita.estado_pago = "pagado"
                 cita.metodo_pago = data.pagos[0].metodo if len(data.pagos) == 1 else "mixto"
+                if (
+                    (getattr(cita, "modalidad", "presencial") or "presencial") == "telemedicina"
+                    and not getattr(cita, "link_teleconsulta_enviado", False)
+                ):
+                    try:
+                        from app.services.jitsi_service import JitsiService
+                        await JitsiService.dispatch_teleconsulta_magic_link(db, cita)
+                    except Exception as tele_err:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            f"No se pudo enviar link automático de teleconsulta tras cobro POS de cita #{cita.id}: {tele_err}"
+                        )
 
         # 8. Si está vinculado a una Consulta Médica (o la cita tiene consulta vinculada), marcar como pagada
         consulta_obj = None

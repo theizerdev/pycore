@@ -32,6 +32,15 @@ class CitaMedica(Base, TimestampMixin):
     es_sobreturno = Column(Boolean, default=False, nullable=False)
     motivo_sobreturno = Column(String(255), nullable=True)
 
+    # Modalidad de Atención & MediSoft WorkSpace (Telemedicina Jitsi)
+    # 'presencial' | 'telemedicina'
+    modalidad = Column(String(30), default="presencial", nullable=False, index=True)
+    sala_virtual_id = Column(String(120), nullable=True)
+    teleconsulta_token = Column(String(64), unique=True, nullable=True, index=True)
+    paciente_conectado_at = Column(DateTime, nullable=True)
+    link_teleconsulta_enviado = Column(Boolean, default=False, nullable=False)
+    link_teleconsulta_enviado_at = Column(DateTime, nullable=True)
+
     # Estado del flujo: 'programada', 'confirmada', 'sala_espera', 'en_consulta', 'atendida', 'cancelada', 'no_asistio'
     estado = Column(String(30), default="programada", nullable=False, index=True)
     motivo_cancelacion = Column(String(255), nullable=True)

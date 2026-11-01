@@ -65,9 +65,11 @@ const DoctoresPage = lazyComponent(() => import('./pages/clinica/DoctoresPage'),
 const PacientesPage = lazyComponent(() => import('./pages/clinica/PacientesPage'), 'PacientesPage');
 const AgendaCalendarioPage = lazyComponent(() => import('./pages/clinica/AgendaCalendarioPage'), 'AgendaCalendarioPage');
 const PreconsultaPublicPage = lazyComponent(() => import('./pages/clinica/PreconsultaPublicPage'), 'PreconsultaPublicPage');
+const TeleconsultaPublicPage = lazyComponent(() => import('./pages/clinica/TeleconsultaPublicPage'), 'TeleconsultaPublicPage');
 const TurneroPantallaPage = lazyComponent(() => import('./pages/clinica/TurneroPantallaPage'), 'TurneroPantallaPage');
 const ConsultasPage = lazyComponent(() => import('./pages/clinica/ConsultasPage'), 'ConsultasPage');
 const ConsultaAtencionPage = lazyComponent<{ readOnly?: boolean }>(() => import('./pages/clinica/ConsultaAtencionPage'), 'ConsultaAtencionPage');
+const WorkSpaceHubPage = lazyComponent(() => import('./pages/clinica/WorkSpaceHubPage'), 'WorkSpaceHubPage');
 const ServiciosPage = lazyComponent(() => import('./pages/administracion/ServiciosPage'), 'ServiciosPage');
 const LandingPage = lazyComponent(() => import('./pages/public/LandingPage'), 'LandingPage');
 const LandingCmsPage = lazyComponent(() => import('./pages/administracion/LandingCmsPage'), 'LandingCmsPage');
@@ -103,6 +105,7 @@ export const App: React.FC = () => {
             <Route path="/verify-whatsapp" element={<Login initialView="verify-whatsapp" />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/preconsulta/:token" element={<PreconsultaPublicPage />} />
+            <Route path="/teleconsulta/:token" element={<TeleconsultaPublicPage />} />
             <Route path="/turnero/:codigoSucursal" element={<TurneroPantallaPage />} />
 
             {/* Rutas Protegidas dentro de AdminLayout */}
@@ -164,6 +167,22 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredPermission="consultas.atendidas">
                     <ConsultaAtencionPage readOnly={true} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="workspace"
+                element={
+                  <ProtectedRoute>
+                    <WorkSpaceHubPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/workspace"
+                element={
+                  <ProtectedRoute>
+                    <WorkSpaceHubPage />
                   </ProtectedRoute>
                 }
               />

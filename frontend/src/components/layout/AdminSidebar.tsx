@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   Receipt,
   CircleDollarSign,
+  Video,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -180,6 +181,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           href: '/clinica/consultas/atendidas',
           icon: CheckCircle2,
           permission: 'consultas.atendidas',
+        },
+        {
+          title: 'WorkSpace Telemedicina',
+          href: '/workspace',
+          icon: Video,
+          badge: 'Jitsi',
         },
       ],
     },
