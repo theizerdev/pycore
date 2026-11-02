@@ -84,6 +84,8 @@ export const HonorariosMedicosPage: React.FC = () => {
   // Modal de Liquidación
   const [modalLiquidarOpen, setModalLiquidarOpen] = useState(false);
   const [liquidando, setLiquidando] = useState(false);
+  const [aplicarISLR, setAplicarISLR] = useState(true);
+  const [porcentajeISLR, setPorcentajeISLR] = useState<number>(3);
   const [montoDeduccion, setMontoDeduccion] = useState<number>(0);
   const [motivoDeduccion, setMotivoDeduccion] = useState('');
   const [marcarComoPagado, setMarcarComoPagado] = useState(false);
@@ -182,6 +184,9 @@ export const HonorariosMedicosPage: React.FC = () => {
       setResumenCalculo(data);
       // Por defecto, preseleccionar todos los cobros pendientes
       setSelectedCobrosIds(data.cobros_pendientes.map((c) => c.cobro_id));
+      const docTipo = (data.medico?.documento || '').charAt(0).toUpperCase();
+      setPorcentajeISLR(docTipo === 'J' || docTipo === 'G' ? 5.0 : 3.0);
+      setAplicarISLR(true);
       if (data.cobros_pendientes.length === 0) {
         toast.info('No se encontraron cobros pendientes en el rango de fechas seleccionado.');
       } else {
@@ -217,10 +222,11 @@ export const HonorariosMedicosPage: React.FC = () => {
   const subtotalRecaudadoSelected = selectedItems.reduce((acc, c) => acc + c.monto_total_usd, 0);
   const subtotalHonorariosSelected = selectedItems.reduce((acc, c) => acc + c.honorario_medico_usd, 0);
   const subtotalRetencionSelected = selectedItems.reduce((acc, c) => acc + c.retencion_clinica_usd, 0);
-  const netoPagarFinalUSD = Math.max(0, subtotalHonorariosSelected - (montoDeduccion || 0));
-  const netoPagarFinalVES = resumenCalculo
-    ? Math.round(netoPagarFinalUSD * resumenCalculo.tasa_bcv * 100) / 100
-    : 0;
+  const tasaBCV = resumenCalculo?.tasa_bcv || 1;
+  const retencionISLRUSD = aplicarISLR ? Math.round(subtotalHonorariosSelected * (porcentajeISLR / 100) * 100) / 100 : 0;
+  const retencionISLRVES = Math.round(retencionISLRUSD * tasaBCV * 100) / 100;
+  const netoPagarFinalUSD = Math.max(0, subtotalHonorariosSelected - retencionISLRUSD - (montoDeduccion || 0));
+  const netoPagarFinalVES = Math.round(netoPagarFinalUSD * tasaBCV * 100) / 100;
 
   // Abrir modal de configuración de comisiones
   const handleOpenConfigModal = () => {
@@ -278,6 +284,8 @@ export const HonorariosMedicosPage: React.FC = () => {
         periodo_desde: fechaDesde,
         periodo_hasta: fechaHasta,
         cobros_ids: selectedCobrosIds,
+        aplicar_retencion_islr: aplicarISLR,
+        porcentaje_retencion_islr: aplicarISLR ? porcentajeISLR : 0,
         monto_deducciones_usd: montoDeduccion,
         motivo_deduccion: motivoDeduccion.trim() || undefined,
         metodo_pago: metodoPago,
@@ -958,6 +966,83 @@ export const HonorariosMedicosPage: React.FC = () => {
                   {formatUSD(subtotalHonorariosSelected)}
                 </strong>
               </div>
+            </div>
+
+            {/* Retención Legal de ISLR (Decreto 1.808 Ley Venezolana) */}
+            <div className="p-3.5 rounded-xl border border-border/80 bg-muted/20 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={aplicarISLR}
+                    onChange={(e) => setAplicarISLR(e.target.checked)}
+                    className="rounded border-border text-teal-600 focus:ring-teal-500"
+                  />
+                  <span className="font-bold text-foreground flex items-center gap-1.5 text-xs">
+                    <ShieldCheck className="size-4 text-teal-600" />
+                    Retención de ISLR (Decreto N° 1.808)
+                  </span>
+                </label>
+                <Badge variant="outline" className="text-[10px] font-mono border-teal-500/30 text-teal-600 bg-teal-500/5">
+                  Agente de Retención SENIAT
+                </Badge>
+              </div>
+
+              {aplicarISLR && (
+                <div className="pt-2 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground font-semibold">
+                      Tasa de Retención ISLR
+                    </Label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={porcentajeISLR}
+                        onChange={(e) => setPorcentajeISLR(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="h-8 text-xs font-mono w-20"
+                      />
+                      <span className="text-xs font-bold text-muted-foreground">%</span>
+                      <div className="flex gap-1 ml-1">
+                        <button
+                          type="button"
+                          onClick={() => setPorcentajeISLR(3.0)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                            porcentajeISLR === 3
+                              ? 'bg-teal-600 text-white border-teal-600'
+                              : 'bg-background border-border text-muted-foreground'
+                          }`}
+                        >
+                          3% PN
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPorcentajeISLR(5.0)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                            porcentajeISLR === 5
+                              ? 'bg-teal-600 text-white border-teal-600'
+                              : 'bg-background border-border text-muted-foreground'
+                          }`}
+                        >
+                          5% PJ
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-0.5 sm:text-right font-mono">
+                    <span className="text-[11px] text-muted-foreground block">Impuesto Retenido:</span>
+                    <span className="font-bold text-rose-600 dark:text-rose-400 block text-xs">
+                      - {formatUSD(retencionISLRUSD)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      - {formatVES(retencionISLRVES)}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Deducciones */}

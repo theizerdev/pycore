@@ -15,6 +15,7 @@ from app.models.honorario import LiquidacionHonorario
 from app.models.tasa_cambio import TasaCambio
 from app.models.auditoria import AuditoriaLog
 from app.schemas.honorario import (
+    ComprobanteRetencionISLRResponse,
     ConfiguracionComisionMedicoUpdate,
     ResumenCalculoHonorariosResponse,
     MedicoMiniHonorario,
@@ -158,6 +159,15 @@ async def resumen_calculo_honorarios(
     tasa_bcv = await _get_tasa_bcv(db, current_user.empresa_id)
     honorarios_ves = round(total_honorarios * tasa_bcv, 2)
 
+    # Estimación de Retención de ISLR según Ley Venezolana (Decreto N° 1.808)
+    # 3.00% para Personas Naturales (V, E) y 5.00% para Personas Jurídicas (J, G)
+    doc_tipo = (medico.tipo_documento or 'V').upper().strip()
+    pct_islr_sugerido = 5.00 if doc_tipo in ['J', 'G'] else 3.00
+    ret_islr_usd = round(total_honorarios * (pct_islr_sugerido / 100.0), 2)
+    ret_islr_ves = round(ret_islr_usd * tasa_bcv, 2)
+    neto_est_usd = max(0.0, round(total_honorarios - ret_islr_usd, 2))
+    neto_est_ves = round(neto_est_usd * tasa_bcv, 2)
+
     esp_nom = medico.especialidad.nombre if medico.especialidad else "Medicina General"
     med_doc = f"{medico.tipo_documento}-{medico.documento_identidad}" if medico.documento_identidad else None
 
@@ -182,6 +192,11 @@ async def resumen_calculo_honorarios(
         monto_retencion_clinica_usd=round(total_retencion, 2),
         tasa_bcv=tasa_bcv,
         monto_honorarios_ves=honorarios_ves,
+        porcentaje_islr_sugerido=pct_islr_sugerido,
+        monto_retencion_islr_estimado_usd=ret_islr_usd,
+        monto_retencion_islr_estimado_ves=ret_islr_ves,
+        monto_neto_estimado_usd=neto_est_usd,
+        monto_neto_estimado_ves=neto_est_ves,
         cobros_pendientes=items_calculados,
     )
 
@@ -269,14 +284,24 @@ async def liquidar_honorarios(
             "porcentaje_aplicado": pct,
         })
 
-    # Aplicar deducciones
-    deducciones = max(0.0, float(payload.monto_deducciones_usd or 0.0))
-    neto_usd = max(0.0, total_honorarios - deducciones)
+    # Determinar porcentaje de retención ISLR (Decreto N° 1.808 Ley Venezolana)
+    doc_tipo = (medico.tipo_documento or 'V').upper().strip()
+    pct_islr_defecto = 5.00 if doc_tipo in ['J', 'G'] else 3.00
+    if payload.aplicar_retencion_islr:
+        pct_islr = float(payload.porcentaje_retencion_islr if payload.porcentaje_retencion_islr is not None else pct_islr_defecto)
+    else:
+        pct_islr = 0.00
 
     tasa_bcv = await _get_tasa_bcv(db, current_user.empresa_id)
+    retencion_islr_usd = round(total_honorarios * (pct_islr / 100.0), 2)
+    retencion_islr_ves = round(retencion_islr_usd * tasa_bcv, 2)
+
+    # Aplicar deducciones e ISLR
+    deducciones = max(0.0, float(payload.monto_deducciones_usd or 0.0))
+    neto_usd = max(0.0, round(total_honorarios - retencion_islr_usd - deducciones, 2))
     neto_ves = round(neto_usd * tasa_bcv, 2)
 
-    # 4. Generar correlativo de liquidación (Ej. LIQ-2026-00001)
+    # 4. Generar correlativo de liquidación (Ej. LIQ-2026-00001) y comprobante ISLR
     year = datetime.utcnow().year
     count_res = await db.execute(
         select(func.count(LiquidacionHonorario.id)).where(
@@ -285,6 +310,8 @@ async def liquidar_honorarios(
     )
     total_liq_empresa = count_res.scalar() or 0
     codigo = f"LIQ-{year}-{(total_liq_empresa + 1):05d}"
+    mes_str = datetime.utcnow().strftime('%Y%m')
+    numero_comprobante_islr = f"{mes_str}{(total_liq_empresa + 1):08d}" if pct_islr > 0 else None
 
     # Parsear periodos
     try:
@@ -318,6 +345,10 @@ async def liquidar_honorarios(
         monto_retencion_clinica_usd=Decimal(str(round(total_retencion, 2))),
         monto_deducciones_usd=Decimal(str(round(deducciones, 2))),
         motivo_deduccion=payload.motivo_deduccion,
+        porcentaje_retencion_islr=Decimal(str(round(pct_islr, 2))),
+        monto_retencion_islr_usd=Decimal(str(round(retencion_islr_usd, 2))),
+        monto_retencion_islr_ves=Decimal(str(round(retencion_islr_ves, 2))),
+        numero_comprobante_islr=numero_comprobante_islr,
         monto_neto_pagar_usd=Decimal(str(round(neto_usd, 2))),
         monto_neto_pagar_ves=Decimal(str(round(neto_ves, 2))),
         tasa_bcv_aplicada=Decimal(str(round(tasa_bcv, 4))),
@@ -632,3 +663,95 @@ async def actualizar_configuracion_comision_medico(
         "message": f"Configuración de comisiones para el Dr(a). {medico.nombres} {medico.apellidos} actualizada con éxito.",
     }
 
+
+
+@router.get("/liquidaciones/{id}/comprobante-islr", response_model=ComprobanteRetencionISLRResponse)
+async def obtener_comprobante_retencion_islr(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_active_user),
+):
+    """
+    Genera el formato estructurado del Comprobante de Retención de ISLR
+    conforme al Decreto N° 1.808 y providencias administrativas del SENIAT.
+    """
+    q = (
+        select(LiquidacionHonorario)
+        .options(
+            selectinload(LiquidacionHonorario.medico).selectinload(Medico.especialidad),
+            selectinload(LiquidacionHonorario.empresa),
+        )
+        .where(LiquidacionHonorario.id == id)
+    )
+    if not current_user.es_superadmin:
+        q = q.where(LiquidacionHonorario.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(q)
+    liq = res.scalar_one_or_none()
+    if not liq:
+        raise HTTPException(status_code=404, detail="Liquidación de honorarios no encontrada")
+
+    empresa = liq.empresa
+    medico = liq.medico
+
+    # Generar correlativo ISLR si no tiene
+    correlativo = liq.numero_comprobante_islr
+    if not correlativo:
+        mes_str = (liq.fecha_emision or datetime.utcnow()).strftime("%Y%m")
+        correlativo = f"{mes_str}{liq.id:08d}"
+
+    # Fechas
+    fecha_dt = liq.fecha_emision or datetime.utcnow()
+    fecha_emision_str = fecha_dt.strftime("%d/%m/%Y")
+    periodo_fiscal = fecha_dt.strftime("%Y-%m")
+
+    # Importes
+    honorarios_usd = float(liq.monto_honorarios_usd or 0.0)
+    tasa = float(liq.tasa_bcv_aplicada or 1.0)
+    base_ves = round(honorarios_usd * tasa, 2)
+
+    pct_islr = float(liq.porcentaje_retencion_islr if liq.porcentaje_retencion_islr is not None else 3.0)
+    monto_ret_usd = float(liq.monto_retencion_islr_usd if liq.monto_retencion_islr_usd is not None else round(honorarios_usd * (pct_islr / 100.0), 2))
+    monto_ret_ves = float(liq.monto_retencion_islr_ves if liq.monto_retencion_islr_ves is not None else round(monto_ret_usd * tasa, 2))
+
+    neto_usd = float(liq.monto_neto_pagar_usd or 0.0)
+    neto_ves = float(liq.monto_neto_pagar_ves or 0.0)
+
+    esp_nombre = medico.especialidad.nombre if medico and medico.especialidad else "Medicina General"
+
+    return ComprobanteRetencionISLRResponse(
+        numero_comprobante=correlativo,
+        codigo_liquidacion=liq.codigo_liquidacion,
+        fecha_emision=fecha_emision_str,
+        periodo_fiscal=periodo_fiscal,
+        ejercicio_fiscal_ano=fecha_dt.year,
+        ejercicio_fiscal_mes=fecha_dt.month,
+        agente_retencion={
+            "nombre": empresa.nombre if empresa else "Centro Clínico Asistencial",
+            "rif": empresa.identificacion_fiscal if empresa else "J-00000000-0",
+            "direccion": empresa.direccion if empresa else "Venezuela",
+            "telefono": empresa.telefono if empresa else "",
+            "email": empresa.email if empresa else "",
+        },
+        sujeto_retenido={
+            "nombre": f"Dr(a). {medico.nombres} {medico.apellidos}" if medico else "Especialista",
+            "documento_tipo": medico.tipo_documento if medico else "V",
+            "documento_numero": medico.documento_identidad if medico else "",
+            "rif": f"{medico.tipo_documento}-{medico.documento_identidad}" if medico else "",
+            "especialidad": esp_nombre,
+            "licencia_medica": medico.licencia_medica if medico else "",
+            "email": medico.email if medico else "",
+            "telefono": medico.telefono if medico else "",
+        },
+        concepto="Honorarios Profesionales Médicos por atenciones y consultas de salud (Decreto 1.808 Art. 9 Num. 1)",
+        exencion_iva="Servicios Médicos Exentos de IVA según Art. 18 Numeral 3 de la Ley del IVA",
+        base_imponible_usd=round(honorarios_usd, 2),
+        tasa_bcv=round(tasa, 4),
+        base_imponible_ves=base_ves,
+        porcentaje_retencion=pct_islr,
+        monto_retenido_usd=monto_ret_usd,
+        monto_retenido_ves=monto_ret_ves,
+        monto_neto_usd=neto_usd,
+        monto_neto_ves=neto_ves,
+        fundamento_legal="Decreto N° 1.808 en materia de Retenciones de ISLR (Art. 9, Numeral 1). Servicios exentos de IVA según Art. 18 Num. 3 de la Ley del IVA.",
+    )

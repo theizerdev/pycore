@@ -36,6 +36,12 @@ class LiquidacionHonorario(Base, TimestampMixin):
     monto_deducciones_usd = Column(Numeric(12, 2), default=0.00, nullable=False)  # Insumos / retenciones / adelantos
     motivo_deduccion = Column(String(255), nullable=True)
 
+    # Retención de ISLR según normativa venezolana (Decreto N° 1.808)
+    porcentaje_retencion_islr = Column(Numeric(5, 2), default=3.00, nullable=False)  # 3% Persona Natural, 5% Persona Jurídica
+    monto_retencion_islr_usd = Column(Numeric(12, 2), default=0.00, nullable=False)
+    monto_retencion_islr_ves = Column(Numeric(12, 2), default=0.00, nullable=False)
+    numero_comprobante_islr = Column(String(50), nullable=True)  # Ej: '20261100000001'
+
     monto_neto_pagar_usd = Column(Numeric(12, 2), default=0.00, nullable=False)
     monto_neto_pagar_ves = Column(Numeric(12, 2), default=0.00, nullable=False)
     tasa_bcv_aplicada = Column(Numeric(12, 4), default=1.0000, nullable=False)

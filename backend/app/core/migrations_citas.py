@@ -52,6 +52,14 @@ async def run_citas_migrations():
                 ("liquidacion_id", "INT NULL"),
             ]
 
+            # Columnas para liquidaciones_honorarios (Marco Legal Venezolano - Decreto 1.808 ISLR)
+            liquidaciones_columns = [
+                ("porcentaje_retencion_islr", "DECIMAL(5, 2) DEFAULT 3.00"),
+                ("monto_retencion_islr_usd", "DECIMAL(12, 2) DEFAULT 0.00"),
+                ("monto_retencion_islr_ves", "DECIMAL(12, 2) DEFAULT 0.00"),
+                ("numero_comprobante_islr", "VARCHAR(50) NULL"),
+            ]
+
             # Columnas para empresas
             empresas_columns = [
                 ("moneda_principal", "VARCHAR(10) DEFAULT 'USD'"),
@@ -120,6 +128,18 @@ async def run_citas_migrations():
                             await conn.execute(text(f"ALTER TABLE cobros ADD COLUMN {col_name} {col_type}"))
                     except Exception as err:
                         logger.warning(f"Error verificando columna {col_name} en cobros: {err}")
+                for col_name, col_type in liquidaciones_columns:
+                    try:
+                        res = await conn.execute(text(
+                            f"SELECT COUNT(*) FROM information_schema.columns "
+                            f"WHERE table_schema = DATABASE() AND table_name = 'liquidaciones_honorarios' AND column_name = '{col_name}'"
+                        ))
+                        exists = res.scalar() > 0
+                        if not exists:
+                            logger.info(f"Agregando columna {col_name} a liquidaciones_honorarios...")
+                            await conn.execute(text(f"ALTER TABLE liquidaciones_honorarios ADD COLUMN {col_name} {col_type}"))
+                    except Exception as err:
+                        logger.warning(f"Error verificando columna {col_name} en liquidaciones_honorarios: {err}")
 
             elif dialect_name == "sqlite":
                 res = await conn.execute(text("PRAGMA table_info(citas_medicas)"))

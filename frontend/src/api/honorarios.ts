@@ -1,3 +1,40 @@
+
+export interface ComprobanteRetencionISLR {
+  numero_comprobante: string;
+  codigo_liquidacion: string;
+  fecha_emision: string;
+  periodo_fiscal: string;
+  ejercicio_fiscal_ano: number;
+  ejercicio_fiscal_mes: number;
+  agente_retencion: {
+    nombre: string;
+    rif: string;
+    direccion?: string;
+    telefono?: string;
+    email?: string;
+  };
+  sujeto_retenido: {
+    nombre: string;
+    documento_tipo: string;
+    documento_numero: string;
+    rif: string;
+    especialidad?: string;
+    licencia_medica?: string;
+    email?: string;
+    telefono?: string;
+  };
+  concepto: string;
+  exencion_iva: string;
+  base_imponible_usd: number;
+  tasa_bcv: number;
+  base_imponible_ves: number;
+  porcentaje_retencion: number;
+  monto_retenido_usd: number;
+  monto_retenido_ves: number;
+  monto_neto_usd: number;
+  monto_neto_ves: number;
+  fundamento_legal: string;
+}
 import api from './client';
 
 export interface ItemCalculoCobro {
@@ -37,6 +74,11 @@ export interface ResumenCalculoHonorariosResponse {
   monto_retencion_clinica_usd: number;
   tasa_bcv: number;
   monto_honorarios_ves: number;
+  porcentaje_islr_sugerido?: number;
+  monto_retencion_islr_estimado_usd?: number;
+  monto_retencion_islr_estimado_ves?: number;
+  monto_neto_estimado_usd?: number;
+  monto_neto_estimado_ves?: number;
   cobros_pendientes: ItemCalculoCobro[];
 }
 
@@ -58,6 +100,10 @@ export interface LiquidacionHonorarioResponse {
   monto_retencion_clinica_usd: number;
   monto_deducciones_usd: number;
   motivo_deduccion?: string;
+  porcentaje_retencion_islr?: number;
+  monto_retencion_islr_usd?: number;
+  monto_retencion_islr_ves?: number;
+  numero_comprobante_islr?: string;
   monto_neto_pagar_usd: number;
   monto_neto_pagar_ves: number;
   tasa_bcv_aplicada: number;
@@ -105,6 +151,8 @@ export interface LiquidarHonorariosPayload {
   periodo_desde: string;
   periodo_hasta: string;
   cobros_ids: number[];
+  aplicar_retencion_islr?: boolean;
+  porcentaje_retencion_islr?: number;
   monto_deducciones_usd?: number;
   motivo_deduccion?: string;
   metodo_pago?: string;
@@ -172,6 +220,11 @@ export const honorariosApi = {
     const res = await api.post(`/honorarios/liquidaciones/${id}/anular`, null, {
       params: { motivo },
     });
+    return res.data;
+  },
+
+  obtenerComprobanteISLR: async (id: number): Promise<ComprobanteRetencionISLR> => {
+    const res = await api.get(`/honorarios/liquidaciones/${id}/comprobante-islr`);
     return res.data;
   },
 

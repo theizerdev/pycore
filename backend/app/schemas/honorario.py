@@ -47,6 +47,12 @@ class ResumenCalculoHonorariosResponse(BaseModel):
     monto_retencion_clinica_usd: float
     tasa_bcv: float
     monto_honorarios_ves: float
+    # Estimaciones fiscales (Decreto 1.808 ISLR)
+    porcentaje_islr_sugerido: float = 3.00
+    monto_retencion_islr_estimado_usd: float = 0.00
+    monto_retencion_islr_estimado_ves: float = 0.00
+    monto_neto_estimado_usd: float = 0.00
+    monto_neto_estimado_ves: float = 0.00
     cobros_pendientes: List[ItemCalculoCobro]
 
 
@@ -56,6 +62,9 @@ class LiquidarHonorariosRequest(BaseModel):
     periodo_desde: str
     periodo_hasta: str
     cobros_ids: List[int]
+    # Retención de ISLR (Decreto 1.808)
+    aplicar_retencion_islr: bool = True
+    porcentaje_retencion_islr: float = 3.00
     monto_deducciones_usd: float = 0.00
     motivo_deduccion: Optional[str] = None
     metodo_pago: Optional[str] = None
@@ -92,6 +101,11 @@ class LiquidacionHonorarioResponse(BaseModel):
     monto_retencion_clinica_usd: float
     monto_deducciones_usd: float
     motivo_deduccion: Optional[str] = None
+    # Retención de ISLR
+    porcentaje_retencion_islr: float = 0.00
+    monto_retencion_islr_usd: float = 0.00
+    monto_retencion_islr_ves: float = 0.00
+    numero_comprobante_islr: Optional[str] = None
     monto_neto_pagar_usd: float
     monto_neto_pagar_ves: float
     tasa_bcv_aplicada: float
@@ -120,3 +134,25 @@ class LiquidacionesListResponse(BaseModel):
     page_size: int
     stats: Dict[str, Any]
 
+
+
+class ComprobanteRetencionISLRResponse(BaseModel):
+    numero_comprobante: str
+    codigo_liquidacion: str
+    fecha_emision: str
+    periodo_fiscal: str  # Ej. '2026-11'
+    ejercicio_fiscal_ano: int
+    ejercicio_fiscal_mes: int
+    agente_retencion: Dict[str, Any]
+    sujeto_retenido: Dict[str, Any]
+    concepto: str
+    exencion_iva: str = 'Exento según Art. 18 Numeral 3 de la Ley de IVA'
+    base_imponible_usd: float
+    tasa_bcv: float
+    base_imponible_ves: float
+    porcentaje_retencion: float
+    monto_retenido_usd: float
+    monto_retenido_ves: float
+    monto_neto_usd: float
+    monto_neto_ves: float
+    fundamento_legal: str = 'Decreto N° 1.808 en materia de Retenciones de ISLR (Art. 9, Numeral 1)'
