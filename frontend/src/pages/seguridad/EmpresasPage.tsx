@@ -73,6 +73,7 @@ import { cn } from '../../lib/utils';
 export const EmpresasPage: React.FC = () => {
   const { user, hasPermission, refreshUser } = useAuth();
   const isSuperAdmin = user?.es_superadmin ?? false;
+  const isIndependentDoctor = Boolean(user?.empresa?.tipo_entidad === 'medico_independiente');
 
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [paises, setPaises] = useState<Pais[]>([]);
@@ -532,14 +533,14 @@ export const EmpresasPage: React.FC = () => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {hasPermission('empresas.editar') && (
-              <DropdownMenuItem onClick={() => handleEditClick(empresa)}>
+            {(hasPermission('empresas.editar') || (!isSuperAdmin && empresa.id === user?.empresa_id)) && (
+              <DropdownMenuItem onClick={() => handleEditClick(empresa)} className="cursor-pointer">
                 <Pencil className="mr-2 h-4 w-4 text-blue-500" />
                 Editar
               </DropdownMenuItem>
             )}
-            {hasPermission('empresas.editar') && (
-              <DropdownMenuItem onClick={() => handleToggleStatus(empresa)}>
+            {isSuperAdmin && hasPermission('empresas.editar') && (
+              <DropdownMenuItem onClick={() => handleToggleStatus(empresa)} className="cursor-pointer">
                 <ToggleRight className="mr-2 h-4 w-4 text-amber-500" />
                 {empresa.activo ? 'Desactivar' : 'Activar'}
               </DropdownMenuItem>
@@ -1165,17 +1166,38 @@ export const EmpresasPage: React.FC = () => {
       {/* ModuleHeader */}
       <ModuleHeader
         icon={<Building2 className="h-6 w-6 text-white" />}
-        title="Empresas"
-        description="Gestiona las empresas, su asignación de país, geolocalización MapTiler e información de contacto."
+        title={
+          isIndependentDoctor
+            ? 'Datos del Consultorio & Logos'
+            : !isSuperAdmin
+            ? 'Datos de la Clínica & Logos'
+            : 'Empresas'
+        }
+        description={
+          isIndependentDoctor
+            ? 'Configura la información general, ubicación física y logotipos de tu consultorio médico para informes, récipes y reportes.'
+            : !isSuperAdmin
+            ? 'Configura la información institucional, ubicación y logotipos de tu centro médico.'
+            : 'Gestiona las empresas, su asignación de país, geolocalización MapTiler e información de contacto.'
+        }
         colorClassName="bg-teal-600 dark:bg-teal-700"
       >
         {hasPermission('empresas.crear') && (
           <Button
             onClick={handleCreateClick}
-            className="bg-white hover:bg-slate-100 text-teal-800 font-semibold shadow-xs text-xs h-9"
+            className="bg-white hover:bg-slate-100 text-teal-800 font-semibold shadow-xs text-xs h-9 cursor-pointer"
           >
             <Plus className="mr-2 h-4 w-4" />
             Nueva Empresa
+          </Button>
+        )}
+        {!isSuperAdmin && empresas.length > 0 && (
+          <Button
+            onClick={() => handleEditClick(empresas[0])}
+            className="bg-white hover:bg-slate-100 text-teal-800 font-semibold shadow-xs text-xs h-9 cursor-pointer"
+          >
+            <Pencil className="mr-2 h-4 w-4" />
+            Editar {isIndependentDoctor ? 'Consultorio y Logos' : 'Datos y Logos'}
           </Button>
         )}
       </ModuleHeader>

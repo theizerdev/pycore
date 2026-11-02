@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { PanelLeftOpen } from 'lucide-react';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminHeader } from './AdminHeader';
+import { SubscriptionAlertBanner } from '../saas/SubscriptionAlertBanner';
 import { TemplateCustomizer } from './TemplateCustomizer';
 import { ChatFloatingWidget } from '../chat/ChatFloatingWidget';
 import { useTemplateSettings } from '../../context/TemplateSettingsContext';
@@ -75,6 +76,9 @@ export const AdminLayout: React.FC = () => {
           collapsed={settings.collapsed}
           sidebarHidden={settings.sidebarHidden}
         />
+
+        {/* Subscription Expiration Warning Banner */}
+        <SubscriptionAlertBanner />
 
         {/* Main Content Area */}
         <main

@@ -127,44 +127,83 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       title: isIndependentDoctor ? 'Mi Consultorio' : 'Clínica',
       sectorKey: 'clinica',
       icon: HeartPulse,
-      children: [
-        {
-          title: 'Agenda y Citas',
-          href: '/clinica/agenda',
-          icon: CalendarDays,
-          permission: 'citas.ver',
-        },
-        {
-          title: 'Especialidades',
-          href: '/clinica/especialidades',
-          icon: Stethoscope,
-          permission: 'especialidades.ver',
-        },
-        {
-          title: 'Servicios',
-          href: '/administracion/servicios',
-          icon: Layers,
-          permission: 'servicios.ver',
-        },
-        {
-          title: 'Médicos y Especialistas',
-          href: '/clinica/doctores',
-          icon: UserCheck,
-          permission: 'medicos.ver',
-        },
-        {
-          title: 'Pacientes',
-          href: '/clinica/pacientes',
-          icon: Users,
-          permission: 'pacientes.ver',
-        },
-        {
-          title: 'Estudios & Laboratorios',
-          href: '/clinica/estudios',
-          icon: FlaskConical,
-          permission: 'consultas.ver',
-        },
-      ],
+      children: isIndependentDoctor
+        ? [
+            {
+              title: 'Agenda y Citas',
+              href: '/clinica/agenda',
+              icon: CalendarDays,
+              permission: 'citas.ver',
+            },
+            {
+              title: 'Pacientes',
+              href: '/clinica/pacientes',
+              icon: Users,
+              permission: 'pacientes.ver',
+            },
+            {
+              title: 'Servicios & Tarifas',
+              href: '/administracion/servicios',
+              icon: Layers,
+              permission: 'servicios.ver',
+            },
+            {
+              title: 'Estudios & Laboratorios',
+              href: '/clinica/estudios',
+              icon: FlaskConical,
+              permission: 'consultas.ver',
+            },
+            {
+              title: 'Datos del Consultorio & Logos',
+              href: '/seguridad/empresas',
+              icon: Building2,
+            },
+            {
+              title: 'Suscripción & Plan',
+              href: '/saas/suscripciones',
+              icon: CreditCard,
+              badge: 'SaaS',
+              badgeVariant: 'secondary' as const,
+            },
+          ]
+        : [
+            {
+              title: 'Agenda y Citas',
+              href: '/clinica/agenda',
+              icon: CalendarDays,
+              permission: 'citas.ver',
+            },
+            {
+              title: 'Especialidades',
+              href: '/clinica/especialidades',
+              icon: Stethoscope,
+              permission: 'especialidades.ver',
+            },
+            {
+              title: 'Servicios',
+              href: '/administracion/servicios',
+              icon: Layers,
+              permission: 'servicios.ver',
+            },
+            {
+              title: 'Médicos y Especialistas',
+              href: '/clinica/doctores',
+              icon: UserCheck,
+              permission: 'medicos.ver',
+            },
+            {
+              title: 'Pacientes',
+              href: '/clinica/pacientes',
+              icon: Users,
+              permission: 'pacientes.ver',
+            },
+            {
+              title: 'Estudios & Laboratorios',
+              href: '/clinica/estudios',
+              icon: FlaskConical,
+              permission: 'consultas.ver',
+            },
+          ],
     },
     {
       id: 'sector-consultas',
@@ -200,22 +239,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     },
     {
       id: 'sector-caja',
-      title: 'Caja & Cobros',
+      title: isIndependentDoctor ? 'Caja & Cobros' : 'Caja & Cobros',
       sectorKey: 'caja',
       icon: Wallet,
       children: [
         {
-          title: 'Punto de Cobro (POS)',
+          title: isIndependentDoctor ? 'Cobro Rápido (POS)' : 'Punto de Cobro (POS)',
           href: '/facturacion/cobro',
           icon: CircleDollarSign,
         },
         {
-          title: 'Control de Cajas & Arqueos',
+          title: isIndependentDoctor ? 'Apertura y Cierre de Caja' : 'Control de Cajas & Arqueos',
           href: '/facturacion/cajas',
           icon: Wallet,
         },
         {
-          title: 'Historial de Recibos y Ventas',
+          title: isIndependentDoctor ? 'Historial de Recibos' : 'Historial de Recibos y Ventas',
           href: '/facturacion/recibos',
           icon: Receipt,
         },
@@ -228,18 +267,17 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         ] : []),
       ],
     },
-    {
-      id: 'sector-organizacion',
-      title: 'Organización',
-      sectorKey: 'organizacion',
-      icon: Building2,
-      children: [
-        ...(!isIndependentDoctor ? [
+    ...(!isIndependentDoctor ? [
+      {
+        id: 'sector-organizacion',
+        title: 'Organización',
+        sectorKey: 'organizacion',
+        icon: Building2,
+        children: [
           {
             title: 'Empresas',
             href: '/seguridad/empresas',
             icon: Building2,
-            permission: 'empresas.ver',
           },
           {
             title: 'Sucursales / Sedes',
@@ -247,51 +285,52 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             icon: MapPin,
             permission: 'sucursales.ver',
           },
-        ] : []),
-        {
-          title: 'Suscripción & Tarifas',
-          href: '/saas/suscripciones',
-          icon: CreditCard,
-          permission: 'empresas.ver',
-          badge: 'SaaS',
-          badgeVariant: 'secondary'
-        },
-        {
-          title: 'Gestión de Planes',
-          href: '/saas/planes-admin',
-          icon: Layers,
-          superAdminOnly: true,
-          badge: 'Admin',
-          badgeVariant: 'secondary'
-        },
-        {
-          title: 'Suscripciones Empresas',
-          href: '/saas/suscripciones-admin',
-          icon: Sparkles,
-          superAdminOnly: true,
-          badge: 'Admin',
-          badgeVariant: 'secondary'
-        },
-      ],
-    },
+          {
+            title: 'Suscripción & Tarifas',
+            href: '/saas/suscripciones',
+            icon: CreditCard,
+            badge: 'SaaS',
+            badgeVariant: 'secondary' as const
+          },
+          {
+            title: 'Gestión de Planes',
+            href: '/saas/planes-admin',
+            icon: Layers,
+            superAdminOnly: true,
+            badge: 'Admin',
+            badgeVariant: 'secondary' as const
+          },
+          {
+            title: 'Suscripciones Empresas',
+            href: '/saas/suscripciones-admin',
+            icon: Sparkles,
+            superAdminOnly: true,
+            badge: 'Admin',
+            badgeVariant: 'secondary' as const
+          },
+        ],
+      }
+    ] : []),
     {
       id: 'sector-seguridad',
-      title: 'Seguridad',
+      title: isIndependentDoctor ? 'Equipo & Asistente' : 'Seguridad',
       sectorKey: 'seguridad',
       icon: ShieldCheck,
       children: [
         {
-          title: 'Usuarios',
+          title: isIndependentDoctor ? 'Mi Asistente / Secretaria' : 'Usuarios',
           href: '/seguridad/usuarios',
           icon: Users,
           permission: 'usuarios.ver',
         },
-        {
-          title: 'Roles & Permisos',
-          href: '/seguridad/roles',
-          icon: ShieldAlert,
-          permission: 'roles.ver',
-        },
+        ...(!isIndependentDoctor ? [
+          {
+            title: 'Roles & Permisos',
+            href: '/seguridad/roles',
+            icon: ShieldAlert,
+            permission: 'roles.ver',
+          },
+        ] : []),
       ],
     },
     {
@@ -305,7 +344,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           href: '/administracion/landing-cms',
           icon: Sparkles,
           badge: 'Web',
-          badgeVariant: 'secondary',
+          badgeVariant: 'secondary' as const,
         },
         {
           title: 'Países & Localización',
@@ -316,38 +355,40 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         },
       ],
     },
-    {
-      id: 'sector-monitoreo',
-      title: 'Monitoreo',
-      sectorKey: 'monitoreo',
-      icon: Activity,
-      children: [
-        {
-          title: 'Bitácora de Auditoría',
-          href: '/seguridad/auditoria',
-          icon: FileText,
-          permission: 'auditoria.ver',
-        },
-        {
-          title: 'Sesiones Activas',
-          href: '/monitoreo/sesiones',
-          icon: Radio,
-          permission: 'sesiones.ver',
-        },
-        {
-          title: 'Alertas & Accesos',
-          href: '/monitoreo/seguridad-accesos',
-          icon: ShieldAlert,
-          permission: 'seguridad_accesos.ver',
-        },
-        {
-          title: 'Salud del Sistema',
-          href: '/monitoreo/salud-sistema',
-          icon: Server,
-          permission: 'salud_sistema.ver',
-        },
-      ],
-    },
+    ...(!isIndependentDoctor ? [
+      {
+        id: 'sector-monitoreo',
+        title: 'Monitoreo',
+        sectorKey: 'monitoreo',
+        icon: Activity,
+        children: [
+          {
+            title: 'Bitácora de Auditoría',
+            href: '/seguridad/auditoria',
+            icon: FileText,
+            permission: 'auditoria.ver',
+          },
+          {
+            title: 'Sesiones Activas',
+            href: '/monitoreo/sesiones',
+            icon: Radio,
+            permission: 'sesiones.ver',
+          },
+          {
+            title: 'Alertas & Accesos',
+            href: '/monitoreo/seguridad-accesos',
+            icon: ShieldAlert,
+            permission: 'seguridad_accesos.ver',
+          },
+          {
+            title: 'Salud del Sistema',
+            href: '/monitoreo/salud-sistema',
+            icon: Server,
+            permission: 'salud_sistema.ver',
+          },
+        ],
+      }
+    ] : []),
     {
       id: 'sector-integraciones',
       title: 'Integraciones',
@@ -612,8 +653,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 return hasPermission(child.permission);
               }
 
-              // 5. Si no tiene permiso ni es superAdminOnly, no mostrar por seguridad
-              return false;
+              // 5. Si no exige permiso específico ni es superAdminOnly, es visible para usuarios autenticados
+              return true;
             });
 
             if (visibleChildren.length === 0) return null;

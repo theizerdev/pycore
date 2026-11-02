@@ -296,7 +296,7 @@ export const App: React.FC = () => {
               <Route
                 path="seguridad/empresas"
                 element={
-                  <ProtectedRoute requiredPermission="empresas.ver">
+                  <ProtectedRoute>
                     <EmpresasPage />
                   </ProtectedRoute>
                 }
@@ -421,7 +421,7 @@ export const App: React.FC = () => {
               <Route
                 path="saas/suscripciones"
                 element={
-                  <ProtectedRoute requiredPermission="empresas.ver">
+                  <ProtectedRoute>
                     <PlanesBillingPage />
                   </ProtectedRoute>
                 }

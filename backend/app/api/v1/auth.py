@@ -358,6 +358,18 @@ async def register_public_empresa(
     db.add(sucursal)
     await db.flush()
 
+    # 5.1 Crear Caja Principal para recepción, cobro de consultas y arqueos
+    from app.models.caja import Caja
+    caja_principal = Caja(
+        empresa_id=empresa.id,
+        sucursal_id=sucursal.id,
+        nombre="Caja Principal",
+        descripcion="Caja de cobro de consultas y punto de venta",
+        activa=True
+    )
+    db.add(caja_principal)
+    await db.flush()
+
     # 6. Crear Usuario Administrador (Rol ID 2, whatsapp_verified = False)
     stmt_rol = select(Rol).where(Rol.id == 2)
     res_rol = await db.execute(stmt_rol)

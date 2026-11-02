@@ -20,7 +20,11 @@ import {
   Command,
   Home,
   CreditCard,
-  Sparkles
+  Sparkles,
+  Clock,
+  AlertTriangle,
+  ArrowRight,
+  ShieldCheck
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -124,6 +128,34 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
     const interval = setInterval(checkPending, 15000); // Polling cada 15 segundos
     return () => clearInterval(interval);
   }, [user?.es_superadmin]);
+
+  // ── CÁLCULO DE VENCIMIENTO DE PLAN SAAS PARA TOPBAR ────────────────
+  const isSuperAdminUser = Boolean(user?.es_superadmin || user?.empresa_id === 1);
+  const empresa = user?.empresa;
+  const planVencimiento = empresa?.plan_vencimiento ? new Date(empresa.plan_vencimiento) : null;
+  const planEstado = empresa?.plan_estado || 'activo';
+  const isTrial = planEstado === 'prueba';
+
+  const now = new Date();
+  const diasRestantesPlan = planVencimiento
+    ? Math.max(0, Math.ceil((planVencimiento.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+    : null;
+
+  const isExpired = planVencimiento ? now.getTime() > planVencimiento.getTime() : false;
+  const isUrgent = diasRestantesPlan !== null && diasRestantesPlan <= 2;
+  const isWarning = diasRestantesPlan !== null && diasRestantesPlan <= 5;
+
+  const fechaVencimientoFmt = planVencimiento
+    ? planVencimiento.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '';
+
+  const totalDiasPeriodo = isTrial ? 7 : 30;
+  const diasConsumidos = diasRestantesPlan !== null ? Math.max(0, totalDiasPeriodo - diasRestantesPlan) : 0;
+  const porcentajeConsumido = Math.min(100, Math.round((diasConsumidos / totalDiasPeriodo) * 100));
 
   // Breadcrumbs
   const pathSegments = location.pathname.split('/').filter(Boolean);
@@ -333,6 +365,159 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
               })}
             </DropdownMenuContent>
           </DropdownMenu>
+        )}
+
+        {/* Pill de Suscripción / Vencimiento de Plan (SaaS) */}
+        {!isSuperAdminUser && planVencimiento && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md text-xs font-semibold h-9 px-2.5 transition-all cursor-pointer shadow-2xs border",
+                  isExpired
+                    ? "border-rose-500/50 bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20"
+                    : isUrgent
+                    ? "border-rose-500/50 bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20 animate-pulse"
+                    : isWarning
+                    ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15"
+                )}
+                title="Estado de tu plan y días restantes para el vencimiento"
+              >
+                {isExpired || isUrgent ? (
+                  <AlertTriangle className="size-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+                ) : isWarning ? (
+                  <Clock className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                ) : (
+                  <Clock className="size-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                )}
+                <span className="font-bold text-[11px] whitespace-nowrap">
+                  {isExpired
+                    ? 'Plan Vencido'
+                    : diasRestantesPlan === 0
+                    ? '¡Vence Hoy!'
+                    : diasRestantesPlan === 1
+                    ? '1 día'
+                    : isTrial
+                    ? `Prueba: ${diasRestantesPlan}d`
+                    : `Plan: ${diasRestantesPlan}d`}
+                </span>
+                {isTrial && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "hidden sm:inline-flex text-[9px] px-1 py-0 uppercase font-mono font-bold tracking-wider",
+                      isExpired || isUrgent
+                        ? "border-rose-500/40 text-rose-700 dark:text-rose-300 bg-rose-500/10"
+                        : isWarning
+                        ? "border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10"
+                        : "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10"
+                    )}
+                  >
+                    Trial
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-4 space-y-3.5 shadow-xl">
+              <div className="flex items-start justify-between gap-2 pb-2.5 border-b">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-primary" />
+                    <h4 className="text-xs font-bold text-foreground">
+                      {empresa?.plan?.nombre || (isTrial ? 'Plan Prueba Gratuita' : 'Plan Profesional')}
+                    </h4>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {empresa?.tipo_entidad === 'medico_independiente'
+                      ? 'Consultorio Médico Independiente'
+                      : 'Institución Médica / Clínica'}
+                  </p>
+                </div>
+                <Badge
+                  variant={isExpired ? 'destructive' : isUrgent ? 'destructive' : 'secondary'}
+                  className="text-[10px] uppercase font-bold shrink-0"
+                >
+                  {isExpired
+                    ? 'Expirado'
+                    : isTrial
+                    ? 'En Prueba'
+                    : 'Activo'}
+                </Badge>
+              </div>
+
+              <div className="p-3 rounded-lg bg-muted/40 border space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-[11px]">Tiempo restante:</span>
+                  <span className={cn(
+                    "font-bold text-xs",
+                    isExpired || isUrgent ? "text-rose-600 dark:text-rose-400" : isWarning ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
+                  )}>
+                    {isExpired
+                      ? '0 días (vencido)'
+                      : diasRestantesPlan === 0
+                      ? '¡Vence hoy!'
+                      : diasRestantesPlan === 1
+                      ? '1 día restante'
+                      : `${diasRestantesPlan} días restantes`}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-[11px]">Fecha de corte:</span>
+                  <span className="font-semibold text-foreground text-[11px] font-mono">{fechaVencimientoFmt}</span>
+                </div>
+
+                {/* Barra de progreso */}
+                <div className="space-y-1 pt-1">
+                  <div className="w-full h-2 bg-muted rounded-full overflow-hidden border">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all duration-300",
+                        isExpired || isUrgent
+                          ? "bg-rose-500"
+                          : isWarning
+                          ? "bg-amber-500"
+                          : "bg-emerald-500"
+                      )}
+                      style={{ width: `${Math.max(5, 100 - porcentajeConsumido)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {empresa?.tipo_entidad === 'medico_independiente'
+                  ? 'Mantén activa tu suscripción para garantizar acceso ininterrumpido a historias médicas, récipes y cobros.'
+                  : 'Renueva con anticipación para asegurar la continuidad de tus sedes y personal médico.'}
+              </p>
+
+              <Button
+                asChild
+                size="sm"
+                className="w-full h-8 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs cursor-pointer"
+              >
+                <Link to="/saas/suscripciones" className="flex items-center justify-center gap-1.5">
+                  <CreditCard className="size-3.5" />
+                  <span>{isTrial ? 'Activar Plan Completo' : 'Renovar o Cambiar Plan'}</span>
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </Button>
+            </PopoverContent>
+          </Popover>
+        )}
+
+        {isSuperAdminUser && (
+          <Badge
+            variant="outline"
+            className="hidden lg:inline-flex items-center gap-1 text-[11px] font-semibold border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 h-9 px-2.5"
+            title="Administrador Global de Medisoft Suite"
+          >
+            <ShieldCheck className="size-3.5 text-indigo-500" />
+            <span>SaaS Master</span>
+          </Badge>
         )}
 
         {/* Indicador de Configuración Regional Activa */}
