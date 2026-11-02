@@ -184,49 +184,6 @@ const CIE10_CATALOGO_ESPECIALIDADES: Cie10CatalogoItem[] = [
   { codigo: 'H40.9', descripcion: 'Glaucoma, no especificado', especialidad: 'Oftalmología' },
 ];
 
-// Frases Clínicas Rápidas / Macros para Evaluación
-const SNIPPETS_EXAMEN_FISICO = [
-  {
-    titulo: 'Cardiopulmonar Normal',
-    categoria: 'Cardio / Resp',
-    texto: 'Tórax simétrico, normoexpansible. Ruidos cardíacos rítmicos, regulares, sin soplos audibles. Murmullo vesicular conservado en ambos campos pulmonares sin ruidos sobreagregados.',
-  },
-  {
-    titulo: 'Abdomen Normal',
-    categoria: 'Gastro',
-    texto: 'Abdomen blando, depresible, no doloroso a la palpación superficial ni profunda. RHA presentes normoactivos, sin visceromegalias palpables ni signos de irritación peritoneal.',
-  },
-  {
-    titulo: 'Neurológico Normal',
-    categoria: 'Neurología',
-    texto: 'Paciente consciente, orientado en tiempo, espacio y persona (Glasgow 15/15). Pupilas isocóricas normorreactivas a la luz. Fuerza muscular 5/5 simétrica. Sin signos meníngeos ni focalidad.',
-  },
-  {
-    titulo: 'ORL / Faringe Normal',
-    categoria: 'ORL',
-    texto: 'Faringe rosada y húmeda sin congestión ni exudados, amígdalas eutróficas. Membranas timpánicas íntegras bilateralmente con reflejo luminoso presente. Fosas nasales permeables.',
-  },
-  {
-    titulo: 'Extremidades Normales',
-    categoria: 'Osteomuscular',
-    texto: 'Extremidades simétricas, tróficas, sin deformidades óseas ni edemas periféricos. Pulsos periféricos distales presentes y simétricos. Arcos de movilidad articular conservados.',
-  },
-  {
-    titulo: 'Control Niño Sano',
-    categoria: 'Pediatría',
-    texto: 'Paciente activo, reactivo y colaborador. Normohidratado y normocoloreado. Fontanela anterior normotensa. Buena ganancia ponderoestatural acorde a curvas de crecimiento OMS.',
-  },
-  {
-    titulo: 'Control Obstétrico',
-    categoria: 'Obstetricia',
-    texto: 'Feto único intrauterino en situación longitudinal cefálica. FCF audible rítmica regular (140-150 lpm). Altura uterina acorde a edad gestacional. Dinámica uterina negativa. Sin pérdidas vaginales.',
-  },
-  {
-    titulo: 'Examen Odontológico',
-    categoria: 'Odontología',
-    texto: 'Encías rosadas, firmes, sin sangrado espontáneo. Piezas dentarias con oclusión armónica. Sin signos de caries activas en revisión visual ni lesiones en mucosas.',
-  },
-];
 
 // Helpers para formato de paciente
 const calculateAge = (
@@ -581,6 +538,9 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     frecuencia_respiratoria: '',
     saturacion_oxigeno: '',
     glucosa_capilar: '',
+    escala_dolor: '',
+    perimetro_cefalico: '',
+    perimetro_abdominal: '',
     observaciones_triaje: '',
   });
 
@@ -716,19 +676,6 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     toast.success('Cálculo clínico insertado en la anamnesis');
   };
 
-  const handleInsertarSnippetEnEvaluacion = (snippet: { titulo: string; texto: string }) => {
-    setEnfermedadActual((prev) =>
-      prev ? `${prev}\n\n[${snippet.titulo}]: ${snippet.texto}` : `[${snippet.titulo}]: ${snippet.texto}`
-    );
-    setDatosPlantilla((prev) => ({
-      ...prev,
-      enfermedad_actual: prev.enfermedad_actual
-        ? `${prev.enfermedad_actual}\n\n[${snippet.titulo}]: ${snippet.texto}`
-        : `[${snippet.titulo}]: ${snippet.texto}`,
-    }));
-    toast.success(`Macro "${snippet.titulo}" insertado en evaluación`);
-  };
-
   // ── CARGAR DETALLE DE LA CONSULTA DESDE API ──
   const fetchConsulta = async () => {
     if (!id) return;
@@ -753,6 +700,12 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         frecuencia_respiratoria: data.signos_vitales?.frecuencia_respiratoria || '',
         saturacion_oxigeno: data.signos_vitales?.saturacion_oxigeno || '',
         glucosa_capilar: data.signos_vitales?.glucosa_capilar || '',
+        escala_dolor:
+          data.signos_vitales?.escala_dolor !== undefined && data.signos_vitales?.escala_dolor !== ''
+            ? data.signos_vitales.escala_dolor
+            : (data.preconsulta?.respuestas?.escala_dolor ?? ''),
+        perimetro_cefalico: data.signos_vitales?.perimetro_cefalico || '',
+        perimetro_abdominal: data.signos_vitales?.perimetro_abdominal || '',
         observaciones_triaje: data.signos_vitales?.observaciones_triaje || '',
       });
 
@@ -2127,6 +2080,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 setDatosPlantilla((prev) => ({ ...prev, [key]: val }));
               }}
               readOnly={readOnly}
+              esPediatrico={tipoPacienteCalculado === 'infantil'}
+              onInsertarEnEvolucion={(resumen) => {
+                setEnfermedadActual((prev) =>
+                  prev ? `${prev}\n\n[Signos Vitales]: ${resumen}` : `[Signos Vitales]: ${resumen}`
+                );
+                setDatosPlantilla((prev) => ({
+                  ...prev,
+                  enfermedad_actual: prev.enfermedad_actual
+                    ? `${prev.enfermedad_actual}\n\n[Signos Vitales]: ${resumen}`
+                    : `[Signos Vitales]: ${resumen}`,
+                }));
+                toast.success('Signos vitales insertados en la anamnesis/evolución');
+              }}
             />
           </div>
         )}
@@ -2174,40 +2140,6 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                         className="resize-y w-full"
                       />
 
-                      {/* ── FRASES RÁPIDAS / MACROS CLÍNICOS ── */}
-                      {!readOnly && (
-                        <div className="pt-2 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
-                              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                              <span>Macros Clínicos y Frases Rápidas (1 Clic para insertar):</span>
-                            </span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setCalculadorasModalOpen(true)}
-                              className="h-6 text-[11px] px-2 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 gap-1 cursor-pointer"
-                            >
-                              <Calculator className="h-3 w-3" />
-                              <span>Abrir Calculadora Clínica</span>
-                            </Button>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-muted/30 border border-border/60">
-                            {SNIPPETS_EXAMEN_FISICO.map((snip, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => handleInsertarSnippetEnEvaluacion(snip)}
-                                className="text-[11px] px-2.5 py-1 rounded-lg bg-background hover:bg-primary/10 hover:text-primary border border-border hover:border-primary/40 transition-all text-left font-medium cursor-pointer shadow-2xs"
-                                title={snip.texto}
-                              >
-                                + {snip.titulo}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </CardContent>
                 </Card>

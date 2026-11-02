@@ -703,6 +703,19 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                     consulta.datos_plantilla?.saturacion_oxigeno ||
                     consulta.datos_plantilla?.saturacion_o2,
                   imc: consulta.signos_vitales?.imc || consulta.datos_plantilla?.imc,
+                  glucosa_capilar:
+                    consulta.signos_vitales?.glucosa_capilar ||
+                    consulta.datos_plantilla?.glucosa_capilar,
+                  escala_dolor:
+                    consulta.signos_vitales?.escala_dolor ??
+                    consulta.datos_plantilla?.escala_dolor ??
+                    consulta.preconsulta?.respuestas?.escala_dolor,
+                  perimetro_cefalico:
+                    consulta.signos_vitales?.perimetro_cefalico ||
+                    consulta.datos_plantilla?.perimetro_cefalico,
+                  perimetro_abdominal:
+                    consulta.signos_vitales?.perimetro_abdominal ||
+                    consulta.datos_plantilla?.perimetro_abdominal,
                 };
 
                 if (!sv.imc && sv.peso && sv.talla) {
@@ -741,7 +754,11 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                   'preconsulta_id',
                   'token',
                   'referido_para',
-                  'observaciones_adicionales',
+                  'glucosa_capilar',
+                  'escala_dolor',
+                  'perimetro_cefalico',
+                  'perimetro_abdominal',
+                  'observaciones_triaje',
                   'estado',
                   'created_at',
                   'updated_at',
@@ -867,6 +884,30 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                             <div>
                               <span className="text-zinc-500 font-medium">IMC:</span>{' '}
                               <strong className="text-zinc-900">{sv.imc} kg/m²</strong>
+                            </div>
+                          )}
+                          {sv.glucosa_capilar && (
+                            <div>
+                              <span className="text-zinc-500 font-medium">Glicemia:</span>{' '}
+                              <strong className="text-zinc-900">{sv.glucosa_capilar} mg/dL</strong>
+                            </div>
+                          )}
+                          {sv.escala_dolor !== undefined && sv.escala_dolor !== '' && (
+                            <div>
+                              <span className="text-zinc-500 font-medium">Dolor (EVA):</span>{' '}
+                              <strong className="text-zinc-900">{sv.escala_dolor}/10</strong>
+                            </div>
+                          )}
+                          {sv.perimetro_cefalico && (
+                            <div>
+                              <span className="text-zinc-500 font-medium">P. Cefálico:</span>{' '}
+                              <strong className="text-zinc-900">{sv.perimetro_cefalico} cm</strong>
+                            </div>
+                          )}
+                          {sv.perimetro_abdominal && (
+                            <div>
+                              <span className="text-zinc-500 font-medium">P. Abdominal:</span>{' '}
+                              <strong className="text-zinc-900">{sv.perimetro_abdominal} cm</strong>
                             </div>
                           )}
                         </div>
