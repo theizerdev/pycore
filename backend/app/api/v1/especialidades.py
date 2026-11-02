@@ -484,6 +484,7 @@ async def get_plantilla_especialidad(
             esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
             esquema_consulta=sugerencia.get("esquema_consulta", []),
             widgets_activos=sugerencia.get("widgets_activos", []),
+            estudios_sugeridos=sugerencia.get("estudios_sugeridos", {}),
             version=1,
             activo=True
         )
@@ -491,6 +492,9 @@ async def get_plantilla_especialidad(
         await _safe_commit(db)
         await db.refresh(plantilla)
     else:
+        if not plantilla.estudios_sugeridos:
+            from app.services.clinical_templates_seed import get_default_estudios_for_specialty
+            plantilla.estudios_sugeridos = get_default_estudios_for_specialty(esp.nombre)
         if plantilla.esquema_consulta and _upgrade_signos_vitales_if_needed(plantilla.esquema_consulta):
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(plantilla, "esquema_consulta")
@@ -529,6 +533,7 @@ async def update_plantilla_especialidad(
     preconsulta_data = [s.model_dump() for s in req.esquema_preconsulta]
     consulta_data = [s.model_dump() for s in req.esquema_consulta]
     widgets_data = req.widgets_activos or []
+    estudios_data = req.estudios_sugeridos or {}
 
     if not plantilla:
         plantilla = EspecialidadPlantilla(
@@ -537,6 +542,7 @@ async def update_plantilla_especialidad(
             esquema_preconsulta=preconsulta_data,
             esquema_consulta=consulta_data,
             widgets_activos=widgets_data,
+            estudios_sugeridos=estudios_data,
             version=1,
             activo=True
         )
@@ -545,6 +551,7 @@ async def update_plantilla_especialidad(
         plantilla.esquema_preconsulta = preconsulta_data
         plantilla.esquema_consulta = consulta_data
         plantilla.widgets_activos = widgets_data
+        plantilla.estudios_sugeridos = estudios_data
         plantilla.version += 1
 
     await _safe_commit(db)
@@ -601,6 +608,7 @@ async def seed_plantilla_defaults(
             esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
             esquema_consulta=sugerencia.get("esquema_consulta", []),
             widgets_activos=sugerencia.get("widgets_activos", []),
+            estudios_sugeridos=sugerencia.get("estudios_sugeridos", {}),
             version=1,
             activo=True
         )
@@ -609,6 +617,7 @@ async def seed_plantilla_defaults(
         plantilla.esquema_preconsulta = sugerencia.get("esquema_preconsulta", [])
         plantilla.esquema_consulta = sugerencia.get("esquema_consulta", [])
         plantilla.widgets_activos = sugerencia.get("widgets_activos", [])
+        plantilla.estudios_sugeridos = sugerencia.get("estudios_sugeridos", {})
         plantilla.version += 1
 
     await _safe_commit(db)
@@ -882,6 +891,13 @@ async def get_plantilla_efectiva(
 
     total_medico_count = len(medico_pre) + len(medico_con)
 
+    from app.services.clinical_templates_seed import get_default_estudios_for_specialty
+    estudios_sugeridos_efectivos = (
+        plantilla.estudios_sugeridos
+        if (plantilla and plantilla.estudios_sugeridos)
+        else get_default_estudios_for_specialty(esp.nombre)
+    )
+
     return PlantillaEfectivaResponse(
         especialidad_id=esp.id,
         especialidad_nombre=esp.nombre,
@@ -895,5 +911,6 @@ async def get_plantilla_efectiva(
         consulta_secciones=merged_con,
         total_campos_preconsulta=total_pre_count,
         total_campos_consulta=total_con_count,
-        total_campos_medico=total_medico_count
+        total_campos_medico=total_medico_count,
+        estudios_sugeridos=estudios_sugeridos_efectivos
     )

@@ -867,20 +867,294 @@ DEFAULT_CLINICAL_TEMPLATES: Dict[str, Dict[str, Any]] = {
 }
 
 
+CATALOGO_ESTUDIOS_POR_ESPECIALIDAD: Dict[str, Dict[str, Any]] = {
+    "ginecologia": {
+        "kits": [
+            {
+                "id": "kit_prenatal",
+                "nombre": "Perfil Prenatal / Obstétrico",
+                "descripcion": "Tamizaje integral de control obstétrico basal",
+                "color": "border-rose-300/80 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+                "icono": "Baby",
+                "estudios": [
+                    {"nombre": "Hematología Completa", "categoria": "Laboratorio", "justificacion": "Control prenatal basal y descarte de anemia"},
+                    {"nombre": "Grupo Sanguíneo y Factor Rh", "categoria": "Laboratorio", "justificacion": "Prevención de isoinmunización materno-fetal"},
+                    {"nombre": "Glicemia en Ayunas", "categoria": "Laboratorio", "justificacion": "Tamizaje de diabetes gestacional"},
+                    {"nombre": "Serología VDRL y VIH Rápida", "categoria": "Laboratorio", "justificacion": "Tamizaje infeccioso de transmisión vertical"},
+                    {"nombre": "Serología Toxoplasmosis (IgG e IgM)", "categoria": "Laboratorio", "justificacion": "Detección de infección aguda gestacional"},
+                    {"nombre": "Examen de Orina y Urocultivo", "categoria": "Laboratorio", "justificacion": "Descarte de bacteriuria asintomática"},
+                    {"nombre": "Ecografía Obstétrica de Control", "categoria": "Ecografía", "justificacion": "Biometría y bienestar fetal"}
+                ]
+            },
+            {
+                "id": "kit_gineco_anual",
+                "nombre": "Control Ginecológico Anual",
+                "descripcion": "Pesquisa oncológica y control mamario / pélvico",
+                "color": "border-pink-300/80 bg-pink-500/10 text-pink-700 dark:text-pink-300",
+                "icono": "Sparkles",
+                "estudios": [
+                    {"nombre": "Citología Cervicovaginal (Papanicolaou / PAP)", "categoria": "Laboratorio", "justificacion": "Pesquisa citológica de cáncer de cuello uterino"},
+                    {"nombre": "Colposcopia Diagnóstica", "categoria": "Otro", "justificacion": "Evaluación microscópica cervical"},
+                    {"nombre": "Ecografía Transvaginal o Pélvica", "categoria": "Ecografía", "justificacion": "Evaluación de miometrio y anexos ováricos"},
+                    {"nombre": "Mamografía Digital Bilateral", "categoria": "Rayos X", "justificacion": "Pesquisa mamaria anual preventiva"}
+                ]
+            },
+            {
+                "id": "kit_hormonal_fem",
+                "nombre": "Perfil Hormonal Femenino",
+                "descripcion": "Estudio de ciclos anovulatorios, SOP y fertilidad",
+                "color": "border-purple-300/80 bg-purple-500/10 text-purple-700 dark:text-purple-300",
+                "icono": "Activity",
+                "estudios": [
+                    {"nombre": "FSH y LH Sérica", "categoria": "Laboratorio", "justificacion": "Evaluación de eje hipotálamo-hipófiso-ovárico"},
+                    {"nombre": "Estradiol (E2) y Progesterona", "categoria": "Laboratorio", "justificacion": "Fase folicular y lútea ovárica"},
+                    {"nombre": "Prolactina Sérica", "categoria": "Laboratorio", "justificacion": "Descarte de hiperprolactinemia"},
+                    {"nombre": "TSH Ultrasensible", "categoria": "Laboratorio", "justificacion": "Descarte de disfunción tiroidea asociada"}
+                ]
+            }
+        ],
+        "frecuentes": [
+            {"nombre": "Citología Cervical / PAP", "categoria": "Laboratorio", "justificacion": "Tamizaje preventivo"},
+            {"nombre": "Ecografía Transvaginal", "categoria": "Ecografía", "justificacion": "Evaluación ginecológica"},
+            {"nombre": "Mamografía Digital Bilateral", "categoria": "Rayos X", "justificacion": "Control anual mamario"},
+            {"nombre": "Beta-hCG Cuantitativa", "categoria": "Laboratorio", "justificacion": "Confirmación y edad gestacional"},
+            {"nombre": "Cultivo de Secreción Vaginal", "categoria": "Laboratorio", "justificacion": "Descarte de vaginitis / vaginosis"},
+            {"nombre": "Examen de Orina y Urocultivo", "categoria": "Laboratorio", "justificacion": "Descarte de ITU"},
+            {"nombre": "Ecografía Mamaria Bilateral", "categoria": "Ecografía", "justificacion": "Complemento diagnóstico mamario"}
+        ]
+    },
+    "cardiologia": {
+        "kits": [
+            {
+                "id": "kit_cardio_integral",
+                "nombre": "Perfil Cardiovascular Integral",
+                "descripcion": "Evaluación de riesgo isquémico y función miocárdica",
+                "color": "border-red-300/80 bg-red-500/10 text-red-700 dark:text-red-300",
+                "icono": "Heart",
+                "estudios": [
+                    {"nombre": "Hemograma Completo y Plaquetas", "categoria": "Laboratorio", "justificacion": "Descarte de anemia y serie blanca"},
+                    {"nombre": "Perfil Lipídico (Colesterol, Triglicéridos, HDL, LDL)", "categoria": "Laboratorio", "justificacion": "Estratificación de riesgo aterogénico"},
+                    {"nombre": "Glicemia en Ayunas", "categoria": "Laboratorio", "justificacion": "Descarte de diabetes / síndrome metabólico"},
+                    {"nombre": "Urea y Creatinina Sérica", "categoria": "Laboratorio", "justificacion": "Función renal y aclaramiento basal"},
+                    {"nombre": "Electrocardiograma (ECG 12 derivaciones)", "categoria": "Cardiología / ECG", "justificacion": "Evaluación del ritmo cardíaco y morfología"},
+                    {"nombre": "Ecocardiograma Transtorácico Doppler", "categoria": "Cardiología / ECG", "justificacion": "Fracción de eyección y aparato valvular"},
+                    {"nombre": "Rayos X de Tórax (PA)", "categoria": "Rayos X", "justificacion": "Índice cardiotorácico y parénquima pulmonar"}
+                ]
+            },
+            {
+                "id": "kit_riesgo_coronario",
+                "nombre": "Perfil de Riesgo Isquémico y Coronario",
+                "descripcion": "Descarte de SCA y marcadores de daño miocárdico",
+                "color": "border-rose-300/80 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+                "icono": "Activity",
+                "estudios": [
+                    {"nombre": "Troponina I de Alta Sensibilidad", "categoria": "Laboratorio", "justificacion": "Marcador de necrosis miocárdica aguda"},
+                    {"nombre": "CPK Total y CPK-MB", "categoria": "Laboratorio", "justificacion": "Curva enzimática cardíaca"},
+                    {"nombre": "Dímero D Cuantitativo", "categoria": "Laboratorio", "justificacion": "Descarte de trombosis / tromboembolismo"},
+                    {"nombre": "Electrolitos Séricos (Na, K, Cl)", "categoria": "Laboratorio", "justificacion": "Estabilidad eléctrica y electrolítica"}
+                ]
+            }
+        ],
+        "frecuentes": [
+            {"nombre": "Electrocardiograma (ECG 12 derivaciones)", "categoria": "Cardiología / ECG", "justificacion": "Trazado basal"},
+            {"nombre": "Ecocardiograma Transtorácico Doppler", "categoria": "Cardiología / ECG", "justificacion": "Evaluación estructural"},
+            {"nombre": "Holter de Ritmo Cardíaco 24h", "categoria": "Cardiología / ECG", "justificacion": "Descarte de arritmias"},
+            {"nombre": "MAPA (Monitoreo Presión 24h)", "categoria": "Cardiología / ECG", "justificacion": "Estratificación de HTA"},
+            {"nombre": "Prueba de Esfuerzo (Ergometría)", "categoria": "Cardiología / ECG", "justificacion": "Reserva coronaria"},
+            {"nombre": "Troponina I Cuantitativa", "categoria": "Laboratorio", "justificacion": "Enzima cardíaca"},
+            {"nombre": "Perfil Lipídico Completo", "categoria": "Laboratorio", "justificacion": "Riesgo cardiovascular"},
+            {"nombre": "Rayos X de Tórax (PA)", "categoria": "Rayos X", "justificacion": "Silueta cardiovascular"}
+        ]
+    },
+    "pediatria": {
+        "kits": [
+            {
+                "id": "kit_pediatrico_sano",
+                "nombre": "Control Pediátrico & Puericultura",
+                "descripcion": "Control de crecimiento, desarrollo y nutrición infantil",
+                "color": "border-amber-300/80 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                "icono": "Baby",
+                "estudios": [
+                    {"nombre": "Hemograma Completo Pediátrico", "categoria": "Laboratorio", "justificacion": "Descarte de anemia ferropénica infantil"},
+                    {"nombre": "Coproparasitológico Simple y Seriado", "categoria": "Laboratorio", "justificacion": "Descarte de parasitosis intestinal"},
+                    {"nombre": "Examen General de Orina", "categoria": "Laboratorio", "justificacion": "Control urinario pediátrico rutinario"},
+                    {"nombre": "Ferritina Sérica y Hierro Total", "categoria": "Laboratorio", "justificacion": "Depósitos corporales de hierro"}
+                ]
+            },
+            {
+                "id": "kit_infeccioso_ped",
+                "nombre": "Perfil Infeccioso Respiratorio Infantil",
+                "descripcion": "Evaluación de síndrome febril y cuadro respiratorio agudo",
+                "color": "border-orange-300/80 bg-orange-500/10 text-orange-700 dark:text-orange-300",
+                "icono": "Sparkles",
+                "estudios": [
+                    {"nombre": "Hematología Completa con Frotis", "categoria": "Laboratorio", "justificacion": "Recuento y fórmula leucocitaria"},
+                    {"nombre": "Proteína C Reactiva (PCR Cuantitativa)", "categoria": "Laboratorio", "justificacion": "Reactante de fase aguda"},
+                    {"nombre": "Radiografía de Tórax AP y Lateral", "categoria": "Rayos X", "justificacion": "Descarte de condensación / bronconeumonía"},
+                    {"nombre": "Hisopado Faríngeo con Cultivo", "categoria": "Laboratorio", "justificacion": "Descarte de estreptococo pyogenes"}
+                ]
+            }
+        ],
+        "frecuentes": [
+            {"nombre": "Hemograma Completo Pediátrico", "categoria": "Laboratorio", "justificacion": "Control hematológico"},
+            {"nombre": "Coproparasitológico Seriado", "categoria": "Laboratorio", "justificacion": "Parasitológico"},
+            {"nombre": "Examen General de Orina", "categoria": "Laboratorio", "justificacion": "Descarte de ITU infantil"},
+            {"nombre": "Proteína C Reactiva (PCR)", "categoria": "Laboratorio", "justificacion": "Reactante agudo"},
+            {"nombre": "Ferritina Sérica", "categoria": "Laboratorio", "justificacion": "Reserva de hierro"},
+            {"nombre": "Radiografía de Tórax Pediátrica", "categoria": "Rayos X", "justificacion": "Cuadro respiratorio"}
+        ]
+    },
+    "medicina general": {
+        "kits": [
+            {
+                "id": "kit_chequeo_general",
+                "nombre": "Perfil Check-Up General Preventivo",
+                "descripcion": "Evaluación metabólica, hematológica y renal de rutina",
+                "color": "border-teal-300/80 bg-teal-500/10 text-teal-700 dark:text-teal-300",
+                "icono": "Stethoscope",
+                "estudios": [
+                    {"nombre": "Hemograma Completo y VSG", "categoria": "Laboratorio", "justificacion": "Pesquisa hematológica y reactantes"},
+                    {"nombre": "Glicemia en Ayunas", "categoria": "Laboratorio", "justificacion": "Descarte de diabetes mellitus"},
+                    {"nombre": "Perfil Lipídico Completo", "categoria": "Laboratorio", "justificacion": "Riesgo cardiovascular"},
+                    {"nombre": "Urea y Creatinina Sérica", "categoria": "Laboratorio", "justificacion": "Función renal basal"},
+                    {"nombre": "Transaminasas (TGO y TGP)", "categoria": "Laboratorio", "justificacion": "Evaluación enzimática hepática"},
+                    {"nombre": "Examen General de Orina", "categoria": "Laboratorio", "justificacion": "Sedimento urinario de control"}
+                ]
+            },
+            {
+                "id": "kit_metabolico_diabetes",
+                "nombre": "Perfil Metabólico & Diabetes",
+                "descripcion": "Control integral del paciente diabético o dislipidémico",
+                "color": "border-emerald-300/80 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                "icono": "Activity",
+                "estudios": [
+                    {"nombre": "Glucosa en Ayunas", "categoria": "Laboratorio", "justificacion": "Control glucémico"},
+                    {"nombre": "Hemoglobina Glicosilada (HbA1c)", "categoria": "Laboratorio", "justificacion": "Monitoreo glicémico de 3 meses"},
+                    {"nombre": "Perfil Lipídico Completo", "categoria": "Laboratorio", "justificacion": "Dislipidemia mixta"},
+                    {"nombre": "Microalbuminuria en Orina", "categoria": "Laboratorio", "justificacion": "Detección temprana de nefropatía"},
+                    {"nombre": "Creatinina sérica y Tasa de Filtración Glomerular", "categoria": "Laboratorio", "justificacion": "Estadificación renal"}
+                ]
+            }
+        ],
+        "frecuentes": [
+            {"nombre": "Hemograma Completo", "categoria": "Laboratorio", "justificacion": "Evaluación basal"},
+            {"nombre": "Glicemia en Ayunas", "categoria": "Laboratorio", "justificacion": "Control metabólico"},
+            {"nombre": "Perfil Lipídico (Colesterol/Triglicéridos)", "categoria": "Laboratorio", "justificacion": "Perfil lipídico"},
+            {"nombre": "Urea y Creatinina", "categoria": "Laboratorio", "justificacion": "Función renal"},
+            {"nombre": "Examen General de Orina", "categoria": "Laboratorio", "justificacion": "Examen de orina"},
+            {"nombre": "Rayos X de Tórax (PA)", "categoria": "Rayos X", "justificacion": "Evaluación cardiopulmonar"},
+            {"nombre": "Ecografía Abdominal Completa", "categoria": "Ecografía", "justificacion": "Evaluación visceral"},
+            {"nombre": "Electrocardiograma (ECG)", "categoria": "Cardiología / ECG", "justificacion": "Control cardíaco"}
+        ]
+    },
+    "traumatologia": {
+        "kits": [
+            {
+                "id": "kit_articular_reuma",
+                "nombre": "Perfil Articular & Reumatoideo",
+                "descripcion": "Descarte de artropatías inflamatorias y degenerativas",
+                "color": "border-blue-300/80 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+                "icono": "Activity",
+                "estudios": [
+                    {"nombre": "Factor Reumatoideo (FR Cuantitativo)", "categoria": "Laboratorio", "justificacion": "Descarte de artritis reumatoide"},
+                    {"nombre": "Proteína C Reactiva y VSG", "categoria": "Laboratorio", "justificacion": "Marcadores de inflamación articular"},
+                    {"nombre": "Ácido Úrico Sérico", "categoria": "Laboratorio", "justificacion": "Descarte de hiperuricemia / gota"},
+                    {"nombre": "Radiografía Articular AP y Lateral", "categoria": "Rayos X", "justificacion": "Espacio articular e integridad ósea"}
+                ]
+            }
+        ],
+        "frecuentes": [
+            {"nombre": "Radiografía AP y Lateral", "categoria": "Rayos X", "justificacion": "Evaluación ósea"},
+            {"nombre": "Resonancia Magnética Articular", "categoria": "Resonancia Magnética", "justificacion": "Ligamentos y meniscos"},
+            {"nombre": "Tomografía Computarizada Ósea", "categoria": "Tomografía", "justificacion": "Detalle óseo 3D"},
+            {"nombre": "Densitometría Ósea (DEXA)", "categoria": "Rayos X", "justificacion": "Densidad mineral ósea"},
+            {"nombre": "Ácido Úrico Sérico", "categoria": "Laboratorio", "justificacion": "Control de ácido úrico"},
+            {"nombre": "Ecografía Musculoesquelética", "categoria": "Ecografía", "justificacion": "Tendones y partes blandas"}
+        ]
+    },
+    "oftalmologia": {
+        "kits": [
+            {
+                "id": "kit_glaucoma",
+                "nombre": "Evaluación Glaucoma & Nervio Óptico",
+                "descripcion": "Protocolo para diagnóstico y seguimiento de glaucoma",
+                "color": "border-sky-300/80 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+                "icono": "Eye",
+                "estudios": [
+                    {"nombre": "Campimetría Computarizada Visual", "categoria": "Otro", "justificacion": "Evaluación de campo visual"},
+                    {"nombre": "Tomografía OCT de Nervio Óptico y Fibras", "categoria": "Tomografía", "justificacion": "Espesor de capa de fibras nerviosas"},
+                    {"nombre": "Paquimetría Corneal Ultrasónica", "categoria": "Otro", "justificacion": "Espesor corneal central y PIO corregida"}
+                ]
+            }
+        ],
+        "frecuentes": [
+            {"nombre": "Campimetría Computarizada", "categoria": "Otro", "justificacion": "Campo visual"},
+            {"nombre": "OCT de Mácula", "categoria": "Tomografía", "justificacion": "Arquitectura macular"},
+            {"nombre": "OCT de Nervio Óptico", "categoria": "Tomografía", "justificacion": "Nervio óptico"},
+            {"nombre": "Topografía Corneal", "categoria": "Otro", "justificacion": "Curvatura corneal"},
+            {"nombre": "Ecografía Ocular Modo B", "categoria": "Ecografía", "justificacion": "Polo posterior"}
+        ]
+    },
+    "odontologia": {
+        "kits": [
+            {
+                "id": "kit_odontologico",
+                "nombre": "Perfil Radiográfico Odontológico",
+                "descripcion": "Estudio imagenológico de arcadas dentarias y maxilares",
+                "color": "border-cyan-300/80 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+                "icono": "Smile",
+                "estudios": [
+                    {"nombre": "Radiografía Panorámica Digital (Ortopantomografía)", "categoria": "Rayos X", "justificacion": "Evaluación integral de arcadas dentarias"},
+                    {"nombre": "Radiografía Periapical Seriada", "categoria": "Rayos X", "justificacion": "Diagnóstico periodontal y endodóntico"},
+                    {"nombre": "Tomografía Cone Beam (CBCT) Maxilofacial", "categoria": "Tomografía", "justificacion": "Planificación ósea e implantes"}
+                ]
+            }
+        ],
+        "frecuentes": [
+            {"nombre": "Radiografía Panorámica Digital", "categoria": "Rayos X", "justificacion": "Ortopantomografía"},
+            {"nombre": "Radiografía Periapical", "categoria": "Rayos X", "justificacion": "Estudio de pieza dental"},
+            {"nombre": "Telerradiografía Lateral de Cráneo", "categoria": "Rayos X", "justificacion": "Cefalometría ortodóntica"},
+            {"nombre": "Tomografía Cone Beam (CBCT)", "categoria": "Tomografía", "justificacion": "Tomografía 3D"}
+        ]
+    }
+}
+
+
+def get_default_estudios_for_specialty(name: str) -> Dict[str, Any]:
+    """Retorna los kits y estudios frecuentes sugeridos para una especialidad médica."""
+    key = normalize_specialty_name(name)
+    if key in CATALOGO_ESTUDIOS_POR_ESPECIALIDAD:
+        return CATALOGO_ESTUDIOS_POR_ESPECIALIDAD[key]
+        
+    for k, catalogo in CATALOGO_ESTUDIOS_POR_ESPECIALIDAD.items():
+        if k in key or key in k:
+            return catalogo
+            
+    return CATALOGO_ESTUDIOS_POR_ESPECIALIDAD["medicina general"]
+
+
 def get_template_for_specialty(name: str) -> Dict[str, Any]:
     """Retorna la plantilla clínica correspondiente a una especialidad normalizando su nombre."""
     key = normalize_specialty_name(name)
+    template = None
     if key in DEFAULT_CLINICAL_TEMPLATES:
-        return DEFAULT_CLINICAL_TEMPLATES[key]
-    
-    # Búsqueda por subcadena si no hubo coincidencia exacta
-    for k, template in DEFAULT_CLINICAL_TEMPLATES.items():
-        if k in key or key in k:
-            return template
-            
-    # Fallback a medicina general
-    return DEFAULT_CLINICAL_TEMPLATES.get("medicina general", {
-        "widgets_activos": [],
-        "esquema_preconsulta": [],
-        "esquema_consulta": []
-    })
+        template = dict(DEFAULT_CLINICAL_TEMPLATES[key])
+    else:
+        for k, t in DEFAULT_CLINICAL_TEMPLATES.items():
+            if k in key or key in k:
+                template = dict(t)
+                break
+                
+    if not template:
+        template = dict(DEFAULT_CLINICAL_TEMPLATES.get("medicina general", {
+            "widgets_activos": [],
+            "esquema_preconsulta": [],
+            "esquema_consulta": []
+        }))
+
+    # Adjuntar estudios sugeridos por especialidad
+    if "estudios_sugeridos" not in template or not template["estudios_sugeridos"]:
+        template["estudios_sugeridos"] = get_default_estudios_for_specialty(name)
+
+    return template
+

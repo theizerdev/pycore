@@ -24,6 +24,10 @@ class EspecialidadPlantilla(Base, TimestampMixin):
     
     # Widgets especializados activos (ej. ["odontograma", "refraccion", "percentiles_oms", "rueda_obstetrica"])
     widgets_activos = Column(JSON, default=list, nullable=False)
+
+    # Perfiles y kits de estudios diagnósticos sugeridos para esta especialidad
+    # Formato: {"kits": [...], "frecuentes": [...]}
+    estudios_sugeridos = Column(JSON, default=dict, nullable=True)
     
     version = Column(Integer, default=1, nullable=False)
     activo = Column(Boolean, default=True, nullable=False)

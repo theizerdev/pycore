@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { EstudioSolicitado } from '../../api/consultas';
+import type { EstudiosEspecialidadConfig, KitEstudioConfig, EstudioFrecuenteConfig } from '../../types';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -26,6 +27,11 @@ import {
   Stethoscope,
   Smile,
   ShieldAlert,
+  Eye,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  FolderOpen,
 } from 'lucide-react';
 
 const CATEGORIAS_ESTUDIOS = [
@@ -40,117 +46,156 @@ const CATEGORIAS_ESTUDIOS = [
   'Otro',
 ];
 
-// Kits de Estudios por Especialidad
-interface KitEstudio {
-  id: string;
-  nombre: string;
-  especialidadTag: string;
-  icono: any;
-  color: string;
-  estudios: { nombre: string; categoria: string; justificacion?: string }[];
-}
-
-const KITS_ESPECIALIDADES: KitEstudio[] = [
-  {
-    id: 'cardio',
-    nombre: 'Perfil Cardiovascular Integral',
-    especialidadTag: 'Cardiología',
-    icono: Heart,
-    color: 'border-red-200 bg-red-50/50 text-red-700 dark:bg-red-950/20 dark:border-red-900/50 dark:text-red-400',
-    estudios: [
-      { nombre: 'Hemograma Completo y Plaquetas', categoria: 'Laboratorio', justificacion: 'Descarte de anemia y respuesta hematológica' },
-      { nombre: 'Perfil Lipídico (Colesterol, Triglicéridos, HDL, LDL)', categoria: 'Laboratorio', justificacion: 'Estratificación de riesgo aterogénico' },
-      { nombre: 'Glicemia en Ayunas', categoria: 'Laboratorio', justificacion: 'Descarte de diabetes / síndrome metabólico' },
-      { nombre: 'Urea y Creatinina Sérica', categoria: 'Laboratorio', justificacion: 'Evaluación de función renal basal' },
-      { nombre: 'Electrocardiograma (ECG 12 derivaciones)', categoria: 'Cardiología / ECG', justificacion: 'Evaluación del ritmo cardíaco y morfología' },
-      { nombre: 'Ecocardiograma Transtorácico Doppler', categoria: 'Cardiología / ECG', justificacion: 'Función ventricular y aparato valvular' },
-      { nombre: 'Rayos X de Tórax (PA)', categoria: 'Rayos X', justificacion: 'Índice cardiotorácico y parénquima pulmonar' },
+// Catálogo por defecto para especialidades estándar (fallback en frontend)
+const CATALOGO_DEFAULT_POR_ESPECIALIDAD: Record<string, { kits: KitEstudioConfig[]; frecuentes: EstudioFrecuenteConfig[] }> = {
+  ginecologia: {
+    kits: [
+      {
+        id: 'prenatal',
+        nombre: 'Perfil Prenatal / Obstétrico',
+        descripcion: 'Control obstétrico basal preventivo',
+        color: 'border-rose-300/80 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+        icono: 'Baby',
+        estudios: [
+          { nombre: 'Hematología Completa', categoria: 'Laboratorio', justificacion: 'Control prenatal basal y descarte de anemia' },
+          { nombre: 'Grupo Sanguíneo y Factor Rh', categoria: 'Laboratorio', justificacion: 'Prevención de isoinmunización Rh' },
+          { nombre: 'Glicemia en Ayunas', categoria: 'Laboratorio', justificacion: 'Descarte de diabetes gestacional' },
+          { nombre: 'Serología VDRL y VIH Rápida', categoria: 'Laboratorio', justificacion: 'Tamizaje infeccioso vertical' },
+          { nombre: 'Serología Toxoplasmosis (IgG e IgM)', categoria: 'Laboratorio', justificacion: 'Detección de infección aguda' },
+          { nombre: 'Examen de Orina y Urocultivo', categoria: 'Laboratorio', justificacion: 'Descarte de bacteriuria asintomática' },
+          { nombre: 'Ecografía Obstétrica de Control', categoria: 'Ecografía', justificacion: 'Biometría y bienestar fetal' },
+        ],
+      },
+      {
+        id: 'gineco_anual',
+        nombre: 'Control Ginecológico Anual',
+        descripcion: 'Pesquisa citológica y control pélvico/mamario',
+        color: 'border-pink-300/80 bg-pink-500/10 text-pink-700 dark:text-pink-300',
+        icono: 'Sparkles',
+        estudios: [
+          { nombre: 'Citología Cervicovaginal (PAP)', categoria: 'Laboratorio', justificacion: 'Pesquisa oncológica cervical' },
+          { nombre: 'Colposcopia Diagnóstica', categoria: 'Otro', justificacion: 'Evaluación microscópica de cuello uterino' },
+          { nombre: 'Ecografía Transvaginal o Pélvica', categoria: 'Ecografía', justificacion: 'Evaluación de miometrio y ovarios' },
+          { nombre: 'Mamografía Digital Bilateral', categoria: 'Rayos X', justificacion: 'Pesquisa mamaria anual' },
+        ],
+      },
+    ],
+    frecuentes: [
+      { nombre: 'Citología Cervical / PAP', categoria: 'Laboratorio' },
+      { nombre: 'Ecografía Transvaginal', categoria: 'Ecografía' },
+      { nombre: 'Mamografía Digital Bilateral', categoria: 'Rayos X' },
+      { nombre: 'Beta-hCG Cuantitativa', categoria: 'Laboratorio' },
+      { nombre: 'Examen de Orina y Urocultivo', categoria: 'Laboratorio' },
+      { nombre: 'Ecografía Mamaria Bilateral', categoria: 'Ecografía' },
+      { nombre: 'Cultivo de Secreción Vaginal', categoria: 'Laboratorio' },
     ],
   },
-  {
-    id: 'prenatal',
-    nombre: 'Perfil Prenatal / Obstétrico',
-    especialidadTag: 'Ginecología / Obstetricia',
-    icono: Baby,
-    color: 'border-rose-200 bg-rose-50/50 text-rose-700 dark:bg-rose-950/20 dark:border-rose-900/50 dark:text-rose-400',
-    estudios: [
-      { nombre: 'Hematología Completa', categoria: 'Laboratorio', justificacion: 'Control prenatal basal' },
-      { nombre: 'Grupo Sanguíneo y Factor Rh', categoria: 'Laboratorio', justificacion: 'Prevención de isoinmunización Rh' },
-      { nombre: 'Glicemia en Ayunas', categoria: 'Laboratorio', justificacion: 'Descarte de diabetes gestacional' },
-      { nombre: 'Serología VDRL y VIH Rápida', categoria: 'Laboratorio', justificacion: 'Tamizaje infeccioso de transmisión vertical' },
-      { nombre: 'Serología Toxoplasmosis (IgG e IgM)', categoria: 'Laboratorio', justificacion: 'Detección de infección aguda en gestación' },
-      { nombre: 'Examen de Orina y Urocultivo', categoria: 'Laboratorio', justificacion: 'Descarte de bacteriuria asintomática' },
-      { nombre: 'Ecografía Obstétrica de Control', categoria: 'Ecografía', justificacion: 'Biometría y bienestar fetal' },
+  cardiologia: {
+    kits: [
+      {
+        id: 'cardio_integral',
+        nombre: 'Perfil Cardiovascular Integral',
+        descripcion: 'Estratificación de riesgo aterogénico e isquémico',
+        color: 'border-red-300/80 bg-red-500/10 text-red-700 dark:text-red-300',
+        icono: 'Heart',
+        estudios: [
+          { nombre: 'Hemograma Completo y Plaquetas', categoria: 'Laboratorio', justificacion: 'Serie hematológica basal' },
+          { nombre: 'Perfil Lipídico (Colesterol/Triglicéridos)', categoria: 'Laboratorio', justificacion: 'Estratificación de riesgo' },
+          { nombre: 'Glicemia en Ayunas', categoria: 'Laboratorio', justificacion: 'Descarte de síndrome metabólico' },
+          { nombre: 'Urea y Creatinina Sérica', categoria: 'Laboratorio', justificacion: 'Función renal basal' },
+          { nombre: 'Electrocardiograma (ECG 12 derivaciones)', categoria: 'Cardiología / ECG', justificacion: 'Ritmo y morfología cardíaca' },
+          { nombre: 'Ecocardiograma Transtorácico Doppler', categoria: 'Cardiología / ECG', justificacion: 'Fracción de eyección y válvulas' },
+          { nombre: 'Rayos X de Tórax (PA)', categoria: 'Rayos X', justificacion: 'Silueta cardiovascular' },
+        ],
+      },
+    ],
+    frecuentes: [
+      { nombre: 'Electrocardiograma (ECG 12 derivaciones)', categoria: 'Cardiología / ECG' },
+      { nombre: 'Ecocardiograma Transtorácico Doppler', categoria: 'Cardiología / ECG' },
+      { nombre: 'Holter de Ritmo Cardíaco 24h', categoria: 'Cardiología / ECG' },
+      { nombre: 'MAPA (Monitoreo Presión 24h)', categoria: 'Cardiología / ECG' },
+      { nombre: 'Perfil Lipídico Completo', categoria: 'Laboratorio' },
+      { nombre: 'Troponina I Cuantitativa', categoria: 'Laboratorio' },
+      { nombre: 'Dímero D', categoria: 'Laboratorio' },
+      { nombre: 'Rayos X de Tórax (PA)', categoria: 'Rayos X' },
     ],
   },
-  {
-    id: 'pediatria',
-    nombre: 'Control Pediátrico & Puericultura',
-    especialidadTag: 'Pediatría',
-    icono: Sparkles,
-    color: 'border-amber-200 bg-amber-50/50 text-amber-700 dark:bg-amber-950/20 dark:border-amber-900/50 dark:text-amber-400',
-    estudios: [
-      { nombre: 'Hemograma Completo', categoria: 'Laboratorio', justificacion: 'Descarte de anemia ferropénica infantil' },
-      { nombre: 'Coproparasitológico Simple y Seriado', categoria: 'Laboratorio', justificacion: 'Descarte de parasitosis intestinal' },
-      { nombre: 'Examen General de Orina', categoria: 'Laboratorio', justificacion: 'Control pediátrico rutinario' },
-      { nombre: 'Ferritina Sérica y Hierro Total', categoria: 'Laboratorio', justificacion: 'Reserva de hierro corporal' },
+  pediatria: {
+    kits: [
+      {
+        id: 'pediatria_control',
+        nombre: 'Control Pediátrico & Puericultura',
+        descripcion: 'Control rutinario de niño sano y desarrollo',
+        color: 'border-amber-300/80 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+        icono: 'Baby',
+        estudios: [
+          { nombre: 'Hemograma Completo Pediátrico', categoria: 'Laboratorio', justificacion: 'Descarte de anemia infantil' },
+          { nombre: 'Coproparasitológico Seriado', categoria: 'Laboratorio', justificacion: 'Descarte de parasitosis intestinal' },
+          { nombre: 'Examen General de Orina', categoria: 'Laboratorio', justificacion: 'Control urinario pediátrico' },
+          { nombre: 'Ferritina Sérica y Hierro Total', categoria: 'Laboratorio', justificacion: 'Depósitos de hierro' },
+        ],
+      },
+    ],
+    frecuentes: [
+      { nombre: 'Hemograma Completo Pediátrico', categoria: 'Laboratorio' },
+      { nombre: 'Coproparasitológico Seriado', categoria: 'Laboratorio' },
+      { nombre: 'Examen General de Orina', categoria: 'Laboratorio' },
+      { nombre: 'Proteína C Reactiva (PCR)', categoria: 'Laboratorio' },
+      { nombre: 'Ferritina Sérica', categoria: 'Laboratorio' },
+      { nombre: 'Radiografía de Tórax Pediátrica', categoria: 'Rayos X' },
     ],
   },
-  {
-    id: 'metabolico',
-    nombre: 'Perfil Metabólico & Diabetes',
-    especialidadTag: 'Medicina Interna',
-    icono: Activity,
-    color: 'border-emerald-200 bg-emerald-50/50 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/50 dark:text-emerald-400',
-    estudios: [
-      { nombre: 'Glucosa en Ayunas', categoria: 'Laboratorio', justificacion: 'Control glucémico' },
-      { nombre: 'Hemoglobina Glicosilada (HbA1c)', categoria: 'Laboratorio', justificacion: 'Monitoreo de control glicémico últimos 3 meses' },
-      { nombre: 'Perfil Lipídico Completo', categoria: 'Laboratorio', justificacion: 'Control de dislipidemia mixta' },
-      { nombre: 'Microalbuminuria en Orina', categoria: 'Laboratorio', justificacion: 'Detección temprana de nefropatía diabética' },
-      { nombre: 'Creatinina sérica y Tasa de Filtración Glomerular', categoria: 'Laboratorio', justificacion: 'Estadificación de función renal' },
+  'medicina general': {
+    kits: [
+      {
+        id: 'metabolico',
+        nombre: 'Perfil Metabólico & Diabetes',
+        descripcion: 'Control integral de glucemia y lípidos',
+        color: 'border-emerald-300/80 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+        icono: 'Activity',
+        estudios: [
+          { nombre: 'Glucosa en Ayunas', categoria: 'Laboratorio', justificacion: 'Control glucémico' },
+          { nombre: 'Hemoglobina Glicosilada (HbA1c)', categoria: 'Laboratorio', justificacion: 'Monitoreo de 3 meses' },
+          { nombre: 'Perfil Lipídico Completo', categoria: 'Laboratorio', justificacion: 'Dislipidemia' },
+          { nombre: 'Microalbuminuria en Orina', categoria: 'Laboratorio', justificacion: 'Nefropatía' },
+          { nombre: 'Creatinina sérica y TFG', categoria: 'Laboratorio', justificacion: 'Función renal' },
+        ],
+      },
+    ],
+    frecuentes: [
+      { nombre: 'Hemograma Completo', categoria: 'Laboratorio' },
+      { nombre: 'Glicemia en Ayunas', categoria: 'Laboratorio' },
+      { nombre: 'Perfil Lipídico Completo', categoria: 'Laboratorio' },
+      { nombre: 'Urea y Creatinina', categoria: 'Laboratorio' },
+      { nombre: 'Examen General de Orina', categoria: 'Laboratorio' },
+      { nombre: 'Rayos X de Tórax (PA)', categoria: 'Rayos X' },
+      { nombre: 'Ecografía Abdominal Completa', categoria: 'Ecografía' },
+      { nombre: 'Electrocardiograma (ECG)', categoria: 'Cardiología / ECG' },
     ],
   },
-  {
-    id: 'preoperatorio',
-    nombre: 'Perfil Preoperatorio Estándar',
-    especialidadTag: 'Cirugía / General',
-    icono: ShieldAlert,
-    color: 'border-blue-200 bg-blue-50/50 text-blue-700 dark:bg-blue-950/20 dark:border-blue-900/50 dark:text-blue-400',
-    estudios: [
-      { nombre: 'Hemograma Completo y Recuento Plaquetario', categoria: 'Laboratorio', justificacion: 'Valoración prequirúrgica' },
-      { nombre: 'Tiempos de Coagulación (TP, TTP, INR)', categoria: 'Laboratorio', justificacion: 'Evaluación de hemostasia y riesgo hemorrágico' },
-      { nombre: 'Glicemia, Urea y Creatinina', categoria: 'Laboratorio', justificacion: 'Química sanguínea preoperatoria' },
-      { nombre: 'Grupo Sanguíneo y Factor Rh', categoria: 'Laboratorio', justificacion: 'Reserva de hemoderivados prequirúrgicos' },
-      { nombre: 'Electrocardiograma con Valoración Cardiovascular', categoria: 'Cardiología / ECG', justificacion: 'Riesgo quirúrgico cardiovascular Goldman' },
-      { nombre: 'Rayos X de Tórax (PA)', categoria: 'Rayos X', justificacion: 'Evaluación pleuropulmonar preanestésica' },
+  odontologia: {
+    kits: [
+      {
+        id: 'odonto_maxilo',
+        nombre: 'Perfil Radiográfico Odontológico',
+        descripcion: 'Estudio de arcadas dentarias y maxilares',
+        color: 'border-cyan-300/80 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
+        icono: 'Smile',
+        estudios: [
+          { nombre: 'Radiografía Panorámica Digital (Ortopantomografía)', categoria: 'Rayos X', justificacion: 'Evaluación integral' },
+          { nombre: 'Radiografía Periapical Seriada', categoria: 'Rayos X', justificacion: 'Diagnóstico periodontal' },
+          { nombre: 'Tomografía Cone Beam (CBCT) Maxilofacial', categoria: 'Tomografía', justificacion: 'Planificación 3D' },
+        ],
+      },
+    ],
+    frecuentes: [
+      { nombre: 'Radiografía Panorámica Digital', categoria: 'Rayos X' },
+      { nombre: 'Radiografía Periapical', categoria: 'Rayos X' },
+      { nombre: 'Telerradiografía Lateral de Cráneo', categoria: 'Rayos X' },
+      { nombre: 'Tomografía Cone Beam (CBCT)', categoria: 'Tomografía' },
     ],
   },
-  {
-    id: 'odontologia',
-    nombre: 'Perfil Odontológico & Maxilofacial',
-    especialidadTag: 'Odontología',
-    icono: Smile,
-    color: 'border-cyan-200 bg-cyan-50/50 text-cyan-700 dark:bg-cyan-950/20 dark:border-cyan-900/50 dark:text-cyan-400',
-    estudios: [
-      { nombre: 'Radiografía Panorámica Digital (Ortopantomografía)', categoria: 'Rayos X', justificacion: 'Planificación integral de arcadas dentarias' },
-      { nombre: 'Radiografía Periapical Seriada', categoria: 'Rayos X', justificacion: 'Diagnóstico endodóntico / periodontal' },
-      { nombre: 'Tomografía Cone Beam (CBCT) Maxilofacial', categoria: 'Tomografía', justificacion: 'Evaluación ósea para implantes o cirugías complejas' },
-    ],
-  },
-];
-
-const ESTUDIOS_RAPIDOS = [
-  { nombre: 'Hemograma Completo', categoria: 'Laboratorio' },
-  { nombre: 'Perfil Lipídico (Colesterol/Triglicéridos)', categoria: 'Laboratorio' },
-  { nombre: 'Glucosa en Ayunas', categoria: 'Laboratorio' },
-  { nombre: 'Urea y Creatinina', categoria: 'Laboratorio' },
-  { nombre: 'Examen General de Orina', categoria: 'Laboratorio' },
-  { nombre: 'Rayos X de Tórax (PA)', categoria: 'Rayos X' },
-  { nombre: 'Ecografía Abdominal Completa', categoria: 'Ecografía' },
-  { nombre: 'Electrocardiograma (ECG)', categoria: 'Cardiología / ECG' },
-  { nombre: 'Proteína C Reactiva (PCR)', categoria: 'Laboratorio' },
-  { nombre: 'Urocultivo con Antibiograma', categoria: 'Laboratorio' },
-];
+};
 
 interface EstudiosSolicitadosWidgetProps {
   estudios: EstudioSolicitado[];
@@ -159,6 +204,7 @@ interface EstudiosSolicitadosWidgetProps {
   onRemove: (index: number) => void;
   readOnly?: boolean;
   especialidadNombre?: string;
+  estudiosSugeridos?: EstudiosEspecialidadConfig | null;
 }
 
 export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps> = ({
@@ -168,6 +214,7 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
   onRemove,
   readOnly = false,
   especialidadNombre = '',
+  estudiosSugeridos,
 }) => {
   const [nuevoEstudio, setNuevoEstudio] = useState<EstudioSolicitado>({
     nombre: '',
@@ -178,25 +225,52 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
   });
 
   const [kitExpandido, setKitExpandido] = useState<string | null>(null);
+  const [mostrarFormManual, setMostrarFormManual] = useState<boolean>(false);
+  const [filtroEspecialidadSeleccionada, setFiltroEspecialidadSeleccionada] = useState<string>('');
 
-  // Ordenar kits priorizando la especialidad de la consulta médica
-  const kitsOrdenados = useMemo(() => {
-    if (!especialidadNombre) return KITS_ESPECIALIDADES;
-    const espLower = especialidadNombre.toLowerCase();
-    return [...KITS_ESPECIALIDADES].sort((a, b) => {
-      const matchA =
-        a.especialidadTag.toLowerCase().includes(espLower) ||
-        espLower.includes(a.especialidadTag.toLowerCase().split(' ')[0]);
-      const matchB =
-        b.especialidadTag.toLowerCase().includes(espLower) ||
-        espLower.includes(b.especialidadTag.toLowerCase().split(' ')[0]);
-      if (matchA && !matchB) return -1;
-      if (!matchA && matchB) return 1;
-      return 0;
-    });
-  }, [especialidadNombre]);
+  // Normalizar nombre de especialidad para buscar en catálogo
+  const normalizarNombreEsp = (name: string): string => {
+    return name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  };
 
-  const handleAgregar = () => {
+  // Obtener la configuración dinámica de estudios de la especialidad actual
+  const configEspecialidadActual = useMemo(() => {
+    // 1. Si la plantilla efectiva ya trajo estudios configurados por el administrador
+    if (estudiosSugeridos && (estudiosSugeridos.kits?.length || estudiosSugeridos.frecuentes?.length)) {
+      return {
+        kits: estudiosSugeridos.kits || [],
+        frecuentes: estudiosSugeridos.frecuentes || [],
+        esDinamicoDePlantilla: true,
+      };
+    }
+
+    // 2. Si se seleccionó otra especialidad manualmente en el selector
+    const targetNombre = filtroEspecialidadSeleccionada || especialidadNombre;
+    const cleanName = normalizarNombreEsp(targetNombre);
+
+    for (const [key, data] of Object.entries(CATALOGO_DEFAULT_POR_ESPECIALIDAD)) {
+      if (cleanName.includes(key) || key.includes(cleanName.split(' ')[0])) {
+        return {
+          kits: data.kits,
+          frecuentes: data.frecuentes,
+          esDinamicoDePlantilla: false,
+        };
+      }
+    }
+
+    // 3. Fallback a medicina general
+    return {
+      kits: CATALOGO_DEFAULT_POR_ESPECIALIDAD['medicina general'].kits,
+      frecuentes: CATALOGO_DEFAULT_POR_ESPECIALIDAD['medicina general'].frecuentes,
+      esDinamicoDePlantilla: false,
+    };
+  }, [estudiosSugeridos, especialidadNombre, filtroEspecialidadSeleccionada]);
+
+  const handleAgregarManual = () => {
     if (!nuevoEstudio.nombre.trim()) return;
     onAdd({ ...nuevoEstudio });
     setNuevoEstudio({
@@ -206,25 +280,26 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
       urgente: false,
       indicaciones_preparacion: '',
     });
+    setMostrarFormManual(false);
+    toast.success(`Estudio "${nuevoEstudio.nombre}" solicitado`);
   };
 
-  const handleSugerenciaRapida = (sug: { nombre: string; categoria: string }) => {
-    // Evitar duplicar exactamente el mismo estudio si ya está
+  const handleSugerenciaRapida = (sug: { nombre: string; categoria: string; justificacion?: string }) => {
     if (estudios.some((e) => e.nombre.toLowerCase() === sug.nombre.toLowerCase())) {
-      toast.info(`"${sug.nombre}" ya está en la lista`);
+      toast.info(`"${sug.nombre}" ya está en la orden`);
       return;
     }
     onAdd({
       nombre: sug.nombre,
       categoria: sug.categoria,
-      justificacion_clinica: 'Evaluación y control médico en consulta',
+      justificacion_clinica: sug.justificacion || `Solicitud clínica de control en consulta`,
       urgente: false,
-      indicaciones_preparacion: '',
+      indicaciones_preparacion: sug.categoria === 'Laboratorio' ? 'Ayuno mínimo de 8 horas' : '',
     });
     toast.success(`Estudio "${sug.nombre}" añadido`);
   };
 
-  const handleAplicarKit = (kit: KitEstudio) => {
+  const handleAplicarKit = (kit: KitEstudioConfig) => {
     const nuevos: EstudioSolicitado[] = kit.estudios
       .filter((item) => !estudios.some((e) => e.nombre.toLowerCase() === item.nombre.toLowerCase()))
       .map((item) => ({
@@ -236,7 +311,7 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
       }));
 
     if (nuevos.length === 0) {
-      toast.info(`Todos los estudios de este perfil ya fueron agregados`);
+      toast.info(`Todos los estudios del ${kit.nombre} ya están en la orden`);
       return;
     }
 
@@ -248,149 +323,213 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
     toast.success(`Se agregaron ${nuevos.length} estudios del ${kit.nombre}`);
   };
 
+  const totalEstudiosSugeridos = configEspecialidadActual.frecuentes.length;
+  const totalKits = configEspecialidadActual.kits.length;
+
   return (
-    <div className="space-y-6">
-      {/* ── KITS Y PERFILES POR ESPECIALIDAD (1-CLICK) ── */}
+    <div className="space-y-5">
+      {/* ── RENGLÓN UNIFICADO Y DINÁMICO POR ESPECIALIDAD ── */}
       {!readOnly && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-              <Layers className="size-4 text-primary" />
-              <span>Perfiles y Kits Diagnósticos por Especialidad (1 Clic)</span>
-            </div>
-            {especialidadNombre && (
-              <Badge variant="secondary" className="text-[11px] font-medium">
-                Especialidad: {especialidadNombre}
-              </Badge>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {kitsOrdenados.map((kit) => {
-              const Icon = kit.icono;
-              const isExpanded = kitExpandido === kit.id;
-              const yaEnLista = kit.estudios.filter((s) =>
-                estudios.some((e) => e.nombre.toLowerCase() === s.nombre.toLowerCase())
-              ).length;
-
-              return (
-                <div
-                  key={kit.id}
-                  className={`p-3.5 rounded-xl border transition-all text-xs flex flex-col justify-between ${kit.color}`}
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 font-bold text-foreground">
-                        <Icon className="size-4 shrink-0 text-primary" />
-                        <span>{kit.nombre}</span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] bg-background/80 shrink-0">
-                        {kit.estudios.length} estudios
-                      </Badge>
-                    </div>
-
-                    <p className="text-[11px] text-muted-foreground line-clamp-2">
-                      {kit.estudios.map((e) => e.nombre).join(', ')}
-                    </p>
-
-                    {isExpanded && (
-                      <ul className="mt-2 pt-2 border-t border-border/50 space-y-1 text-[11px]">
-                        {kit.estudios.map((e, idx) => (
-                          <li key={idx} className="flex items-center gap-1.5 text-foreground">
-                            <span className="size-1.5 rounded-full bg-primary" />
-                            <span>{e.nombre}</span>
-                            <span className="text-[9.5px] text-muted-foreground">({e.categoria})</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-3 mt-2 border-t border-border/40">
-                    <button
-                      type="button"
-                      onClick={() => setKitExpandido(isExpanded ? null : kit.id)}
-                      className="text-[11px] text-muted-foreground hover:text-foreground underline cursor-pointer"
-                    >
-                      {isExpanded ? 'Ocultar detalle' : 'Ver detalle'}
-                    </button>
-
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => handleAplicarKit(kit)}
-                      className="h-7 text-xs px-2.5 font-semibold bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
-                    >
-                      <Plus className="size-3.5 mr-1" />
-                      {yaEnLista > 0 ? `Agregar (${kit.estudios.length - yaEnLista} restantes)` : 'Añadir Perfil'}
-                    </Button>
-                  </div>
+        <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs space-y-4">
+          {/* Header del Renglón de Estudios */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border/60">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <Layers className="size-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-foreground">
+                    Estudios y Perfiles Diagnósticos
+                  </h4>
+                  <Badge variant="outline" className="text-xs border-primary/30 text-primary bg-primary/5 font-semibold">
+                    {especialidadNombre || 'Consulta General'}
+                  </Badge>
+                  {configEspecialidadActual.esDinamicoDePlantilla && (
+                    <span className="text-[10px] text-teal-600 dark:text-teal-400 font-medium">
+                      ✓ Plantilla Dinámica
+                    </span>
+                  )}
                 </div>
-              );
-            })}
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Kits agrupados y estudios frecuentes recomendados para esta especialidad (1 Clic para añadir).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={mostrarFormManual ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setMostrarFormManual(!mostrarFormManual)}
+                className="h-8 text-xs font-semibold gap-1.5 cursor-pointer"
+              >
+                <Plus className="size-3.5" />
+                <span>{mostrarFormManual ? 'Ocultar Formulario' : 'Estudio Personalizado'}</span>
+              </Button>
+            </div>
           </div>
+
+          {/* Sub-renglón A: Kits y Perfiles de la Especialidad */}
+          {totalKits > 0 && (
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
+                <Layers className="size-3.5 text-primary" />
+                <span>Perfiles y Kits Completos ({totalKits}):</span>
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {configEspecialidadActual.kits.map((kit) => {
+                  const isExpanded = kitExpandido === kit.id;
+                  const yaEnLista = kit.estudios.filter((s) =>
+                    estudios.some((e) => e.nombre.toLowerCase() === s.nombre.toLowerCase())
+                  ).length;
+                  const todosAgregados = yaEnLista === kit.estudios.length;
+
+                  return (
+                    <div
+                      key={kit.id}
+                      className={`p-3 rounded-xl border transition-all text-xs flex flex-col justify-between ${kit.color || 'border-border/70 bg-muted/20'}`}
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-start justify-between gap-1.5">
+                          <strong className="text-foreground text-xs leading-tight">
+                            {kit.nombre}
+                          </strong>
+                          <Badge variant="outline" className="text-[10px] bg-background/80 shrink-0 font-semibold">
+                            {kit.estudios.length} estudios
+                          </Badge>
+                        </div>
+
+                        <p className="text-[11px] text-muted-foreground line-clamp-1">
+                          {kit.descripcion || kit.estudios.map((e) => e.nombre).join(', ')}
+                        </p>
+
+                        {isExpanded && (
+                          <ul className="mt-2 pt-2 border-t border-border/50 space-y-1 text-[11px] max-h-36 overflow-y-auto">
+                            {kit.estudios.map((e, idx) => (
+                              <li key={idx} className="flex items-center gap-1.5 text-foreground">
+                                <span className="size-1.5 rounded-full bg-primary shrink-0" />
+                                <span className="truncate">{e.nombre}</span>
+                                <span className="text-[9.5px] text-muted-foreground shrink-0">({e.categoria})</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-border/40">
+                        <button
+                          type="button"
+                          onClick={() => setKitExpandido(isExpanded ? null : kit.id)}
+                          className="text-[11px] text-muted-foreground hover:text-foreground underline cursor-pointer"
+                        >
+                          {isExpanded ? 'Ocultar' : 'Ver detalle'}
+                        </button>
+
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={todosAgregados}
+                          onClick={() => handleAplicarKit(kit)}
+                          className={`h-7 text-xs px-2.5 font-semibold cursor-pointer ${
+                            todosAgregados
+                              ? 'bg-muted text-muted-foreground opacity-60'
+                              : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs'
+                          }`}
+                        >
+                          {todosAgregados ? (
+                            <span className="flex items-center gap-1">
+                              <Check className="size-3" /> Agregado
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <Plus className="size-3" />
+                              {yaEnLista > 0 ? `+${kit.estudios.length - yaEnLista} rest.` : 'Añadir Perfil'}
+                            </span>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Sub-renglón B: Estudios Individuales Frecuentes de la Especialidad */}
+          {totalEstudiosSugeridos > 0 && (
+            <div className="space-y-2 pt-1 border-t border-border/40">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-amber-500" />
+                  <span>Estudios Individuales Frecuentes ({especialidadNombre}):</span>
+                </span>
+                <span className="text-[10px] text-muted-foreground">Clic para agregar a la orden</span>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {configEspecialidadActual.frecuentes.map((sug, i) => {
+                  const agregado = estudios.some((e) => e.nombre.toLowerCase() === sug.nombre.toLowerCase());
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => handleSugerenciaRapida(sug)}
+                      disabled={agregado}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all shadow-2xs font-medium cursor-pointer ${
+                        agregado
+                          ? 'bg-muted text-muted-foreground border-border/50 opacity-60 cursor-default'
+                          : 'border-border bg-background hover:border-primary hover:text-primary'
+                      }`}
+                      title={sug.categoria}
+                    >
+                      {agregado ? '✓ ' : '+ '}
+                      {sug.nombre}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Sugerencias Rápidas Individuales */}
-      {!readOnly && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-            <Sparkles className="size-3.5 text-amber-500" />
-            <span>Estudios Individuales Frecuentes:</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {ESTUDIOS_RAPIDOS.map((sug, i) => {
-              const agregado = estudios.some((e) => e.nombre.toLowerCase() === sug.nombre.toLowerCase());
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => handleSugerenciaRapida(sug)}
-                  disabled={agregado}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-all shadow-2xs font-medium cursor-pointer ${
-                    agregado
-                      ? 'bg-muted text-muted-foreground border-border/50 opacity-60 cursor-default'
-                      : 'border-border bg-background hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  {agregado ? '✓ ' : '+ '}
-                  {sug.nombre}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Formulario de Solicitud de Estudio Manual */}
-      {!readOnly && (
-        <div className="p-5 rounded-xl border border-sky-200/70 dark:border-sky-900/50 bg-sky-50/30 dark:bg-sky-950/20 space-y-4">
-          <div className="flex items-center gap-2 text-sky-700 dark:text-sky-400 font-semibold text-sm">
-            <FlaskConical className="size-4.5" />
-            <span>Solicitar Nuevo Examen o Estudio Diagnóstico Específico</span>
+      {/* Formulario de Solicitud de Estudio Manual (Colapsable) */}
+      {!readOnly && mostrarFormManual && (
+        <div className="p-4 rounded-xl border border-sky-200/70 dark:border-sky-900/50 bg-sky-50/30 dark:bg-sky-950/20 space-y-3 animate-in fade-in-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sky-700 dark:text-sky-400 font-semibold text-xs">
+              <FlaskConical className="size-4" />
+              <span>Solicitar Examen Diagnóstico Manual o No Listado</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMostrarFormManual(false)}
+              className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              Cerrar
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div className="sm:col-span-2">
-              <Label className="text-xs text-muted-foreground">
-                Nombre del Estudio / Procedimiento *
-              </Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="sm:col-span-2 space-y-1">
+              <Label className="text-xs text-muted-foreground">Nombre del Estudio / Procedimiento *</Label>
               <Input
                 placeholder="Ej. Resonancia Magnética de Columna Lumbar"
                 value={nuevoEstudio.nombre}
                 onChange={(e) => setNuevoEstudio({ ...nuevoEstudio, nombre: e.target.value })}
-                className="mt-1 h-9.5 text-sm"
+                className="h-9 text-xs"
               />
             </div>
 
-            <div>
+            <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Categoría</Label>
               <Select
                 value={nuevoEstudio.categoria}
                 onValueChange={(val) => setNuevoEstudio({ ...nuevoEstudio, categoria: val })}
               >
-                <SelectTrigger className="mt-1 h-9.5 text-sm">
+                <SelectTrigger className="h-9 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -403,46 +542,44 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
               </Select>
             </div>
 
-            <div className="flex items-center gap-3 pt-6">
+            <div className="flex items-center gap-2 pt-5">
               <Switch
                 checked={nuevoEstudio.urgente}
                 onCheckedChange={(checked) => setNuevoEstudio({ ...nuevoEstudio, urgente: checked })}
                 id="estudio-urgente"
               />
               <Label htmlFor="estudio-urgente" className="text-xs font-semibold text-rose-600 dark:text-rose-400 cursor-pointer">
-                Marcar como Urgente
+                Marcar Urgente
               </Label>
             </div>
 
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-2 space-y-1">
               <Label className="text-xs text-muted-foreground">Justificación Clínica</Label>
               <Input
-                placeholder="Ej. Paciente con lumbociatalgia refractaria a analgesia"
+                placeholder="Ej. Sospecha de hernia discal / lumbociatalgia aguda"
                 value={nuevoEstudio.justificacion_clinica ?? ''}
                 onChange={(e) => setNuevoEstudio({ ...nuevoEstudio, justificacion_clinica: e.target.value })}
-                className="mt-1 h-9.5 text-sm"
+                className="h-9 text-xs"
               />
             </div>
 
-            <div className="sm:col-span-2">
-              <Label className="text-xs text-muted-foreground">
-                Indicaciones de Preparación para el Paciente
-              </Label>
-              <div className="flex gap-2 mt-1">
+            <div className="sm:col-span-2 space-y-1">
+              <Label className="text-xs text-muted-foreground">Indicaciones de Preparación</Label>
+              <div className="flex gap-2">
                 <Input
-                  placeholder="Ej. Ayuno estricto de 8 horas, traer estudios previos"
+                  placeholder="Ej. Ayuno de 8 horas, traer estudios previos"
                   value={nuevoEstudio.indicaciones_preparacion ?? ''}
                   onChange={(e) => setNuevoEstudio({ ...nuevoEstudio, indicaciones_preparacion: e.target.value })}
-                  className="h-9.5 text-sm"
+                  className="h-9 text-xs"
                 />
                 <Button
                   type="button"
-                  onClick={handleAgregar}
+                  onClick={handleAgregarManual}
                   disabled={!nuevoEstudio.nombre.trim()}
-                  className="bg-sky-600 hover:bg-sky-700 text-white shrink-0 px-4 h-9.5 cursor-pointer"
+                  className="bg-sky-600 hover:bg-sky-700 text-white shrink-0 px-3.5 h-9 text-xs cursor-pointer"
                 >
-                  <Plus className="size-4 mr-1" />
-                  Solicitar
+                  <Plus className="size-3.5 mr-1" />
+                  Agregar
                 </Button>
               </div>
             </div>
@@ -450,15 +587,15 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
         </div>
       )}
 
-      {/* Lista de Estudios Solicitados */}
+      {/* ── LISTA DE ÓRDENES Y ESTUDIOS SOLICITADOS EN ESTA ATENCIÓN ── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <span>Estudios Solicitados ({estudios.length})</span>
+            <span>Estudios Solicitados en la Consulta ({estudios.length})</span>
             {estudios.length > 0 && (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary" className="text-xs font-semibold">
                 {estudios.filter((e) => e.urgente).length > 0 && (
-                  <span className="text-rose-600 font-semibold mr-1">
+                  <span className="text-rose-600 mr-1">
                     {estudios.filter((e) => e.urgente).length} urgente(s) ·
                   </span>
                 )}
@@ -469,19 +606,21 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
         </div>
 
         {estudios.length === 0 ? (
-          <div className="p-8 text-center rounded-xl border border-dashed border-border text-muted-foreground text-sm">
-            No se han solicitado estudios auxiliares en esta atención.
+          <div className="p-8 text-center rounded-2xl border border-dashed border-border text-muted-foreground text-xs space-y-1">
+            <FlaskConical className="size-7 mx-auto opacity-40 text-primary" />
+            <p className="font-semibold text-foreground">No se han ordenado estudios diagnósticos en esta atención.</p>
+            <p>Haga clic en cualquiera de los kits o estudios frecuentes de la especialidad para agregarlos a la orden.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {estudios.map((est, index) => (
               <div
                 key={index}
-                className="p-4 rounded-xl border border-border bg-card shadow-xs flex flex-col justify-between"
+                className="p-3.5 rounded-xl border border-border bg-card shadow-xs flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2">
-                    <div className="font-semibold text-foreground flex items-center gap-1.5 text-sm">
+                    <div className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
                       <FlaskConical className="size-4 text-sky-600 shrink-0" />
                       <span>{est.nombre}</span>
                     </div>
@@ -490,7 +629,7 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
                         type="button"
                         onClick={() => onRemove(index)}
                         className="text-muted-foreground hover:text-rose-600 p-1 transition-colors cursor-pointer"
-                        title="Eliminar estudio"
+                        title="Eliminar de la orden"
                       >
                         <Trash2 className="size-4" />
                       </button>
@@ -498,11 +637,11 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
                   </div>
 
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="outline" className="text-xs font-normal">
+                    <Badge variant="outline" className="text-[11px] font-normal">
                       {est.categoria}
                     </Badge>
                     {est.urgente && (
-                      <Badge variant="destructive" className="text-xs font-semibold gap-1">
+                      <Badge variant="destructive" className="text-[11px] font-semibold gap-1">
                         <AlertCircle className="size-3" />
                         URGENTE
                       </Badge>
@@ -510,14 +649,14 @@ export const EstudiosSolicitadosWidget: React.FC<EstudiosSolicitadosWidgetProps>
                   </div>
 
                   {est.justificacion_clinica && (
-                    <p className="text-xs text-muted-foreground mt-2">
+                    <p className="text-[11px] text-muted-foreground mt-2">
                       <span className="font-medium text-foreground">Justificación:</span>{' '}
                       {est.justificacion_clinica}
                     </p>
                   )}
 
                   {est.indicaciones_preparacion && (
-                    <p className="text-xs text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg mt-2 font-medium">
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg mt-2 font-medium">
                       Preparación: {est.indicaciones_preparacion}
                     </p>
                   )}

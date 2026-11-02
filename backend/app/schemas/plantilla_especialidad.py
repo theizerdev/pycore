@@ -52,6 +52,10 @@ class PlantillaEspecialidadSave(BaseModel):
         default_factory=list,
         description="Widgets clínicos habilitados (ej. odontograma, refraccion, percentiles_oms, rueda_obstetrica)"
     )
+    estudios_sugeridos: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Perfiles diagnósticos y estudios individuales frecuentes sugeridos para esta especialidad"
+    )
 
 
 class PlantillaEspecialidadResponse(BaseModel):
@@ -63,6 +67,7 @@ class PlantillaEspecialidadResponse(BaseModel):
     esquema_preconsulta: List[SeccionClinica]
     esquema_consulta: List[SeccionClinica]
     widgets_activos: List[str]
+    estudios_sugeridos: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -118,3 +123,4 @@ class PlantillaEfectivaResponse(BaseModel):
     total_campos_preconsulta: int
     total_campos_consulta: int
     total_campos_medico: int
+    estudios_sugeridos: Optional[Dict[str, Any]] = None

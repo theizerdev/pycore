@@ -2579,6 +2579,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                   onRemove={(idx) => setEstudios((prev) => prev.filter((_, i) => i !== idx))}
                   readOnly={readOnly}
                   especialidadNombre={consulta.especialidad?.nombre}
+                  estudiosSugeridos={plantillaEfectiva?.estudios_sugeridos}
                 />
               </TabsContent>
             </Tabs>

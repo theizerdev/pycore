@@ -496,6 +496,30 @@ export interface SeccionClinica {
   orden_posicion?: 'antes_evaluacion' | 'despues_evaluacion';
 }
 
+export interface KitEstudioConfig {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  color?: string;
+  icono?: string;
+  estudios: {
+    nombre: string;
+    categoria: string;
+    justificacion?: string;
+  }[];
+}
+
+export interface EstudioFrecuenteConfig {
+  nombre: string;
+  categoria: string;
+  justificacion?: string;
+}
+
+export interface EstudiosEspecialidadConfig {
+  kits?: KitEstudioConfig[];
+  frecuentes?: EstudioFrecuenteConfig[];
+}
+
 export interface EspecialidadPlantilla {
   id: number;
   empresa_id: number;
@@ -505,6 +529,7 @@ export interface EspecialidadPlantilla {
   esquema_preconsulta: SeccionClinica[];
   esquema_consulta: SeccionClinica[];
   widgets_activos: string[];
+  estudios_sugeridos?: EstudiosEspecialidadConfig | null;
   created_at: string;
   updated_at: string;
 }
@@ -513,6 +538,7 @@ export interface EspecialidadPlantillaSaveInput {
   esquema_preconsulta: SeccionClinica[];
   esquema_consulta: SeccionClinica[];
   widgets_activos?: string[];
+  estudios_sugeridos?: EstudiosEspecialidadConfig | null;
 }
 
 export interface EspecialidadPlantillaMedico {
@@ -546,6 +572,7 @@ export interface PlantillaEfectiva {
   total_campos_preconsulta: number;
   total_campos_consulta: number;
   total_campos_medico: number;
+  estudios_sugeridos?: EstudiosEspecialidadConfig | null;
 }
 
 // ── MÉDICOS Y ESPECIALISTAS ──────────────────────────────────────────

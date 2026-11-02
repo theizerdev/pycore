@@ -77,7 +77,24 @@ async def run_citas_migrations():
                 ("telemedicina_consentimiento_texto", "TEXT NULL"),
             ]
 
+            # Columnas para especialidad_plantillas
+            plantillas_columns = [
+                ("estudios_sugeridos", "JSON NULL" if dialect_name == "mysql" else "TEXT NULL"),
+            ]
+
             if dialect_name == "mysql":
+                for col_name, col_type in plantillas_columns:
+                    try:
+                        res = await conn.execute(text(
+                            f"SELECT COUNT(*) FROM information_schema.columns "
+                            f"WHERE table_schema = DATABASE() AND table_name = 'especialidad_plantillas' AND column_name = '{col_name}'"
+                        ))
+                        exists = res.scalar() > 0
+                        if not exists:
+                            logger.info(f"Agregando columna {col_name} a especialidad_plantillas...")
+                            await conn.execute(text(f"ALTER TABLE especialidad_plantillas ADD COLUMN {col_name} {col_type}"))
+                    except Exception as err:
+                        logger.warning(f"Error verificando columna {col_name} en especialidad_plantillas: {err}")
                 for col_name, col_type in citas_columns:
                     try:
                         res = await conn.execute(text(
@@ -142,6 +159,12 @@ async def run_citas_migrations():
                         logger.warning(f"Error verificando columna {col_name} en liquidaciones_honorarios: {err}")
 
             elif dialect_name == "sqlite":
+                res_plan = await conn.execute(text("PRAGMA table_info(especialidad_plantillas)"))
+                existing_plan_cols = [row[1] for row in res_plan.fetchall()]
+                for col_name, col_type in plantillas_columns:
+                    if col_name not in existing_plan_cols:
+                        logger.info(f"Agregando columna SQLite {col_name} a especialidad_plantillas...")
+                        await conn.execute(text(f"ALTER TABLE especialidad_plantillas ADD COLUMN {col_name} {col_type}"))
                 res = await conn.execute(text("PRAGMA table_info(citas_medicas)"))
                 existing_citas_cols = [row[1] for row in res.fetchall()]
                 for col_name, col_type in citas_columns:
