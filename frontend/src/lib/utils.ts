@@ -15,3 +15,14 @@ export function getInitials(name?: string | null): string {
   }
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
+
+/**
+ * Retorna la fecha local en formato 'YYYY-MM-DD'.
+ * Evita el desfase de toISOString() que se adelanta un día en horas de la tarde/noche en zonas horarias de América (UTC-4 / UTC-5).
+ */
+export function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}

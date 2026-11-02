@@ -1,6 +1,7 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from pydantic import BaseModel, Field
+from app.schemas.integracion import JitsiSessionResponse
 
 class CitaBase(BaseModel):
     sucursal_id: int
@@ -24,6 +25,9 @@ class CitaBase(BaseModel):
     es_sobreturno: bool = False
     motivo_sobreturno: Optional[str] = None
 
+    # Modalidad ('presencial' | 'telemedicina')
+    modalidad: str = "presencial"
+
 class CitaCreate(CitaBase):
     notificar_whatsapp: bool = False
 
@@ -44,6 +48,7 @@ class CitaUpdate(BaseModel):
     metodo_pago: Optional[str] = None
     es_sobreturno: Optional[bool] = None
     motivo_sobreturno: Optional[str] = None
+    modalidad: Optional[str] = None
 
 class CitaCambiarEstado(BaseModel):
     estado: str = Field(..., description="programada, confirmada, sala_espera, en_consulta, atendida, cancelada, no_asistio")
@@ -80,6 +85,15 @@ class CitaResponse(BaseModel):
     es_sobreturno: bool = False
     motivo_sobreturno: Optional[str] = None
 
+    # Telemedicina & MediSoft WorkSpace
+    modalidad: str = "presencial"
+    sala_virtual_id: Optional[str] = None
+    teleconsulta_token: Optional[str] = None
+    teleconsulta_url: Optional[str] = None
+    paciente_conectado_at: Optional[datetime] = None
+    link_teleconsulta_enviado: bool = False
+    link_teleconsulta_enviado_at: Optional[datetime] = None
+
     # Notificaciones WhatsApp
     whatsapp_notificado: bool = False
     whatsapp_notificado_at: Optional[datetime] = None
@@ -111,6 +125,7 @@ class CitaNotificarWhatsAppResponse(BaseModel):
     mensaje_enviado: str
     destinatario: str
     whatsapp_direct_url: Optional[str] = None
+    teleconsulta_url: Optional[str] = None
     detalle: str
 
 # ── Schemas de Bloqueo de Agenda ──
@@ -135,3 +150,35 @@ class BloqueoAgendaResponse(BloqueoAgendaBase):
 
     class Config:
         from_attributes = True
+
+# ── Schemas de Teleconsulta Pública (Portal del Paciente) ──
+class TeleconsultaPublicInfoResponse(BaseModel):
+    token: str
+    cita_id: int
+    fecha: str
+    fecha_formateada: str
+    hora_inicio: str
+    hora_fin: str
+    estado_cita: str
+    estado_pago: str
+    precio_estimado: float = 0.0
+    requiere_pago: bool = False
+    autorizado: bool = True
+    mensaje_bloqueo: Optional[str] = None
+    paciente_nombre: str
+    paciente_documento: Optional[str] = None
+    medico_nombre: str
+    medico_avatar: Optional[str] = None
+    especialidad_nombre: str
+    empresa_nombre: str
+    empresa_logo: Optional[str] = None
+    empresa_telefono: Optional[str] = None
+    empresa_email: Optional[str] = None
+    sucursal_nombre: Optional[str] = None
+    sala_virtual_id: str
+    preconsulta_token: Optional[str] = None
+    preconsulta_estado: Optional[str] = None
+    paciente_conectado_at: Optional[datetime] = None
+    consentimiento_texto: str
+    jitsi_session: Optional[JitsiSessionResponse] = None
+

@@ -454,6 +454,123 @@
   height: 0 !important;
 }
 
+/* ── MOTOR DE CALENDARIO CLÍNICO MEDISOFT (Theme-Reactive & Color-Mix) ── */
+.ms-cal-event {
+  --event-accent: var(--primary);
+  container-type: inline-size;
+  background: linear-gradient(
+    98deg,
+    color-mix(in oklab, var(--event-accent) 19%, var(--card)) 0%,
+    color-mix(in oklab, var(--event-accent) 10%, var(--card)) 52%,
+    color-mix(in oklab, var(--event-accent) 15%, var(--card)) 100%
+  );
+  border: 1px solid color-mix(in oklab, var(--event-accent) 46%, var(--border));
+  border-left: 5px solid var(--event-accent);
+  box-shadow:
+    0 2px 10px -2px color-mix(in oklab, var(--event-accent) 22%, rgba(15, 23, 42, 0.06)),
+    inset 0 1px 0 0 color-mix(in oklab, #ffffff 35%, transparent);
+  transition:
+    background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .ms-cal-event {
+  background: linear-gradient(
+    98deg,
+    color-mix(in oklab, var(--event-accent) 28%, var(--card)) 0%,
+    color-mix(in oklab, var(--event-accent) 16%, var(--card)) 52%,
+    color-mix(in oklab, var(--event-accent) 22%, var(--card)) 100%
+  );
+  border-color: color-mix(in oklab, var(--event-accent) 54%, var(--border));
+  border-left-color: var(--event-accent);
+  box-shadow:
+    0 4px 16px -4px color-mix(in oklab, var(--event-accent) 34%, rgba(0, 0, 0, 0.45)),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+.ms-cal-event:hover {
+  background: linear-gradient(
+    98deg,
+    color-mix(in oklab, var(--event-accent) 25%, var(--card)) 0%,
+    color-mix(in oklab, var(--event-accent) 14%, var(--card)) 52%,
+    color-mix(in oklab, var(--event-accent) 20%, var(--card)) 100%
+  );
+  border-color: color-mix(in oklab, var(--event-accent) 72%, var(--border));
+  border-left-color: var(--event-accent);
+  box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--event-accent) 44%, rgba(0, 0, 0, 0.22));
+}
+
+.dark .ms-cal-event:hover {
+  background: linear-gradient(
+    98deg,
+    color-mix(in oklab, var(--event-accent) 35%, var(--card)) 0%,
+    color-mix(in oklab, var(--event-accent) 22%, var(--card)) 52%,
+    color-mix(in oklab, var(--event-accent) 28%, var(--card)) 100%
+  );
+  border-color: color-mix(in oklab, var(--event-accent) 80%, var(--border));
+  border-left-color: var(--event-accent);
+  box-shadow: 0 14px 32px -8px color-mix(in oklab, var(--event-accent) 52%, rgba(0, 0, 0, 0.6));
+}
+
+.ms-cal-time-capsule {
+  background: color-mix(in oklab, var(--event-accent) 18%, var(--background));
+  border: 1px solid color-mix(in oklab, var(--event-accent) 38%, transparent);
+  color: color-mix(in oklab, var(--event-accent) 85%, var(--foreground));
+}
+
+.dark .ms-cal-time-capsule {
+  background: color-mix(in oklab, var(--event-accent) 24%, var(--background));
+  border-color: color-mix(in oklab, var(--event-accent) 46%, transparent);
+}
+
+.ms-cal-event-accent-text {
+  color: color-mix(in oklab, var(--event-accent) 82%, var(--foreground));
+}
+
+.ms-cal-event-pill-tint {
+  background: color-mix(in oklab, var(--event-accent) 18%, var(--background));
+  color: color-mix(in oklab, var(--event-accent) 86%, var(--foreground));
+  border: 1px solid color-mix(in oklab, var(--event-accent) 36%, transparent);
+}
+
+.ms-cal-bloqueo {
+  --event-accent: #64748b;
+  container-type: inline-size;
+  background-color: color-mix(in oklab, var(--event-accent) 12%, var(--muted));
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--event-accent) 13%, transparent),
+    color-mix(in oklab, var(--event-accent) 13%, transparent) 7px,
+    transparent 7px,
+    transparent 14px
+  );
+  border: 1px dashed color-mix(in oklab, var(--event-accent) 54%, var(--border));
+  border-left: 5px solid var(--event-accent);
+}
+
+.dark .ms-cal-bloqueo {
+  background-color: color-mix(in oklab, var(--event-accent) 17%, var(--card));
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--event-accent) 18%, transparent),
+    color-mix(in oklab, var(--event-accent) 18%, transparent) 7px,
+    transparent 7px,
+    transparent 14px
+  );
+}
+
+.ms-cal-past-zone {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--muted-foreground) 4%, transparent),
+    color-mix(in oklab, var(--muted-foreground) 4%, transparent) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+}
+
 /* ── PRINT MEDIA RULES FOR CLINICAL DOCUMENTS ── */
 @media print {
   body {

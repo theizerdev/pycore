@@ -458,33 +458,31 @@ export const ChatFloatingWidget: React.FC = () => {
 
   return (
     <>
-      {/* ══ BOTÓN FLOTANTE PERSISTENTE EN TODAS LAS PANTALLAS ══════════════ */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="relative group flex items-center justify-center h-14 w-14 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer focus:outline-hidden focus:ring-4 focus:ring-emerald-500/30"
-          title="Abrir Chat Clínico Interno"
-          aria-label="Abrir Chat Clínico"
-        >
-          {isOpen ? (
-            <X className="h-6 w-6 transition-transform group-hover:rotate-90" />
-          ) : (
-            <MessageCircle className="h-6 w-6" />
-          )}
+      {/* ══ BOTÓN LATERAL ACOPLADO DEBAJO DE TEMPLATE CUSTOMIZER ═══════════ */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="fixed right-0 top-[calc(50%+2.85rem)] -translate-y-1/2 z-40 flex h-10 w-10 items-center justify-center rounded-l-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl border-l border-t border-b border-white/20 focus:outline-none cursor-pointer transition-all hover:pr-1 group"
+        title={isOpen ? "Cerrar Chat Clínico Interno" : "Abrir Chat Clínico Interno"}
+        aria-label="Abrir Chat Clínico"
+      >
+        {isOpen ? (
+          <X className="size-5 transition-transform group-hover:rotate-90" />
+        ) : (
+          <MessageCircle className="size-5 group-hover:scale-110 transition-transform" />
+        )}
 
-          {/* Badge de mensajes no leídos con pulso */}
-          {totalNoLeidos > 0 && !isOpen && (
-            <span className="absolute -top-1.5 -right-1.5 flex h-6 min-w-6 items-center justify-center px-1.5 rounded-full bg-rose-600 text-[11px] font-bold text-white shadow-md animate-bounce border-2 border-white dark:border-zinc-900">
-              {totalNoLeidos > 99 ? '99+' : totalNoLeidos}
-            </span>
-          )}
-        </button>
-      </div>
+        {/* Badge de mensajes no leídos con pulso */}
+        {totalNoLeidos > 0 && !isOpen && (
+          <span className="absolute -top-1.5 -left-1.5 flex h-5 min-w-5 items-center justify-center px-1 rounded-full bg-rose-600 text-[10px] font-bold text-white shadow-md animate-bounce border-2 border-background">
+            {totalNoLeidos > 99 ? '99+' : totalNoLeidos}
+          </span>
+        )}
+      </button>
 
       {/* ══ VENTANA FLOTANTE DE CHAT ══════════════════════════════════════ */}
       {isOpen && (
-        <div className="fixed bottom-24 right-4 sm:right-6 z-50 w-[95vw] sm:w-[410px] h-[580px] max-h-[82vh] bg-background/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
+        <div className="fixed bottom-4 right-3 sm:bottom-6 sm:right-12 z-50 w-[calc(100vw-1.5rem)] sm:w-[410px] h-[560px] max-h-[calc(100dvh-5rem)] bg-background/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
           
           {/* Header de la Ventana */}
           <div className="bg-emerald-600 text-white p-3.5 flex items-center justify-between shrink-0 shadow-xs">

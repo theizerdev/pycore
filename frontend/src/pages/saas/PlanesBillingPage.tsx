@@ -225,6 +225,8 @@ export const PlanesBillingPage: React.FC = () => {
                   ? 'Acceso Ilimitado (Owner)'
                   : suscripcion?.plan_estado === 'activo'
                   ? `Activo (${diasRestantes} días restantes)`
+                  : suscripcion?.plan_estado === 'prueba'
+                  ? `Prueba (${diasRestantes} días restantes)`
                   : 'Prueba Gratis'}
               </span>
             </div>
@@ -260,22 +262,22 @@ export const PlanesBillingPage: React.FC = () => {
               <div className="p-3.5 rounded-xl border bg-card/60 space-y-1">
                 <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Estado</p>
                 <p className="text-sm font-bold capitalize text-foreground">
-                  {isExempt ? 'Exento (Owner)' : suscripcion?.plan_estado}
+                  {isExempt ? 'Exento (Owner)' : suscripcion?.plan_estado === 'prueba' ? 'Prueba Gratuita' : (suscripcion?.plan_estado || 'Activo')}
                 </p>
               </div>
               <div className="p-3.5 rounded-xl border bg-card/60 space-y-1">
                 <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Días Restantes</p>
-                <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                  {isExempt ? '∞' : `${diasRestantes} días`}
+                <p className={`text-sm font-bold ${diasRestantes <= 2 ? 'text-rose-600 dark:text-rose-400' : diasRestantes <= 5 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {isExempt ? '∞' : diasRestantes === 0 ? 'Vence Hoy' : `${diasRestantes} días`}
                 </p>
               </div>
               <div className="p-3.5 rounded-xl border bg-card/60 space-y-1">
                 <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Vencimiento</p>
-                <p className="text-xs font-bold text-foreground">
+                <p className="text-xs font-bold text-foreground font-mono">
                   {isExempt
                     ? 'Permanente'
                     : suscripcion?.plan_vencimiento
-                    ? new Date(suscripcion.plan_vencimiento).toLocaleDateString()
+                    ? new Date(suscripcion.plan_vencimiento).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
                     : 'Indefinido'}
                 </p>
               </div>

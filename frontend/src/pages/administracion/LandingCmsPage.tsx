@@ -310,7 +310,7 @@ export const LandingCmsPage: React.FC = () => {
       >
         <div className="flex items-center gap-2">
           <a
-            href="/landing"
+            href="/"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-white/20 text-white hover:bg-white/30 transition-colors"

@@ -48,6 +48,20 @@ class IntegracionesConfigResponse(BaseModel):
     mercadopago_public_key: Optional[str] = None
     mercadopago_access_token: Optional[str] = None
 
+    # Jitsi Meet — Motor Principal WorkSpace & Telemedicina
+    jitsi_active: bool = True
+    jitsi_provider: str = "public" # "public", "self_hosted", "jaas"
+    jitsi_domain: str = "meet.jit.si"
+    jitsi_app_id: Optional[str] = None
+    jitsi_jwt_secret: Optional[str] = None
+    jitsi_key_id: Optional[str] = None
+    jitsi_room_prefix: str = "medisoft"
+    jitsi_lobby_enabled: bool = True
+    jitsi_recording_enabled: bool = False
+    jitsi_e2ee_enabled: bool = False
+    telemedicina_requiere_pago: bool = True
+    telemedicina_consentimiento_texto: Optional[str] = None
+
     # Tasa BCV
     bcv_rate_cached: Optional[float] = None
     bcv_rate_updated_at: Optional[datetime] = None
@@ -260,9 +274,15 @@ class TasaItemDetail(BaseModel):
     es_oficial: bool = True
 
 
+class SetMonedaCobroRequest(BaseModel):
+    moneda: str = Field(..., description="Moneda a usar como tasa de cobro en el sistema: USD o EUR")
+
+
 class TasasActualesResponse(BaseModel):
     tasas: Dict[str, Optional[TasaItemDetail]]
     sincronizado_at: str
+    moneda_cobro_activa: str = "USD"
+    tasa_cobro_activa: Optional[float] = None
 
 
 class TasaHistoricoItem(BaseModel):
@@ -277,4 +297,65 @@ class TasaHistoricoItem(BaseModel):
     fecha_tasa: Optional[str] = None
     created_at: Optional[str] = None
     usuario: Optional[str] = "Sistema"
+
+
+# ── Jitsi Meet — WorkSpace & Telemedicina ───────────────────────────────
+class UpdateJitsiRequest(BaseModel):
+    jitsi_active: bool = True
+    jitsi_provider: str = Field(default="public", description="public | self_hosted | jaas")
+    jitsi_domain: str = Field(default="meet.jit.si")
+    jitsi_app_id: Optional[str] = None
+    jitsi_jwt_secret: Optional[str] = None
+    jitsi_key_id: Optional[str] = None
+    jitsi_room_prefix: str = Field(default="medisoft")
+    jitsi_lobby_enabled: bool = True
+    jitsi_recording_enabled: bool = False
+    jitsi_e2ee_enabled: bool = False
+    telemedicina_requiere_pago: bool = True
+    telemedicina_consentimiento_texto: Optional[str] = None
+
+
+class JitsiDiagnosticResponse(BaseModel):
+    healthy: bool
+    service_online: bool
+    provider: str
+    domain: str
+    external_api_url: str
+    http_status: Optional[int] = None
+    latency_ms: float
+    jwt_configured: bool
+    jwt_status_message: str
+    error: Optional[str] = None
+    checked_at: str
+
+
+class JitsiSessionRequest(BaseModel):
+    context_type: str = Field(default="workspace", description="test | workspace | teleconsulta | interconsulta")
+    reference_id: Optional[int] = None
+    custom_room: Optional[str] = None
+    subject: Optional[str] = None
+    as_moderator: bool = True
+
+
+class JitsiSessionResponse(BaseModel):
+    active: bool
+    provider: str
+    domain: str
+    external_api_url: str
+    room_name: str
+    room_slug: str
+    meeting_url: str
+    jwt: Optional[str] = None
+    is_moderator: bool
+    subject: str
+    user_info: Dict[str, Any]
+    config_overwrite: Dict[str, Any]
+    interface_config_overwrite: Dict[str, Any]
+    warnings: List[str] = []
+
+
+class JitsiGenerateSecretResponse(BaseModel):
+    jitsi_app_id: str
+    jitsi_jwt_secret: str
+
 

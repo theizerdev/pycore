@@ -95,6 +95,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const hasPermission = (slug: string): boolean => {
     if (!user) return false;
     if (user.es_superadmin || permisos.includes('*')) return true;
+    if (user.empresa?.tipo_entidad === 'medico_independiente') {
+      if (
+        slug.startsWith('especialidades.') ||
+        slug.startsWith('servicios.') ||
+        slug.startsWith('consultas.') ||
+        slug.startsWith('citas.') ||
+        slug.startsWith('pacientes.') ||
+        slug.startsWith('medicos.') ||
+        slug.startsWith('turnero.') ||
+        slug.startsWith('teleconsulta.')
+      ) {
+        return true;
+      }
+    }
     return permisos.includes(slug);
   };
 

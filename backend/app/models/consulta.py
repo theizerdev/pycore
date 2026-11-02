@@ -51,6 +51,9 @@ class ConsultaMedica(Base, TimestampMixin):
     # Estado de la atención: 'en_espera', 'en_curso', 'finalizada', 'anulada'
     estado = Column(String(30), default="en_espera", nullable=False, index=True)
 
+    # Estado de pago en caja: 'pendiente', 'pagado', 'exonerado'
+    estado_pago = Column(String(30), default="pendiente", nullable=False, index=True)
+
     # Relaciones
     empresa = relationship("Empresa")
     sucursal = relationship("Sucursal")

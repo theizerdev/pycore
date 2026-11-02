@@ -92,6 +92,20 @@ def require_permission(required_slug: str):
         if current_user.es_superadmin:
             return current_user
         
+        # Un médico independiente administra su propio consultorio y tiene permisos plenos sobre su especialidad, servicios, pacientes, citas y atención médica
+        if current_user.empresa and getattr(current_user.empresa, "tipo_entidad", "") == "medico_independiente":
+            if (
+                required_slug.startswith("especialidades.") or
+                required_slug.startswith("servicios.") or
+                required_slug.startswith("citas.") or
+                required_slug.startswith("consultas.") or
+                required_slug.startswith("pacientes.") or
+                required_slug.startswith("medicos.") or
+                required_slug.startswith("turnero.") or
+                required_slug.startswith("teleconsulta.")
+            ):
+                return current_user
+        
         user_permissions = []
         if current_user.rol and current_user.rol.permisos:
             user_permissions = [p.slug for p in current_user.rol.permisos]

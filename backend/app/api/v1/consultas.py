@@ -3,6 +3,7 @@ import time
 from datetime import datetime, date, time as dtime
 from typing import List, Optional, Dict, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -17,7 +18,14 @@ from app.models.preconsulta import Preconsulta
 from app.models.paciente import Paciente
 from app.models.medico import Medico
 from app.models.especialidad import Especialidad
+from app.models.empresa import Empresa
 from app.models.auditoria import AuditoriaLog
+from app.schemas.integracion import JitsiSessionResponse
+from app.services.jitsi_service import JitsiService
+from app.services.plan_quota_service import PlanQuotaService
+from app.services.whatsapp_resolver import resolve_whatsapp_service
+from app.api.v1.medicos import format_clean_whatsapp_number, get_empresa_codigo_pais
+from app.models.sucursal import Sucursal
 from app.schemas.consulta import (
     ConsultaCreate,
     ConsultaUpdate,
@@ -25,6 +33,7 @@ from app.schemas.consulta import (
     ConsultaResponse,
     ConsultaPreviaResumen,
     ConsultaResumenContadores,
+    PrimerOdontogramaInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,11 +102,18 @@ async def get_resumen_contadores(
     start_dt = datetime.combine(target_date, dtime.min)
     end_dt = datetime.combine(target_date, dtime.max)
 
+    # Las consultas activas en espera o en curso representan el flujo operativo en tiempo real
+    # y deben permanecer visibles en los contadores operativos aunque hayan iniciado antes de medianoche
     query = (
         select(ConsultaMedica.estado, func.count(ConsultaMedica.id))
         .where(
-            ConsultaMedica.fecha_consulta >= start_dt,
-            ConsultaMedica.fecha_consulta <= end_dt,
+            or_(
+                and_(
+                    ConsultaMedica.fecha_consulta >= start_dt,
+                    ConsultaMedica.fecha_consulta <= end_dt,
+                ),
+                ConsultaMedica.estado.in_(["en_espera", "en_curso"])
+            )
         )
         .group_by(ConsultaMedica.estado)
     )
@@ -141,6 +157,7 @@ async def list_consultas(
     especialidad_id: Optional[int] = Query(None, description="Filtrar por especialidad"),
     sucursal_id: Optional[int] = Query(None, description="Filtrar por sucursal"),
     paciente_id: Optional[int] = Query(None, description="Filtrar por paciente"),
+    estado_pago: Optional[str] = Query(None, description="Filtrar por estado de pago: 'pendiente', 'pagado', 'exonerado'"),
     search: Optional[str] = Query(None, description="Búsqueda por código, paciente, médico o motivo"),
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(require_permission("consultas.ver")),
@@ -182,11 +199,28 @@ async def list_consultas(
         elif len(estados_list) > 1:
             stmt = stmt.where(ConsultaMedica.estado.in_(estados_list))
 
+    # Filtro por estado de pago
+    if estado_pago:
+        estados_pago_list = [ep.strip() for ep in estado_pago.split(",") if ep.strip()]
+        if len(estados_pago_list) == 1:
+            stmt = stmt.where(ConsultaMedica.estado_pago == estados_pago_list[0])
+        elif len(estados_pago_list) > 1:
+            stmt = stmt.where(ConsultaMedica.estado_pago.in_(estados_pago_list))
+
     # Filtro por fecha usando rangos para aprovechar el índice B-tree de MySQL
     if fecha:
         start_dt = datetime.combine(fecha, dtime.min)
         end_dt = datetime.combine(fecha, dtime.max)
-        stmt = stmt.where(ConsultaMedica.fecha_consulta >= start_dt, ConsultaMedica.fecha_consulta <= end_dt)
+        if estado in ("en_curso", "en_espera"):
+            # Para estados activos en sala de espera o en consultorio, mantener visibles las consultas activas
+            stmt = stmt.where(
+                or_(
+                    and_(ConsultaMedica.fecha_consulta >= start_dt, ConsultaMedica.fecha_consulta <= end_dt),
+                    ConsultaMedica.estado == estado
+                )
+            )
+        else:
+            stmt = stmt.where(ConsultaMedica.fecha_consulta >= start_dt, ConsultaMedica.fecha_consulta <= end_dt)
     else:
         if fecha_desde:
             stmt = stmt.where(ConsultaMedica.fecha_consulta >= datetime.combine(fecha_desde, dtime.min))
@@ -331,14 +365,122 @@ async def get_consulta(
                 indicaciones_generales=cp.indicaciones_generales,
                 signos_vitales=cp.signos_vitales or {},
                 receta_medica=cp.receta_medica or [],
-                estudios_solicitados=cp.estudios_solicitados or []
+                estudios_solicitados=cp.estudios_solicitados or [],
+                datos_plantilla=cp.datos_plantilla or {},
             )
         else:
             consulta.consulta_previa = None
     else:
         consulta.consulta_previa = None
 
+    # Búsqueda de odontograma de primera consulta e historial dental del paciente
+    stmt_odontos = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad)
+        )
+        .where(
+            ConsultaMedica.paciente_id == consulta.paciente_id,
+            ConsultaMedica.id != consulta.id,
+            ConsultaMedica.datos_plantilla.is_not(None),
+            ConsultaMedica.estado.in_(["finalizada", "en_curso"])
+        )
+        .order_by(ConsultaMedica.fecha_consulta.asc(), ConsultaMedica.id.asc())
+    )
+    res_odontos = await db.execute(stmt_odontos)
+    all_odontos = res_odontos.scalars().all()
+
+    odontos_con_datos = [
+        c for c in all_odontos
+        if c.datos_plantilla and isinstance(c.datos_plantilla, dict) and c.datos_plantilla.get("odontograma")
+    ]
+
+    if odontos_con_datos:
+        # 1. El primer odontograma histórico registrado (Línea Base del paciente)
+        primero = odontos_con_datos[0]
+        med_nom_1 = f"Dr(a). {primero.medico.nombres} {primero.medico.apellidos}" if primero.medico else "Médico Odontólogo"
+        esp_nom_1 = primero.especialidad.nombre if primero.especialidad else "Odontología"
+        od_data_1 = primero.datos_plantilla.get("odontograma", {})
+        consulta.primer_odontograma = PrimerOdontogramaInfo(
+            consulta_id=primero.id,
+            codigo=primero.codigo,
+            fecha_consulta=primero.fecha_consulta,
+            medico_nombre=med_nom_1,
+            especialidad_nombre=esp_nom_1,
+            diagnostico_principal=primero.diagnostico_principal,
+            denticion=od_data_1.get("denticion", "adulto") if isinstance(od_data_1, dict) else "adulto",
+            odontograma=od_data_1
+        )
+
+        # 2. El odontograma previo más reciente
+        ultimo_prev = odontos_con_datos[-1]
+        med_nom_u = f"Dr(a). {ultimo_prev.medico.nombres} {ultimo_prev.medico.apellidos}" if ultimo_prev.medico else "Médico Odontólogo"
+        esp_nom_u = ultimo_prev.especialidad.nombre if ultimo_prev.especialidad else "Odontología"
+        od_data_u = ultimo_prev.datos_plantilla.get("odontograma", {})
+        consulta.odontograma_previo = PrimerOdontogramaInfo(
+            consulta_id=ultimo_prev.id,
+            codigo=ultimo_prev.codigo,
+            fecha_consulta=ultimo_prev.fecha_consulta,
+            medico_nombre=med_nom_u,
+            especialidad_nombre=esp_nom_u,
+            diagnostico_principal=ultimo_prev.diagnostico_principal,
+            denticion=od_data_u.get("denticion", "adulto") if isinstance(od_data_u, dict) else "adulto",
+            odontograma=od_data_u
+        )
+    else:
+        consulta.primer_odontograma = None
+        consulta.odontograma_previo = None
+
     return consulta
+
+
+@router.get("/paciente/{paciente_id}/odontogramas", response_model=List[PrimerOdontogramaInfo])
+async def get_odontogramas_paciente(
+    paciente_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("consultas.ver")),
+):
+    """
+    Retorna el historial completo de todos los odontogramas registrados para un paciente ordenados cronológicamente.
+    """
+    stmt = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad)
+        )
+        .where(
+            ConsultaMedica.paciente_id == paciente_id,
+            ConsultaMedica.datos_plantilla.is_not(None)
+        )
+        .order_by(ConsultaMedica.fecha_consulta.asc(), ConsultaMedica.id.asc())
+    )
+    if not current_user.es_superadmin:
+        stmt = stmt.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(stmt)
+    consultas = res.scalars().all()
+
+    items: List[PrimerOdontogramaInfo] = []
+    for c in consultas:
+        if c.datos_plantilla and isinstance(c.datos_plantilla, dict) and c.datos_plantilla.get("odontograma"):
+            med_nom = f"Dr(a). {c.medico.nombres} {c.medico.apellidos}" if c.medico else "Médico Odontólogo"
+            esp_nom = c.especialidad.nombre if c.especialidad else "Odontología"
+            od_data = c.datos_plantilla.get("odontograma", {})
+            items.append(
+                PrimerOdontogramaInfo(
+                    consulta_id=c.id,
+                    codigo=c.codigo,
+                    fecha_consulta=c.fecha_consulta,
+                    medico_nombre=med_nom,
+                    especialidad_nombre=esp_nom,
+                    diagnostico_principal=c.diagnostico_principal,
+                    denticion=od_data.get("denticion", "adulto") if isinstance(od_data, dict) else "adulto",
+                    odontograma=od_data
+                )
+            )
+    return items
 
 
 @router.post("", response_model=ConsultaResponse, status_code=status.HTTP_201_CREATED)
@@ -513,3 +655,285 @@ async def update_consulta(
     await db.commit()
 
     return await get_consulta(consulta.id, db, current_user)
+
+
+@router.post("/{id}/teleconsulta-sesion", response_model=JitsiSessionResponse)
+async def crear_sesion_teleconsulta_consulta(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("consultas.ver")),
+):
+    """
+    Genera la sesión firmada de Jitsi Meet (Moderador) para el médico directamente
+    desde la atención de la Consulta Médica. Si tiene cita vinculada, usa la misma sala virtual.
+    """
+    stmt = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.paciente),
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad),
+            selectinload(ConsultaMedica.empresa),
+            selectinload(ConsultaMedica.cita),
+        )
+        .where(ConsultaMedica.id == id)
+    )
+    if not current_user.es_superadmin:
+        stmt = stmt.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    doctor_auto_id = await get_medico_id_for_user(db, current_user)
+    if doctor_auto_id is not None:
+        stmt = stmt.where(ConsultaMedica.medico_id == doctor_auto_id)
+
+    res = await db.execute(stmt)
+    consulta = res.scalar_one_or_none()
+    if not consulta:
+        raise HTTPException(status_code=404, detail="Consulta médica no encontrada")
+
+    empresa = consulta.empresa
+    if not empresa:
+        empresa = await db.get(Empresa, consulta.empresa_id)
+
+    if not empresa or not getattr(empresa, "jitsi_active", True):
+        raise HTTPException(
+            status_code=400,
+            detail="El motor de videoconsulta Jitsi Meet está inactivo en Integraciones.",
+        )
+
+    await PlanQuotaService.check_telemedicina_access(db, consulta.empresa_id)
+
+    # Si tiene cita vinculada de telemedicina, asegurar credenciales de la cita
+    custom_room = None
+    if consulta.cita:
+        JitsiService.ensure_cita_credentials(consulta.cita, empresa)
+        custom_room = consulta.cita.sala_virtual_id
+        await db.commit()
+
+    pac_nombre = (
+        f"{consulta.paciente.nombres} {consulta.paciente.apellidos}".strip()
+        if consulta.paciente
+        else "Paciente"
+    )
+    esp_nombre = consulta.especialidad.nombre if consulta.especialidad else "Consulta Médica"
+
+    if consulta.medico and current_user.id == consulta.medico.usuario_id:
+        display_name = f"Dr(a). {consulta.medico.nombres} {consulta.medico.apellidos}".strip()
+    else:
+        display_name = f"{current_user.nombre} {current_user.apellido or ''}".strip() or current_user.email
+
+    jitsi = JitsiService.from_empresa(empresa)
+    session_data = jitsi.build_session(
+        user_id=str(current_user.id),
+        display_name=display_name,
+        email=current_user.email,
+        avatar_url=getattr(current_user, "avatar_url", None),
+        is_moderator=True,
+        context_type="consulta",
+        reference_id=consulta.id,
+        custom_room=custom_room,
+        subject=f"Consulta #{consulta.codigo or consulta.id} • {pac_nombre} ({esp_nombre})",
+    )
+
+    db.add(
+        AuditoriaLog(
+            empresa_id=consulta.empresa_id,
+            usuario_id=current_user.id,
+            accion="INICIAR_CABINA_TELECONSULTA_MEDICO",
+            modulo="telemedicina",
+            detalles={
+                "consulta_id": consulta.id,
+                "sala_virtual_id": custom_room or session_data.get("room_slug"),
+                "paciente_id": consulta.paciente_id,
+                "provider": session_data.get("provider"),
+            },
+        )
+    )
+    await db.commit()
+
+    return JitsiSessionResponse(**session_data)
+
+
+class EnviarDocumentoWhatsAppRequest(BaseModel):
+    tipo_documento: str = "receta"  # "receta", "estudios", "reposo", "constancia", "informe"
+    telefono_personalizado: Optional[str] = None
+    incluir_indicaciones: Optional[bool] = True
+    texto_personalizado: Optional[str] = None
+
+
+@router.post("/{id}/enviar-documento-whatsapp")
+async def enviar_documento_consulta_whatsapp(
+    id: int,
+    payload: EnviarDocumentoWhatsAppRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("consultas.ver")),
+):
+    """
+    Despacha el récipe médico digital, orden de exámenes, reposo o constancia médica
+    directamente al WhatsApp verificado del paciente con membrete institucional.
+    """
+    query = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.paciente),
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad),
+            selectinload(ConsultaMedica.sucursal),
+            selectinload(ConsultaMedica.empresa),
+        )
+        .where(ConsultaMedica.id == id)
+    )
+    if not current_user.es_superadmin:
+        query = query.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(query)
+    consulta = res.scalar_one_or_none()
+    if not consulta:
+        raise HTTPException(status_code=404, detail="Consulta médica no encontrada")
+
+    paciente = consulta.paciente
+    if not paciente:
+        raise HTTPException(status_code=400, detail="La consulta no tiene un paciente vinculado")
+
+    raw_phone = payload.telefono_personalizado or paciente.telefono
+    if not raw_phone or not raw_phone.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="El paciente no tiene un número telefónico registrado para despacho de WhatsApp",
+        )
+
+    empresa = consulta.empresa
+    if not empresa:
+        res_emp = await db.execute(select(Empresa).where(Empresa.id == consulta.empresa_id))
+        empresa = res_emp.scalar_one_or_none()
+
+    cod_pais = get_empresa_codigo_pais(empresa)
+    clean_phone = format_clean_whatsapp_number(raw_phone, cod_pais)
+    if not clean_phone:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El formato del número ({raw_phone}) no es válido para WhatsApp con código país {cod_pais}",
+        )
+
+    nombre_clinica = empresa.nombre if empresa else "Centro Médico"
+    sucursal_nombre = consulta.sucursal.nombre if consulta.sucursal else "Sede Principal"
+    nombre_doc = (
+        f"{consulta.medico.nombres} {consulta.medico.apellidos}"
+        if consulta.medico
+        else current_user.nombre
+    )
+    esp_nombre = consulta.especialidad.nombre if consulta.especialidad else "Medicina General"
+    pac_nombre = f"{paciente.nombres} {paciente.apellidos}".strip()
+    pac_doc = f"{getattr(paciente, 'tipo_documento', 'V')}-{getattr(paciente, 'documento_identidad', '')}"
+    fecha_str = consulta.fecha.strftime("%d/%m/%Y") if hasattr(consulta, 'fecha') and consulta.fecha else datetime.now().strftime("%d/%m/%Y")
+
+    tipo = (payload.tipo_documento or "receta").lower()
+    cuerpo_documento = ""
+
+    nl = "\n"
+    if tipo == "receta":
+        titulo_doc = "💊 *RÉCIPE Y PRESCRIPCIÓN MÉDICA OFICIAL*"
+        meds = consulta.medicamentos_prescritos or []
+        if meds:
+            items_txt = []
+            for idx, m in enumerate(meds, 1):
+                nom = m.get("medicamento") or m.get("nombre") or "Fármaco"
+                pres = f" ({m.get('presentacion')})" if m.get("presentacion") else ""
+                dos = f"{nl}   • Dosis/Vía: {m.get('dosis')}" if m.get("dosis") else ""
+                dur = f"{nl}   • Duración: {m.get('duracion')}" if m.get("duracion") else ""
+                ind = f"{nl}   • Indicaciones: {m.get('indicaciones')}" if m.get("indicaciones") else ""
+                items_txt.append(f"*{idx}. {nom}*{pres}{dos}{dur}{ind}")
+            cuerpo_documento = f"{nl}{nl}".join(items_txt)
+        else:
+            cuerpo_documento = "_(Sin medicamentos farmacológicos prescritos en esta consulta)_"
+
+        if payload.incluir_indicaciones and consulta.plan_tratamiento:
+            cuerpo_documento += f"{nl}{nl}📝 *Indicaciones Generales & Cuidados:*{nl}{consulta.plan_tratamiento}"
+
+    elif tipo == "estudios":
+        titulo_doc = "🔬 *ORDEN DE ESTUDIOS Y EXÁMENES COMPLEMENTARIOS*"
+        estudios_req = consulta.estudios_solicitados or []
+        if estudios_req:
+            items_txt = []
+            for idx, est in enumerate(estudios_req, 1):
+                nom = est.get("estudio") or est.get("nombre") or "Examen Paraclínico"
+                ind = f" - _{est.get('indicaciones')}_" if est.get("indicaciones") else ""
+                items_txt.append(f"*{idx}. {nom}*{ind}")
+            cuerpo_documento = nl.join(items_txt)
+        else:
+            cuerpo_documento = "_(Sin órdenes de estudios adicionales en esta consulta)_"
+
+    elif tipo == "reposo":
+        titulo_doc = "🛌 *CERTIFICADO DE REPOSO MÉDICO*"
+        motivo_txt = consulta.diagnostico_principal or consulta.motivo_consulta or "Evaluación clínica"
+        cuerpo_documento = (
+            f"Se hace constar que el paciente *{pac_nombre}* fue atendido en consulta y amerita reposo médico "
+            f"para su adecuada recuperación por motivo de: *{motivo_txt}*."
+        )
+
+    elif tipo == "constancia":
+        titulo_doc = "📋 *CONSTANCIA DE ATENCIÓN MÉDICA*"
+        hora_str = consulta.hora_inicio.strftime("%I:%M %p") if getattr(consulta, 'hora_inicio', None) else "turno correspondiente"
+        cuerpo_documento = (
+            f"Se certifica que el ciudadano(a) *{pac_nombre}*, titular de la cédula *{pac_doc}*, "
+            f"asistió y fue atendido(a) en nuestras instalaciones el día *{fecha_str}* a las *{hora_str}*."
+        )
+
+    else:
+        titulo_doc = "📄 *INFORME MÉDICO RESUMIDO*"
+        diag = consulta.diagnostico_principal or "En observación"
+        cuerpo_documento = (
+            f"📌 *Motivo:* {consulta.motivo_consulta or 'Consulta regular'}{nl}"
+            f"📌 *Diagnóstico:* {diag}{nl}"
+            f"📌 *Evolución / Plan:* {consulta.plan_tratamiento or 'Seguimiento clínico ambulatorio'}"
+        )
+
+    if payload.texto_personalizado:
+        cuerpo_documento += f"{nl}{nl}💬 *Nota del Especialista:*{nl}{payload.texto_personalizado}"
+
+    # Plantilla final WhatsApp institucional
+    sep = "━━━━━━━━━━━━━━━━━━━━━━"
+    mensaje_ws = (
+        f"👋 Estimado(a) *{pac_nombre}*,{nl}{nl}"
+        f"Desde *{nombre_clinica}* ({sucursal_nombre}) le hacemos entrega de su documento clínico digital:{nl}{nl}"
+        f"{sep}{nl}"
+        f"{titulo_doc}{nl}"
+        f"{sep}{nl}"
+        f"👨‍⚕️ *Especialista:* Dr(a). {nombre_doc}{nl}"
+        f"🩺 *Especialidad:* {esp_nombre}{nl}"
+        f"📅 *Fecha:* {fecha_str}{nl}"
+        f"🆔 *Doc. Paciente:* {pac_doc}{nl}{nl}"
+        f"{cuerpo_documento}{nl}{nl}"
+        f"{sep}{nl}"
+        f"🔒 _Documento digital emitido y autenticado en MediSoft Suite._{nl}"
+        f"📞 Ante cualquier inquietud o duda con su tratamiento, puede contactarnos a través de este canal."
+    )
+
+    wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(
+        db, consulta.empresa_id, consulta.sucursal_id
+    )
+
+    send_res = await wa_service.send_message(to=clean_phone, message=mensaje_ws)
+
+    db.add(
+        AuditoriaLog(
+            empresa_id=consulta.empresa_id,
+            usuario_id=current_user.id,
+            accion="ENVIAR_DOCUMENTO_WHATSAPP",
+            modulo="consultas",
+            detalles={
+                "consulta_id": consulta.id,
+                "paciente_id": paciente.id,
+                "tipo_documento": tipo,
+                "destinatario": clean_phone,
+                "success": bool(send_res.get("success", True)),
+            },
+        )
+    )
+    await db.commit()
+
+    return {
+        "success": bool(send_res.get("success", True)),
+        "message": f"Documento ({tipo.upper()}) despachado exitosamente por WhatsApp al paciente.",
+        "destinatario": clean_phone,
+        "preview_mensaje": mensaje_ws,
+    }

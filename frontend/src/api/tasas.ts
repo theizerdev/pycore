@@ -19,6 +19,8 @@ export interface TasasActualesResponse {
     USDT?: TasaItemDetail | null;
   };
   sincronizado_at: string;
+  moneda_cobro_activa: 'USD' | 'EUR';
+  tasa_cobro_activa?: number;
 }
 
 export interface TasaHistoricoItem {
@@ -50,6 +52,12 @@ export const tasasApi = {
   // Registrar ajuste manual
   setManualRate: async (data: { moneda: string; tasa: number }): Promise<{ success: boolean; message: string; data: TasaItemDetail }> => {
     const res = await client.post('/integraciones/tasas/manual', data);
+    return res.data;
+  },
+
+  // Configurar tasa de cobro activa del sistema (USD o EUR)
+  setMonedaCobroActiva: async (moneda: 'USD' | 'EUR'): Promise<{ success: boolean; message: string; moneda_cobro_activa: string; tasa_cobro_activa: number }> => {
+    const res = await client.put('/integraciones/tasas/moneda-cobro', { moneda });
     return res.data;
   },
 

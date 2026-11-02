@@ -181,6 +181,7 @@ const PRESET_COLORS = [
 export const EspecialidadesPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, sucursalActiva, hasPermission } = useAuth();
+  const isIndependentDoctor = Boolean(user?.empresa?.tipo_entidad === 'medico_independiente');
 
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
   const [medicosList, setMedicosList] = useState<Medico[]>([]);
@@ -547,13 +548,15 @@ export const EspecialidadesPage: React.FC = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                <span>Especialidades Médicas</span>
+                <span>{isIndependentDoctor ? 'Mi Especialidad & Plantilla Clínica' : 'Especialidades Médicas'}</span>
                 <Badge variant="outline" className="text-xs font-mono font-medium border-teal-500/30 text-teal-600 dark:text-teal-400 bg-teal-500/5">
-                  MEDISOFT Clínico
+                  {isIndependentDoctor ? 'Consultorio Propio' : 'MEDISOFT Clínico'}
                 </Badge>
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                Catálogo asistencial, asignación por sedes hospitalarias y colores para turnero y citas
+                {isIndependentDoctor
+                  ? 'Personalice su flujo del wizard de atención, preguntas de triaje, examen físico y perfiles de estudios a su medida'
+                  : 'Catálogo asistencial, asignación por sedes hospitalarias y colores para turnero y citas'}
               </p>
             </div>
           </div>

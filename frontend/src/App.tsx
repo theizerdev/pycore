@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { RegionalProvider } from './context/RegionalContext';
 import { Toaster } from './components/ui/sonner';
+import { TooltipProvider } from './components/ui/tooltip';
 
 // Helper de lazy-loading tipo-seguro compatible con exportaciones por defecto y nombradas
 const lazyComponent = <P = Record<string, any>>(
@@ -64,16 +65,23 @@ const DoctoresPage = lazyComponent(() => import('./pages/clinica/DoctoresPage'),
 const PacientesPage = lazyComponent(() => import('./pages/clinica/PacientesPage'), 'PacientesPage');
 const AgendaCalendarioPage = lazyComponent(() => import('./pages/clinica/AgendaCalendarioPage'), 'AgendaCalendarioPage');
 const PreconsultaPublicPage = lazyComponent(() => import('./pages/clinica/PreconsultaPublicPage'), 'PreconsultaPublicPage');
+const TeleconsultaPublicPage = lazyComponent(() => import('./pages/clinica/TeleconsultaPublicPage'), 'TeleconsultaPublicPage');
 const TurneroPantallaPage = lazyComponent(() => import('./pages/clinica/TurneroPantallaPage'), 'TurneroPantallaPage');
 const ConsultasPage = lazyComponent(() => import('./pages/clinica/ConsultasPage'), 'ConsultasPage');
 const ConsultaAtencionPage = lazyComponent<{ readOnly?: boolean }>(() => import('./pages/clinica/ConsultaAtencionPage'), 'ConsultaAtencionPage');
+const WorkSpaceHubPage = lazyComponent(() => import('./pages/clinica/WorkSpaceHubPage'), 'WorkSpaceHubPage');
 const ServiciosPage = lazyComponent(() => import('./pages/administracion/ServiciosPage'), 'ServiciosPage');
+const EstudiosPage = lazyComponent(() => import('./pages/clinica/EstudiosPage'), 'EstudiosPage');
 const LandingPage = lazyComponent(() => import('./pages/public/LandingPage'), 'LandingPage');
 const LandingCmsPage = lazyComponent(() => import('./pages/administracion/LandingCmsPage'), 'LandingCmsPage');
+const PuntoCobroPage = lazyComponent(() => import('./pages/facturacion/PuntoCobroPage'), 'PuntoCobroPage');
+const CajasControlPage = lazyComponent(() => import('./pages/facturacion/CajasControlPage'), 'CajasControlPage');
+const RecibosHistorialPage = lazyComponent(() => import('./pages/facturacion/RecibosHistorialPage'), 'RecibosHistorialPage');
+const HonorariosMedicosPage = lazyComponent(() => import('./pages/facturacion/HonorariosMedicosPage'), 'HonorariosMedicosPage');
 
 const HomeRedirect: React.FC = () => {
   const { user } = useAuth();
-  if (user?.rol?.slug === 'medico') {
+  if (user?.rol?.slug === 'medico' || user?.empresa?.tipo_entidad === 'medico_independiente') {
     return <Navigate to="/medico/dashboard" replace />;
   }
   if (user?.es_superadmin || user?.empresa_id === 1) {
@@ -87,17 +95,20 @@ export const App: React.FC = () => {
     <TemplateSettingsProvider>
       <AuthProvider>
         <RegionalProvider>
+          <TooltipProvider delayDuration={240}>
           <BrowserRouter>
             <Suspense fallback={<PageLoadingFallback />}>
               <Routes>
                 {/* Rutas Públicas */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/landing" element={<LandingPage />} />
+            <Route path="/lading" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Login initialView="register" />} />
             <Route path="/verify-whatsapp" element={<Login initialView="verify-whatsapp" />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/preconsulta/:token" element={<PreconsultaPublicPage />} />
+            <Route path="/teleconsulta/:token" element={<TeleconsultaPublicPage />} />
             <Route path="/turnero/:codigoSucursal" element={<TurneroPantallaPage />} />
 
             {/* Rutas Protegidas dentro de AdminLayout */}
@@ -163,11 +174,35 @@ export const App: React.FC = () => {
                 }
               />
               <Route
+                path="workspace"
+                element={
+                  <ProtectedRoute>
+                    <WorkSpaceHubPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/workspace"
+                element={
+                  <ProtectedRoute>
+                    <WorkSpaceHubPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="clinica/consultas"
                 element={<Navigate to="/clinica/consultas/sala-espera" replace />}
               />
               <Route
                 path="clinica/especialidades"
+                element={
+                  <ProtectedRoute requiredPermission="especialidades.ver">
+                    <EspecialidadesPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="admin/especialidades"
                 element={
                   <ProtectedRoute requiredPermission="especialidades.ver">
                     <EspecialidadesPage />
@@ -191,6 +226,26 @@ export const App: React.FC = () => {
                 }
               />
               <Route
+                path="clinica/estudios"
+                element={
+                  <ProtectedRoute requiredPermission="consultas.ver">
+                    <EstudiosPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clinica/servicios"
+                element={<Navigate to="/administracion/servicios" replace />}
+              />
+              <Route
+                path="admin/servicios"
+                element={<Navigate to="/administracion/servicios" replace />}
+              />
+              <Route
+                path="servicios"
+                element={<Navigate to="/administracion/servicios" replace />}
+              />
+              <Route
                 path="administracion/servicios"
                 element={
                   <ProtectedRoute requiredPermission="servicios.ver">
@@ -198,9 +253,43 @@ export const App: React.FC = () => {
                   </ProtectedRoute>
                 }
               />
+
+              {/* Módulo de Caja, Cobros & Facturación */}
               <Route
-                path="clinica/servicios"
-                element={<Navigate to="/administracion/servicios" replace />}
+                path="facturacion/cobro"
+                element={
+                  <ProtectedRoute>
+                    <PuntoCobroPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="facturacion/cajas"
+                element={
+                  <ProtectedRoute>
+                    <CajasControlPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="facturacion/recibos"
+                element={
+                  <ProtectedRoute>
+                    <RecibosHistorialPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="facturacion/honorarios"
+                element={
+                  <ProtectedRoute>
+                    <HonorariosMedicosPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="facturacion"
+                element={<Navigate to="/facturacion/cobro" replace />}
               />
               <Route
                 path="administracion/landing-cms"
@@ -215,7 +304,7 @@ export const App: React.FC = () => {
               <Route
                 path="seguridad/empresas"
                 element={
-                  <ProtectedRoute requiredPermission="empresas.ver">
+                  <ProtectedRoute>
                     <EmpresasPage />
                   </ProtectedRoute>
                 }
@@ -340,7 +429,7 @@ export const App: React.FC = () => {
               <Route
                 path="saas/suscripciones"
                 element={
-                  <ProtectedRoute requiredPermission="empresas.ver">
+                  <ProtectedRoute>
                     <PlanesBillingPage />
                   </ProtectedRoute>
                 }
@@ -377,6 +466,7 @@ export const App: React.FC = () => {
           </Suspense>
           <Toaster />
         </BrowserRouter>
+          </TooltipProvider>
       </RegionalProvider>
     </AuthProvider>
   </TemplateSettingsProvider>

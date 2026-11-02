@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useRegional } from '../../context/RegionalContext';
 import { citasApi } from '../../api/citas';
 import { consultasApi, type ConsultaMedica } from '../../api/consultas';
+import { cajasApi, type Cobro } from '../../api/cajas';
 import { medicosApi } from '../../api/medicos';
 import { especialidadesApi } from '../../api/especialidades';
 import type { CitaMedica, Medico, Especialidad } from '../../types';
@@ -48,8 +49,9 @@ import {
   CalendarRange,
   Filter,
   Coins,
+  UserCheck,
 } from 'lucide-react';
-import { cn, getInitials } from '../../lib/utils';
+import { cn, getInitials, getLocalDateString } from '../../lib/utils';
 import { toast } from 'sonner';
 
 type DateRangePreset = 'hoy' | 'semana' | 'mes' | '30dias' | 'personalizado';
@@ -70,18 +72,20 @@ export const MedicoDashboardPage: React.FC = () => {
   // Estados de datos
   const [medicos, setMedicos] = useState<Medico[]>([]);
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
   const [citasRango, setCitasRango] = useState<CitaMedica[]>([]);
   const [consultasRango, setConsultasRango] = useState<ConsultaMedica[]>([]);
   const [consultasHoy, setConsultasHoy] = useState<ConsultaMedica[]>([]);
+  const [cobrosRango, setCobrosRango] = useState<Cobro[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // Estados de Rango de Fechas
-  const todayIso = useMemo(() => new Date().toLocaleDateString('en-CA'), []);
+  const todayIso = useMemo(() => getLocalDateString(), []);
   const [dateRangeMode, setDateRangeMode] = useState<DateRangePreset>('mes');
   const [fechaDesde, setFechaDesde] = useState<string>(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('en-CA');
+    return getLocalDateString(new Date(d.getFullYear(), d.getMonth(), 1));
   });
   const [fechaHasta, setFechaHasta] = useState<string>(todayIso);
 
@@ -99,16 +103,24 @@ export const MedicoDashboardPage: React.FC = () => {
     );
   }, [user, medicos]);
 
+  const activeDoctor = useMemo(() => {
+    if (selectedDoctorId) {
+      const found = medicos.find((m) => m.id === selectedDoctorId);
+      if (found) return found;
+    }
+    return currentDoctor || (medicos.length > 0 ? medicos[0] : null);
+  }, [selectedDoctorId, medicos, currentDoctor]);
+
   const doctorEspecialidad = useMemo(() => {
-    if (!currentDoctor?.especialidad_id) return null;
-    return especialidades.find((e) => e.id === currentDoctor.especialidad_id) || null;
-  }, [currentDoctor, especialidades]);
+    if (!activeDoctor?.especialidad_id) return null;
+    return especialidades.find((e) => e.id === activeDoctor.especialidad_id) || null;
+  }, [activeDoctor, especialidades]);
 
   // Manejo de preset de fechas
   const handleSelectPreset = (preset: DateRangePreset) => {
     setDateRangeMode(preset);
     const now = new Date();
-    const hoyStr = now.toLocaleDateString('en-CA');
+    const hoyStr = getLocalDateString(now);
 
     if (preset === 'hoy') {
       setFechaDesde(hoyStr);
@@ -116,16 +128,16 @@ export const MedicoDashboardPage: React.FC = () => {
     } else if (preset === 'semana') {
       const d = new Date();
       d.setDate(now.getDate() - 6);
-      setFechaDesde(d.toLocaleDateString('en-CA'));
+      setFechaDesde(getLocalDateString(d));
       setFechaHasta(hoyStr);
     } else if (preset === 'mes') {
       const d = new Date(now.getFullYear(), now.getMonth(), 1);
-      setFechaDesde(d.toLocaleDateString('en-CA'));
+      setFechaDesde(getLocalDateString(d));
       setFechaHasta(hoyStr);
     } else if (preset === '30dias') {
       const d = new Date();
       d.setDate(now.getDate() - 29);
-      setFechaDesde(d.toLocaleDateString('en-CA'));
+      setFechaDesde(getLocalDateString(d));
       setFechaHasta(hoyStr);
     }
   };
@@ -151,7 +163,7 @@ export const MedicoDashboardPage: React.FC = () => {
         setEspecialidades(espRes.value);
       }
 
-      const doc = user
+      const userDoctor = user
         ? medicosList.find(
             (m) =>
               m.usuario_id === user.id ||
@@ -159,24 +171,39 @@ export const MedicoDashboardPage: React.FC = () => {
           )
         : null;
 
-      if (doc) {
-        const [citasRangoRes, consultasRangoRes, consultasHoyRes] = await Promise.allSettled([
+      const docToLoad = (selectedDoctorId ? medicosList.find((m) => m.id === selectedDoctorId) : null)
+        || userDoctor
+        || (medicosList.length > 0 ? medicosList[0] : null);
+
+      if (docToLoad) {
+        if (!selectedDoctorId && docToLoad.id) {
+          setSelectedDoctorId(docToLoad.id);
+        }
+
+        const [citasRangoRes, consultasRangoRes, consultasHoyRes, cobrosRangoRes] = await Promise.allSettled([
           citasApi.list({
-            medico_id: doc.id,
+            medico_id: docToLoad.id,
             sucursal_id: sucursalActiva?.id,
             fecha_inicio: fechaDesde,
             fecha_fin: fechaHasta,
           }),
           consultasApi.getConsultas({
-            medico_id: doc.id,
+            medico_id: docToLoad.id,
             sucursal_id: sucursalActiva?.id,
             fecha_desde: fechaDesde,
             fecha_hasta: fechaHasta,
           }),
           consultasApi.getConsultas({
-            medico_id: doc.id,
+            medico_id: docToLoad.id,
             sucursal_id: sucursalActiva?.id,
             fecha: todayIso,
+          }),
+          cajasApi.listCobros({
+            medico_id: docToLoad.id,
+            sucursal_id: sucursalActiva?.id,
+            fecha_desde: fechaDesde,
+            fecha_hasta: fechaHasta,
+            limit: 500,
           }),
         ]);
 
@@ -188,6 +215,9 @@ export const MedicoDashboardPage: React.FC = () => {
         }
         if (consultasHoyRes.status === 'fulfilled') {
           setConsultasHoy(consultasHoyRes.value || []);
+        }
+        if (cobrosRangoRes.status === 'fulfilled') {
+          setCobrosRango(cobrosRangoRes.value || []);
         }
       }
 
@@ -205,7 +235,7 @@ export const MedicoDashboardPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [user?.id, sucursalActiva?.id, fechaDesde, fechaHasta]);
+  }, [user?.id, sucursalActiva?.id, fechaDesde, fechaHasta, selectedDoctorId]);
 
   // Cálculos de métricas inmediatas de HOY
   const enEsperaHoy = useMemo(() => {
@@ -234,15 +264,30 @@ export const MedicoDashboardPage: React.FC = () => {
     const pacientesUnicosIds = new Set([
       ...consultasRango.map((c) => c.paciente_id),
       ...citasRango.map((c) => c.paciente_id),
+      ...cobrosRango.map((cb) => cb.paciente_id),
     ]);
 
-    // Estimación económica de prestaciones en el período
+    // Cobros reales registrados en caja
+    const cobrosValidos = cobrosRango.filter((cb) => cb.estado !== 'anulado');
+    const totalCobradoUSD = cobrosValidos.reduce((acc, cb) => acc + (Number(cb.total_divisa) || 0), 0);
+    const totalCobradoVES = cobrosValidos.reduce((acc, cb) => acc + (Number(cb.total_ves) || 0), 0);
+
+    // Tasa BCV aplicada en los cobros: tasa efectiva ponderada o la tasa del cobro más reciente
+    const tasaCobroAplicada = cobrosValidos.length > 0
+      ? (totalCobradoUSD > 0 ? (totalCobradoVES / totalCobradoUSD) : (cobrosValidos[0].tasa_bcv_aplicada || tasaBcv))
+      : tasaBcv;
+
+    // Estimación económica de prestaciones en el período (fallback si no hay cobros en caja)
     const facturacionEstimada = citasRango.reduce((acc, c) => {
       if (c.estado === 'atendida' || c.estado_pago === 'pagado') {
         return acc + (Number(c.precio_estimado) || 0);
       }
       return acc;
     }, 0);
+
+    const tieneCobros = cobrosValidos.length > 0;
+    const facturacionUSD = tieneCobros ? totalCobradoUSD : facturacionEstimada;
+    const facturacionVES = tieneCobros ? totalCobradoVES : (facturacionEstimada * tasaBcv);
 
     return {
       totalConsultas,
@@ -251,9 +296,14 @@ export const MedicoDashboardPage: React.FC = () => {
       citasCompletadas,
       tasaAsistencia,
       pacientesUnicos: pacientesUnicosIds.size,
+      tieneCobros,
+      cobrosCount: cobrosValidos.length,
+      facturacionUSD,
+      facturacionVES,
+      tasaCobroAplicada,
       facturacionEstimada,
     };
-  }, [consultasRango, citasRango]);
+  }, [consultasRango, citasRango, cobrosRango, tasaBcv]);
 
   // Diagnósticos más frecuentes del período
   const topDiagnosticos = useMemo(() => {
@@ -271,22 +321,37 @@ export const MedicoDashboardPage: React.FC = () => {
 
   // ── APEXCHARTS 1: Evolución Temporal de Consultas vs Citas (Area Chart) ──
   const chartTimelineData = useMemo(() => {
-    // Agrupar por fecha dentro del rango
-    const fechasMap: Record<string, { consultas: number; citas: number }> = {};
+    const fechasMap: Record<string, { consultas: number; citas: number; label: string }> = {};
 
-    // Obtener días intermedios ordenados
-    const start = new Date(fechaDesde);
-    const end = new Date(fechaHasta);
+    // Helper para parsear fecha local 'YYYY-MM-DD' a mediodía local (12:00:00) para evitar desfases de huso horario
+    const parseLocalYmd = (ymdStr: string) => {
+      const parts = (ymdStr || '').split('-').map(Number);
+      const y = parts[0] || 2026;
+      const m = parts[1] || 1;
+      const d = parts[2] || 1;
+      return new Date(y, m - 1, d, 12, 0, 0);
+    };
+
+    const start = parseLocalYmd(fechaDesde);
+    const end = parseLocalYmd(fechaHasta);
     const cur = new Date(start);
 
-    while (cur <= end) {
-      const key = cur.toLocaleDateString('en-CA');
-      fechasMap[key] = { consultas: 0, citas: 0 };
-      cur.setDate(cur.getDate() + 1);
+    if (cur > end) {
+      const key = getLocalDateString(cur);
+      const [y, m, d] = key.split('-');
+      fechasMap[key] = { consultas: 0, citas: 0, label: `${d}/${m}` };
+    } else {
+      while (cur <= end) {
+        const key = getLocalDateString(cur);
+        const [y, m, d] = key.split('-');
+        fechasMap[key] = { consultas: 0, citas: 0, label: `${d}/${m}` };
+        cur.setDate(cur.getDate() + 1);
+      }
     }
 
     consultasRango.forEach((c) => {
-      const d = c.fecha_consulta?.split('T')[0] || c.created_at?.split('T')[0];
+      const raw = c.fecha_consulta || c.created_at || '';
+      const d = typeof raw === 'string' ? raw.substring(0, 10) : '';
       if (d && fechasMap[d]) {
         if (c.estado === 'finalizada') {
           fechasMap[d].consultas += 1;
@@ -295,22 +360,25 @@ export const MedicoDashboardPage: React.FC = () => {
     });
 
     citasRango.forEach((c) => {
-      const d = c.fecha?.split('T')[0];
+      const raw = c.fecha || c.created_at || '';
+      const d = typeof raw === 'string' ? raw.substring(0, 10) : '';
       if (d && fechasMap[d]) {
         fechasMap[d].citas += 1;
       }
     });
 
-    const categories = Object.keys(fechasMap).map((f) => {
-      const parts = f.split('-');
-      return `${parts[2]}/${parts[1]}`;
-    });
-
+    const categories = Object.values(fechasMap).map((v) => v.label);
     const seriesConsultas = Object.values(fechasMap).map((v) => v.consultas);
     const seriesCitas = Object.values(fechasMap).map((v) => v.citas);
 
     return { categories, seriesConsultas, seriesCitas };
   }, [consultasRango, citasRango, fechaDesde, fechaHasta]);
+
+  const maxTimelineVal = useMemo(() => {
+    const maxC = Math.max(0, ...chartTimelineData.seriesConsultas);
+    const maxA = Math.max(0, ...chartTimelineData.seriesCitas);
+    return Math.max(maxC, maxA);
+  }, [chartTimelineData]);
 
   const timelineChartOptions: ApexOptions = useMemo(() => ({
     chart: {
@@ -318,14 +386,21 @@ export const MedicoDashboardPage: React.FC = () => {
       height: 290,
       toolbar: { show: false },
       fontFamily: 'inherit',
+      zoom: { enabled: false },
     },
     colors: ['#0d9488', '#0284c7'],
     stroke: { curve: 'smooth', width: 2.5 },
+    markers: {
+      size: chartTimelineData.categories.length === 1 ? 6 : (chartTimelineData.categories.length > 20 ? 3.5 : 4.5),
+      strokeWidth: 2,
+      strokeColors: '#ffffff',
+      hover: { size: 7 },
+    },
     fill: {
       type: 'gradient',
       gradient: {
         shadeIntensity: 1,
-        opacityFrom: 0.4,
+        opacityFrom: 0.45,
         opacityTo: 0.05,
         stops: [0, 95, 100],
       },
@@ -333,14 +408,23 @@ export const MedicoDashboardPage: React.FC = () => {
     dataLabels: { enabled: false },
     xaxis: {
       categories: chartTimelineData.categories,
+      tickAmount: chartTimelineData.categories.length > 10 ? 8 : undefined,
       labels: {
+        rotate: -35,
+        rotateAlways: chartTimelineData.categories.length > 12,
+        hideOverlappingLabels: true,
         style: { fontSize: '11px', colors: '#94a3b8' },
       },
       axisBorder: { show: false },
       axisTicks: { show: false },
     },
     yaxis: {
+      min: 0,
+      max: maxTimelineVal <= 2 ? 3 : undefined,
+      tickAmount: maxTimelineVal <= 2 ? 3 : Math.min(5, Math.max(2, maxTimelineVal)),
+      forceNiceScale: true,
       labels: {
+        formatter: (val: number) => `${Math.round(val)}`,
         style: { fontSize: '11px', colors: '#94a3b8' },
       },
     },
@@ -360,15 +444,17 @@ export const MedicoDashboardPage: React.FC = () => {
         formatter: (val: number) => `${val} ${val === 1 ? 'paciente' : 'pacientes'}`,
       },
     },
-  }), [chartTimelineData.categories]);
+  }), [chartTimelineData.categories, maxTimelineVal]);
 
   // ── APEXCHARTS 2: Categorías de Atención / Servicios (Donut Chart) ────
   const chartCategoriasData = useMemo(() => {
     const counts: Record<string, number> = {};
     consultasRango.forEach((c) => {
       let cat = 'Consulta Médica';
-      if (c.cita?.servicio?.categoria) {
-        cat = c.cita.servicio.categoria;
+      if (c.cita?.servicio_nombre) {
+        cat = c.cita.servicio_nombre;
+      } else if (c.especialidad?.nombre) {
+        cat = `Consulta ${c.especialidad.nombre}`;
       } else if (c.motivo_consulta && c.motivo_consulta.toLowerCase().includes('control')) {
         cat = 'Control Clínico';
       } else if (c.estudios_solicitados && c.estudios_solicitados.length > 0) {
@@ -437,8 +523,22 @@ export const MedicoDashboardPage: React.FC = () => {
       }
     });
 
+    consultasRango.forEach((c) => {
+      if (!c.cita_id && c.fecha_consulta) {
+        const timePart = c.fecha_consulta.includes('T')
+          ? c.fecha_consulta.split('T')[1]
+          : c.fecha_consulta.split(' ')[1];
+        if (timePart) {
+          const hour = parseInt(timePart.slice(0, 2), 10);
+          if (hour >= 8 && hour <= 17) {
+            counts[hour - 8] += 1;
+          }
+        }
+      }
+    });
+
     return { categories: slots, series: counts };
-  }, [citasRango]);
+  }, [citasRango, consultasRango]);
 
   const barHorariosOptions: ApexOptions = useMemo(() => ({
     chart: {
@@ -464,7 +564,10 @@ export const MedicoDashboardPage: React.FC = () => {
       axisTicks: { show: false },
     },
     yaxis: {
+      min: 0,
+      forceNiceScale: true,
       labels: {
+        formatter: (val: number) => `${Math.round(val)}`,
         style: { fontSize: '11px', colors: '#94a3b8' },
       },
     },
@@ -571,7 +674,7 @@ export const MedicoDashboardPage: React.FC = () => {
 
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2">
               <span>
-                Dr(a). {currentDoctor ? `${currentDoctor.nombres} ${currentDoctor.apellidos}` : `${user?.nombre} ${user?.apellido}`}
+                Dr(a). {activeDoctor ? `${activeDoctor.nombres} ${activeDoctor.apellidos}` : `${user?.nombre} ${user?.apellido}`}
               </span>
             </h1>
 
@@ -585,10 +688,10 @@ export const MedicoDashboardPage: React.FC = () => {
                 <MapPin className="size-3.5 text-teal-400" />
                 {sucursalActiva?.nombre || 'Sede Principal'}
               </span>
-              {currentDoctor?.licencia_medica && (
+              {activeDoctor?.licencia_medica && (
                 <span className="flex items-center gap-1.5 text-slate-300 font-mono">
                   <ShieldCheck className="size-3.5 text-teal-400" />
-                  Licencia / Colegiado: {currentDoctor.licencia_medica}
+                  Licencia / Colegiado: {activeDoctor.licencia_medica}
                 </span>
               )}
             </div>
@@ -623,10 +726,29 @@ export const MedicoDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ── BARRA DE FILTRO POR RANGO DE FECHAS ──────────────────────── */}
+      {/* ── BARRA DE FILTRO POR RANGO DE FECHAS & FACULTATIVO ─────────── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 rounded-2xl border border-border/70 bg-card shadow-xs">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mr-1">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Selector de Facultativo si existen médicos */}
+          {medicos.length > 1 && (
+            <div className="flex items-center gap-1.5 bg-muted/40 p-1 px-2.5 rounded-xl border border-border/60">
+              <UserCheck className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+              <span className="text-xs font-semibold text-muted-foreground">Médico:</span>
+              <select
+                value={activeDoctor?.id || ''}
+                onChange={(e) => setSelectedDoctorId(Number(e.target.value))}
+                className="bg-transparent text-xs font-bold text-foreground border-none outline-none cursor-pointer pr-1"
+              >
+                {medicos.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-popover text-popover-foreground">
+                    Dr(a). {m.nombres} {m.apellidos}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mr-0.5">
             <CalendarRange className="size-4 text-teal-600 dark:text-teal-400" />
             Período:
           </span>
@@ -808,24 +930,46 @@ export const MedicoDashboardPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* 6. Tarifas Estimadas / Facturación */}
+        {/* 6. Tarifas Estimadas / Facturación Real */}
         <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tarifas / Ingresos</p>
-              <Badge variant="outline" className="text-[9px] px-1 py-0 font-mono text-emerald-600 border-emerald-500/30">
-                {moneda === 'USD' ? 'USD ($)' : 'VES (Bs.)'}
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                {kpisPeriodo.tieneCobros ? 'Cobros / Ingresos' : 'Tarifas / Ingresos'}
+              </p>
+              <Badge
+                variant="outline"
+                className={cn(
+                  'text-[9px] px-1.5 py-0 font-mono border-emerald-500/30',
+                  kpisPeriodo.tieneCobros
+                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 font-bold'
+                    : 'text-emerald-600'
+                )}
+              >
+                {kpisPeriodo.tieneCobros
+                  ? `${kpisPeriodo.cobrosCount} ${kpisPeriodo.cobrosCount === 1 ? 'cobro' : 'cobros'}`
+                  : (moneda === 'USD' ? 'USD ($)' : 'VES (Bs.)')}
               </Badge>
             </div>
             <h3 className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 truncate font-mono">
-              {formatMoneyDual(kpisPeriodo.facturacionEstimada).primary}
+              {moneda === 'USD'
+                ? `$ ${kpisPeriodo.facturacionUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : `Bs. ${kpisPeriodo.facturacionVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </h3>
             <div className="text-[11px] text-muted-foreground mt-0.5 font-medium flex items-center gap-1 truncate font-mono">
               <Coins className="size-3 text-emerald-500 shrink-0" />
-              <span className="text-foreground/80 font-bold">{formatMoneyDual(kpisPeriodo.facturacionEstimada).secondary}</span>
+              <span className="text-foreground/80 font-bold">
+                {moneda === 'USD'
+                  ? `Bs. ${kpisPeriodo.facturacionVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : `$ ${kpisPeriodo.facturacionUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </span>
             </div>
-            <p className="text-[9px] text-muted-foreground/70 mt-1 truncate">
-              {moneda === 'USD' ? `≈ Equiv. BCV (${tasaBcv.toFixed(2)} Bs/$)` : `≈ Equiv. USD (${tasaBcv.toFixed(2)} Bs/$)`}
+            <p className="text-[9px] text-muted-foreground/80 mt-1 truncate font-medium">
+              {kpisPeriodo.tieneCobros
+                ? `Tasa Cobro: Bs. ${kpisPeriodo.tasaCobroAplicada.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / USD`
+                : (moneda === 'USD'
+                    ? `≈ Equiv. BCV (${tasaBcv.toFixed(2)} Bs/$)`
+                    : `≈ Equiv. USD (${tasaBcv.toFixed(2)} Bs/$)`)}
             </p>
           </CardContent>
         </Card>
@@ -1089,6 +1233,10 @@ export const MedicoDashboardPage: React.FC = () => {
                     const nombrePac = pac ? `${pac.nombres} ${pac.apellidos}` : 'Paciente sin nombre';
                     const docId = pac?.documento_identidad || pac?.numero_documento || 'S/D';
 
+                    const cobroAsociado = cobrosRango.find(
+                      (cb) => (cb.consulta_id && cb.consulta_id === c.id) || (c.cita_id && cb.cita_id === c.cita_id)
+                    );
+
                     let estadoBadge = (
                       <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10">
                         En Espera
@@ -1128,6 +1276,11 @@ export const MedicoDashboardPage: React.FC = () => {
                                   Triaje Listo
                                 </Badge>
                               )}
+                              {cobroAsociado && (
+                                <Badge variant="outline" className="text-[9px] border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 font-mono">
+                                  ✓ Cobrado ({cobroAsociado.numero_recibo})
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground font-mono">
                               <span>Doc: {docId}</span>
@@ -1146,7 +1299,18 @@ export const MedicoDashboardPage: React.FC = () => {
                               {c.fecha_consulta && (
                                 <span>{c.fecha_consulta.split('T')[0]}</span>
                               )}
-                              {c.cita?.precio_estimado ? (
+                              {cobroAsociado ? (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
+                                  <Coins className="size-3 text-emerald-500 shrink-0" />
+                                  <span>$ {Number(cobroAsociado.total_divisa).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <span className="text-[10px] text-emerald-600/80 font-normal">
+                                    (Bs. {Number(cobroAsociado.total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                  </span>
+                                  <span className="text-[9px] font-mono font-medium text-emerald-800 dark:text-emerald-200 bg-emerald-500/20 px-1 py-0.2 rounded">
+                                    Tasa: {Number(cobroAsociado.tasa_bcv_aplicada || tasaBcv).toFixed(2)} Bs/$
+                                  </span>
+                                </span>
+                              ) : c.cita?.precio_estimado ? (
                                 <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold">
                                   <DollarSign className="size-3 text-emerald-500" />
                                   <span>{formatMoney(c.cita.precio_estimado)}</span>
@@ -1222,14 +1386,14 @@ export const MedicoDashboardPage: React.FC = () => {
               <div className="flex items-center gap-3">
                 <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 font-black text-sm">
                   {getInitials(
-                    currentDoctor
-                      ? `${currentDoctor.nombres} ${currentDoctor.apellidos}`
+                    activeDoctor
+                      ? `${activeDoctor.nombres} ${activeDoctor.apellidos}`
                       : user?.nombre || 'Doc'
                   )}
                 </div>
                 <div className="min-w-0">
                   <h3 className="font-bold text-sm text-foreground truncate">
-                    Dr(a). {currentDoctor ? `${currentDoctor.nombres} ${currentDoctor.apellidos}` : user?.nombre}
+                    Dr(a). {activeDoctor ? `${activeDoctor.nombres} ${activeDoctor.apellidos}` : user?.nombre}
                   </h3>
                   <p className="text-xs text-muted-foreground truncate">
                     {doctorEspecialidad?.nombre || 'Especialista Médico'}
@@ -1242,7 +1406,7 @@ export const MedicoDashboardPage: React.FC = () => {
                 <div className="space-y-0.5">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold">Licencia / Colegiado</span>
                   <p className="font-mono font-bold text-foreground">
-                    {currentDoctor?.licencia_medica || 'N/A'}
+                    {activeDoctor?.licencia_medica || 'N/A'}
                   </p>
                 </div>
                 <div className="space-y-0.5">
@@ -1253,13 +1417,13 @@ export const MedicoDashboardPage: React.FC = () => {
                 </div>
               </div>
 
-              {currentDoctor?.email && (
+              {activeDoctor?.email && (
                 <div className="pt-2 border-t border-border/60">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold block mb-0.5">
                     Correo Electrónico
                   </span>
                   <span className="text-xs text-foreground font-mono truncate block">
-                    {currentDoctor.email}
+                    {activeDoctor.email}
                   </span>
                 </div>
               )}
@@ -1311,6 +1475,14 @@ export const MedicoDashboardPage: React.FC = () => {
                   Bs. {tasaBcv.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                 </span>
               </div>
+              {kpisPeriodo.tieneCobros && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Tasa Cobro Aplicada:</span>
+                  <span className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">
+                    Bs. {kpisPeriodo.tasaCobroAplicada.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40">
                 <span className="truncate">{tasaBcvFuente}</span>
                 <button

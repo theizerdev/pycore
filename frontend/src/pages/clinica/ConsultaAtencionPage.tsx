@@ -8,8 +8,10 @@ import {
   type ReposoMedico,
 } from '../../api/consultas';
 import { especialidadesApi } from '../../api/especialidades';
+import { pacientesApi } from '../../api/pacientes';
 import type { PlantillaEfectiva, SeccionClinica, CampoClinico } from '../../types';
 import OdontogramaWidget, { type OdontogramaData } from '../../components/clinica/OdontogramaWidget';
+import OdontogramaHistorialModal from '../../components/clinica/OdontogramaHistorialModal';
 import RefraccionWidget, { type RefraccionData } from '../../components/clinica/RefraccionWidget';
 import MotorExploracionOftalmologica, { type ExploracionOftalmologicaData } from '../../components/clinica/MotorExploracionOftalmologica';
 import SignosVitalesWidget from '../../components/clinica/SignosVitalesWidget';
@@ -19,7 +21,7 @@ import { EstudiosArchivosTab } from '../../components/clinica/EstudiosArchivosTa
 import { PatientRecordDrawer } from './PatientRecordDrawer';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
-import { cn, getInitials } from '../../lib/utils';
+import { cn, getInitials, getLocalDateString } from '../../lib/utils';
 
 // UI Components
 import { Button } from '../../components/ui/button';
@@ -82,7 +84,20 @@ import {
   Layers,
   Eye,
   Droplet,
+  Download,
+  Video,
+  Minimize2,
+  Maximize2,
+  Columns2,
+  PhoneOff,
+  Heart,
+  Plus,
+  Activity,
+  X,
 } from 'lucide-react';
+
+import { JitsiMeetingEmbed } from '../../components/telemedicina/JitsiMeetingEmbed';
+import type { JitsiSessionConfig } from '../../types';
 
 interface ConsultaAtencionPageProps {
   readOnly?: boolean;
@@ -172,49 +187,6 @@ const CIE10_CATALOGO_ESPECIALIDADES: Cie10CatalogoItem[] = [
   { codigo: 'H40.9', descripcion: 'Glaucoma, no especificado', especialidad: 'Oftalmología' },
 ];
 
-// Frases Clínicas Rápidas / Macros para Evaluación
-const SNIPPETS_EXAMEN_FISICO = [
-  {
-    titulo: 'Cardiopulmonar Normal',
-    categoria: 'Cardio / Resp',
-    texto: 'Tórax simétrico, normoexpansible. Ruidos cardíacos rítmicos, regulares, sin soplos audibles. Murmullo vesicular conservado en ambos campos pulmonares sin ruidos sobreagregados.',
-  },
-  {
-    titulo: 'Abdomen Normal',
-    categoria: 'Gastro',
-    texto: 'Abdomen blando, depresible, no doloroso a la palpación superficial ni profunda. RHA presentes normoactivos, sin visceromegalias palpables ni signos de irritación peritoneal.',
-  },
-  {
-    titulo: 'Neurológico Normal',
-    categoria: 'Neurología',
-    texto: 'Paciente consciente, orientado en tiempo, espacio y persona (Glasgow 15/15). Pupilas isocóricas normorreactivas a la luz. Fuerza muscular 5/5 simétrica. Sin signos meníngeos ni focalidad.',
-  },
-  {
-    titulo: 'ORL / Faringe Normal',
-    categoria: 'ORL',
-    texto: 'Faringe rosada y húmeda sin congestión ni exudados, amígdalas eutróficas. Membranas timpánicas íntegras bilateralmente con reflejo luminoso presente. Fosas nasales permeables.',
-  },
-  {
-    titulo: 'Extremidades Normales',
-    categoria: 'Osteomuscular',
-    texto: 'Extremidades simétricas, tróficas, sin deformidades óseas ni edemas periféricos. Pulsos periféricos distales presentes y simétricos. Arcos de movilidad articular conservados.',
-  },
-  {
-    titulo: 'Control Niño Sano',
-    categoria: 'Pediatría',
-    texto: 'Paciente activo, reactivo y colaborador. Normohidratado y normocoloreado. Fontanela anterior normotensa. Buena ganancia ponderoestatural acorde a curvas de crecimiento OMS.',
-  },
-  {
-    titulo: 'Control Obstétrico',
-    categoria: 'Obstetricia',
-    texto: 'Feto único intrauterino en situación longitudinal cefálica. FCF audible rítmica regular (140-150 lpm). Altura uterina acorde a edad gestacional. Dinámica uterina negativa. Sin pérdidas vaginales.',
-  },
-  {
-    titulo: 'Examen Odontológico',
-    categoria: 'Odontología',
-    texto: 'Encías rosadas, firmes, sin sangrado espontáneo. Piezas dentarias con oclusión armónica. Sin signos de caries activas en revisión visual ni lesiones en mucosas.',
-  },
-];
 
 // Helpers para formato de paciente
 const calculateAge = (
@@ -503,11 +475,131 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     setImpresionModalOpen(true);
   };
 
+  // ── ESTADOS DE VIDEOCONSULTA JITSI MEET (TELEMEDICINA WORKSPACE) ──
+  const [jitsiSession, setJitsiSession] = useState<JitsiSessionConfig | null>(null);
+  const [jitsiActive, setJitsiActive] = useState<boolean>(false);
+  const [jitsiLoading, setJitsiLoading] = useState<boolean>(false);
+  const [jitsiViewMode, setJitsiViewMode] = useState<'split' | 'pip' | 'modal'>('split');
+
+  const isTelemedicina = Boolean(
+    consulta?.cita?.modalidad === 'telemedicina' ||
+    consulta?.cita?.sala_virtual_id
+  );
+
+  const handleToggleJitsi = async () => {
+    if (jitsiActive) {
+      setJitsiActive(false);
+      return;
+    }
+
+    if (jitsiSession) {
+      setJitsiActive(true);
+      return;
+    }
+
+    if (!consulta) return;
+
+    setJitsiLoading(true);
+    try {
+      const session = await consultasApi.crearSesionTeleconsulta(consulta.id);
+      setJitsiSession(session);
+      setJitsiActive(true);
+      setJitsiViewMode('split');
+      toast.success('Cabina de telemedicina conectada', {
+        description: `Sala: ${session.room_name} • Modo Moderador`,
+      });
+    } catch (err: any) {
+      console.error('Error abriendo videoconsulta:', err);
+      toast.error(err.response?.data?.detail || 'No se pudo inicializar la sala de videoconsulta');
+    } finally {
+      setJitsiLoading(false);
+    }
+  };
+
+  const handleHangupJitsi = (durationSeconds: number) => {
+    toast.info('Llamada de teleconsulta finalizada', {
+      description: `Duración: ${Math.floor(durationSeconds / 60)} min ${durationSeconds % 60} seg`,
+    });
+    setJitsiActive(false);
+    setJitsiSession(null);
+  };
+
   // ── ESTADOS DE LA CONSULTA MÉDICA ──
   const [motivoConsulta, setMotivoConsulta] = useState<string>('');
   const [enfermedadActual, setEnfermedadActual] = useState<string>('');
   const [observacionesAdicionales, setObservacionesAdicionales] = useState<string>('');
   const [referidoPara, setReferidoPara] = useState<string>('');
+
+  // ── FICHA MÉDICA Y ANTECEDENTES DEL PACIENTE (PASO 1) ──
+  const [fichaGrupoSanguineo, setFichaGrupoSanguineo] = useState<string>('');
+  const [fichaAlergias, setFichaAlergias] = useState<string[]>([]);
+  const [fichaNuevaAlergia, setFichaNuevaAlergia] = useState<string>('');
+  const [fichaPatologicos, setFichaPatologicos] = useState<string>('');
+  const [fichaFamiliares, setFichaFamiliares] = useState<string>('');
+  const [fichaQuirurgicos, setFichaQuirurgicos] = useState<string>('');
+  const [fichaMedicacion, setFichaMedicacion] = useState<string>('');
+  const [savingFicha, setSavingFicha] = useState<boolean>(false);
+
+  const handleAddFichaAlergia = (alergiaToAdd?: string) => {
+    const val = (alergiaToAdd || fichaNuevaAlergia).trim();
+    if (!val) return;
+    if (!fichaAlergias.includes(val)) {
+      setFichaAlergias((prev) => [...prev, val]);
+    }
+    setFichaNuevaAlergia('');
+  };
+
+  const handleRemoveFichaAlergia = (idx: number) => {
+    setFichaAlergias((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSaveFichaMedica = async () => {
+    if (!consulta?.paciente?.id) return;
+    setSavingFicha(true);
+    try {
+      await pacientesApi.update(consulta.paciente.id, {
+        grupo_sanguineo: fichaGrupoSanguineo || null,
+        alergias: fichaAlergias,
+        antecedentes_patologicos: fichaPatologicos.trim() || null,
+        antecedentes_familiares: fichaFamiliares.trim() || null,
+        antecedentes_quirurgicos: fichaQuirurgicos.trim() || null,
+        medicacion_habitual: fichaMedicacion.trim() || null,
+      });
+      if (consulta.paciente) {
+        consulta.paciente.grupo_sanguineo = fichaGrupoSanguineo;
+        consulta.paciente.alergias = fichaAlergias;
+        consulta.paciente.antecedentes_patologicos = fichaPatologicos;
+        (consulta.paciente as any).antecedentes_familiares = fichaFamiliares;
+        (consulta.paciente as any).antecedentes_quirurgicos = fichaQuirurgicos;
+        consulta.paciente.medicacion_habitual = fichaMedicacion;
+      }
+      toast.success('Ficha médica y antecedentes guardados en el historial del paciente');
+    } catch (err: any) {
+      console.error('Error guardando ficha médica:', err);
+      toast.error('No se pudo actualizar la ficha médica del paciente');
+    } finally {
+      setSavingFicha(false);
+    }
+  };
+
+  const handleCopiarFichaAEnfermedadActual = () => {
+    const lines: string[] = [];
+    if (fichaGrupoSanguineo) lines.push(`Grupo Sanguíneo: ${fichaGrupoSanguineo}`);
+    if (fichaAlergias.length > 0) lines.push(`Alergias: ${fichaAlergias.join(', ')}`);
+    if (fichaPatologicos) lines.push(`Antecedentes Patológicos: ${fichaPatologicos}`);
+    if (fichaFamiliares) lines.push(`Antecedentes Familiares: ${fichaFamiliares}`);
+    if (fichaQuirurgicos) lines.push(`Cirugías Previas: ${fichaQuirurgicos}`);
+    if (fichaMedicacion) lines.push(`Medicación Habitual: ${fichaMedicacion}`);
+
+    if (lines.length === 0) {
+      toast.info('No hay antecedentes clínicos para copiar');
+      return;
+    }
+
+    const block = `[Antecedentes y Ficha Médica]:\n${lines.join('\n')}`;
+    setEnfermedadActual((prev) => (prev ? `${prev}\n\n${block}` : block));
+    toast.success('Antecedentes copiados a la Anamnesis / Evolución');
+  };
 
   // Signos Vitales
   const [signosVitales, setSignosVitales] = useState<Record<string, any>>({
@@ -520,6 +612,9 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     frecuencia_respiratoria: '',
     saturacion_oxigeno: '',
     glucosa_capilar: '',
+    escala_dolor: '',
+    perimetro_cefalico: '',
+    perimetro_abdominal: '',
     observaciones_triaje: '',
   });
 
@@ -542,8 +637,8 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   // Reposo Médico
   const [reposo, setReposo] = useState<ReposoMedico>({
     requiere_reposo: false,
-    fecha_inicio: new Date().toISOString().split('T')[0],
-    fecha_fin: new Date().toISOString().split('T')[0],
+    fecha_inicio: getLocalDateString(),
+    fecha_fin: getLocalDateString(),
     dias_reposo: 1,
     motivo_diagnostico: '',
     observaciones: '',
@@ -561,6 +656,56 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const [instilacionModalOpen, setInstilacionModalOpen] = useState<boolean>(false);
   const [cieFiltroCategoria, setCieFiltroCategoria] = useState<string>('especialidad');
   const [cieBusqueda, setCieBusqueda] = useState<string>('');
+
+  // ── ODONTOGRAMA DE PRIMERA CONSULTA / LÍNEA BASE ──
+  const [modalPrimerOdontoOpen, setModalPrimerOdontoOpen] = useState<boolean>(false);
+  const [esOdontogramaCargadoDeInicial, setEsOdontogramaCargadoDeInicial] = useState<boolean>(false);
+
+  const pacienteEdad = useMemo(() => {
+    if (consulta?.paciente?.edad !== undefined && consulta.paciente.edad !== null) {
+      return Number(consulta.paciente.edad);
+    }
+    if (consulta?.paciente?.fecha_nacimiento) {
+      const birth = new Date(consulta.paciente.fecha_nacimiento);
+      const diff = Date.now() - birth.getTime();
+      const ageDate = new Date(diff);
+      return Math.abs(ageDate.getUTCFullYear() - 1970);
+    }
+    return undefined;
+  }, [consulta?.paciente?.edad, consulta?.paciente?.fecha_nacimiento]);
+
+  const tipoPacienteCalculado: 'adulto' | 'infantil' = useMemo(() => {
+    if (datosPlantilla.odontograma?.denticion) {
+      return datosPlantilla.odontograma.denticion;
+    }
+    if (consulta?.primer_odontograma?.denticion) {
+      return consulta.primer_odontograma.denticion;
+    }
+    if (pacienteEdad !== undefined && pacienteEdad !== null) {
+      return pacienteEdad < 12 ? 'infantil' : 'adulto';
+    }
+    const espNombre = (consulta?.especialidad?.nombre || '').toLowerCase();
+    if (espNombre.includes('pediatr') || espNombre.includes('infantil')) {
+      return 'infantil';
+    }
+    return 'adulto';
+  }, [datosPlantilla.odontograma?.denticion, consulta?.primer_odontograma?.denticion, pacienteEdad, consulta?.especialidad?.nombre]);
+
+  const handleCargarPrimerOdontograma = () => {
+    if (!consulta?.primer_odontograma?.odontograma) {
+      toast.error('No se encontró odontograma de primera consulta registrado');
+      return;
+    }
+    const odontoOrigen = consulta.primer_odontograma.odontograma;
+    setDatosPlantilla((prev) => ({
+      ...prev,
+      odontograma: odontoOrigen,
+    }));
+    setEsOdontogramaCargadoDeInicial(true);
+    toast.success(
+      `✓ Odontograma de la primera consulta (#${consulta.primer_odontograma.consulta_id}) cargado exitosamente en el lienzo actual`
+    );
+  };
 
   const isOftalmologia = useMemo(() => {
     const espNombre = (consulta?.especialidad?.nombre || '').toLowerCase();
@@ -623,19 +768,6 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     toast.success('Cálculo clínico insertado en la anamnesis');
   };
 
-  const handleInsertarSnippetEnEvaluacion = (snippet: { titulo: string; texto: string }) => {
-    setEnfermedadActual((prev) =>
-      prev ? `${prev}\n\n[${snippet.titulo}]: ${snippet.texto}` : `[${snippet.titulo}]: ${snippet.texto}`
-    );
-    setDatosPlantilla((prev) => ({
-      ...prev,
-      enfermedad_actual: prev.enfermedad_actual
-        ? `${prev.enfermedad_actual}\n\n[${snippet.titulo}]: ${snippet.texto}`
-        : `[${snippet.titulo}]: ${snippet.texto}`,
-    }));
-    toast.success(`Macro "${snippet.titulo}" insertado en evaluación`);
-  };
-
   // ── CARGAR DETALLE DE LA CONSULTA DESDE API ──
   const fetchConsulta = async () => {
     if (!id) return;
@@ -660,10 +792,66 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         frecuencia_respiratoria: data.signos_vitales?.frecuencia_respiratoria || '',
         saturacion_oxigeno: data.signos_vitales?.saturacion_oxigeno || '',
         glucosa_capilar: data.signos_vitales?.glucosa_capilar || '',
+        escala_dolor:
+          data.signos_vitales?.escala_dolor !== undefined && data.signos_vitales?.escala_dolor !== ''
+            ? data.signos_vitales.escala_dolor
+            : (data.preconsulta?.respuestas?.escala_dolor ?? ''),
+        perimetro_cefalico: data.signos_vitales?.perimetro_cefalico || '',
+        perimetro_abdominal: data.signos_vitales?.perimetro_abdominal || '',
         observaciones_triaje: data.signos_vitales?.observaciones_triaje || '',
       });
 
-      setDatosPlantilla(data.datos_plantilla || {});
+      // Inicializar Ficha Médica desde Preconsulta o Paciente
+      const pac = data.paciente || ({} as any);
+      const pre = data.preconsulta?.respuestas || data.datos_plantilla?.preconsulta_respuestas || {};
+
+      setFichaGrupoSanguineo(pre.grupo_sanguineo || pac.grupo_sanguineo || '');
+
+      let alList: string[] = [];
+      if (Array.isArray(pre.alergias) && pre.alergias.length > 0) {
+        alList = pre.alergias;
+      } else if (typeof pre.alergias === 'string' && pre.alergias.trim()) {
+        alList = pre.alergias.split(',').map((x: string) => x.trim()).filter(Boolean);
+      } else if (Array.isArray(pac.alergias) && pac.alergias.length > 0) {
+        alList = pac.alergias;
+      }
+      setFichaAlergias(alList);
+
+      setFichaPatologicos(pre.antecedentes_patologicos || pre.antecedentes || pac.antecedentes_patologicos || '');
+      setFichaFamiliares(pre.antecedentes_familiares || pac.antecedentes_familiares || '');
+      setFichaQuirurgicos(pre.antecedentes_quirurgicos || pac.antecedentes_quirurgicos || '');
+      setFichaMedicacion(pre.medicacion_habitual || pre.medicamentos_actuales || pac.medicacion_habitual || '');
+
+      let datosPlantillaRecibidos = data.datos_plantilla || {};
+
+      // Si la consulta actual no tiene odontograma aún, pero el paciente tiene odontograma de primera consulta registrado:
+      if (
+        (!datosPlantillaRecibidos.odontograma ||
+          !datosPlantillaRecibidos.odontograma.piezas ||
+          Object.keys(datosPlantillaRecibidos.odontograma.piezas).length === 0) &&
+        data.primer_odontograma?.odontograma
+      ) {
+        datosPlantillaRecibidos = {
+          ...datosPlantillaRecibidos,
+          odontograma: data.primer_odontograma.odontograma,
+        };
+        setEsOdontogramaCargadoDeInicial(true);
+      } else if (!datosPlantillaRecibidos.odontograma) {
+        // Inicializar con la dentición adecuada según edad o tipo de paciente
+        const edadNum = data.paciente?.edad;
+        const esInfantil =
+          (edadNum !== undefined && edadNum !== null && edadNum < 12) ||
+          (data.especialidad?.nombre || '').toLowerCase().includes('pediatr');
+        datosPlantillaRecibidos = {
+          ...datosPlantillaRecibidos,
+          odontograma: {
+            denticion: esInfantil ? 'infantil' : 'adulto',
+            piezas: {},
+          },
+        };
+      }
+
+      setDatosPlantilla(datosPlantillaRecibidos);
       setEstudios(data.estudios_solicitados || []);
       setMedicamentos(data.receta_medica || []);
 
@@ -671,9 +859,9 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         setReposo({
           requiere_reposo: Boolean(data.reposo_medico.requiere_reposo),
           fecha_inicio:
-            data.reposo_medico.fecha_inicio || new Date().toISOString().split('T')[0],
+            data.reposo_medico.fecha_inicio || getLocalDateString(),
           fecha_fin:
-            data.reposo_medico.fecha_fin || new Date().toISOString().split('T')[0],
+            data.reposo_medico.fecha_fin || getLocalDateString(),
           dias_reposo: Number(data.reposo_medico.dias_reposo) || 1,
           motivo_diagnostico: data.reposo_medico.motivo_diagnostico || '',
           observaciones: data.reposo_medico.observaciones || '',
@@ -714,6 +902,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   };
 
   useEffect(() => {
+    setConsulta(null);
     fetchConsulta();
   }, [id]);
 
@@ -769,6 +958,14 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         observaciones_adicionales: observacionesAdicionales,
         referido_para: referidoPara,
         fecha_proximo_control: fechaProximoControl,
+        ficha_medica: {
+          grupo_sanguineo: fichaGrupoSanguineo,
+          alergias: fichaAlergias,
+          antecedentes_patologicos: fichaPatologicos,
+          antecedentes_familiares: fichaFamiliares,
+          antecedentes_quirurgicos: fichaQuirurgicos,
+          medicacion_habitual: fichaMedicacion,
+        },
       },
       estudios_solicitados: estudios,
       receta_medica: medicamentos,
@@ -788,6 +985,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       setSaving(true);
       const payload = buildPayload(false);
       await consultasApi.updateConsulta(consulta.id, payload);
+
+      // Sincronizar Ficha Médica directamente con la ficha del paciente
+      if (consulta.paciente?.id) {
+        pacientesApi.update(consulta.paciente.id, {
+          grupo_sanguineo: fichaGrupoSanguineo || null,
+          alergias: fichaAlergias,
+          antecedentes_patologicos: fichaPatologicos.trim() || null,
+          antecedentes_familiares: fichaFamiliares.trim() || null,
+          antecedentes_quirurgicos: fichaQuirurgicos.trim() || null,
+          medicacion_habitual: fichaMedicacion.trim() || null,
+        }).catch((e) => console.warn('Sync paciente silencioso:', e));
+      }
+
       toast.success('Borrador de la atención médica guardado exitosamente');
     } catch (error: any) {
       console.error('Error al guardar borrador:', error);
@@ -812,6 +1022,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       const payload = buildPayload(true);
       await consultasApi.updateConsulta(consulta.id, payload);
       await consultasApi.cambiarEstado(consulta.id, 'finalizada');
+
+      // Sincronizar Ficha Médica directamente con la ficha del paciente
+      if (consulta.paciente?.id) {
+        pacientesApi.update(consulta.paciente.id, {
+          grupo_sanguineo: fichaGrupoSanguineo || null,
+          alergias: fichaAlergias,
+          antecedentes_patologicos: fichaPatologicos.trim() || null,
+          antecedentes_familiares: fichaFamiliares.trim() || null,
+          antecedentes_quirurgicos: fichaQuirurgicos.trim() || null,
+          medicacion_habitual: fichaMedicacion.trim() || null,
+        }).catch((e) => console.warn('Sync paciente silencioso:', e));
+      }
+
       toast.success('🎉 ¡Consulta Médica finalizada y registrada exitosamente!');
       navigate('/clinica/consultas/atendidas');
     } catch (error: any) {
@@ -1175,6 +1398,38 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 <span>{saving ? 'Guardando...' : 'Guardar Borrador'}</span>
               </Button>
             )}
+
+            {/* ── BOTÓN DE TELEMEDICINA JITSI MEET ── */}
+            <Button
+              variant={jitsiActive ? 'default' : isTelemedicina ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleToggleJitsi}
+              disabled={jitsiLoading}
+              className={`gap-1.5 h-9 font-semibold cursor-pointer ${
+                jitsiActive
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
+                  : isTelemedicina
+                  ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-xs'
+                  : 'text-sky-600 dark:text-sky-400 border-sky-500/30 hover:bg-sky-50 dark:hover:bg-sky-950/30'
+              }`}
+            >
+              <Video className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {jitsiLoading
+                  ? 'Conectando...'
+                  : jitsiActive
+                  ? 'Ocultar Cabina'
+                  : isTelemedicina
+                  ? 'Videoconsulta Jitsi'
+                  : 'Iniciar Video'}
+              </span>
+              <span className="sm:hidden">Video</span>
+              {isTelemedicina && !jitsiActive && (
+                <span className="size-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+              )}
+            </Button>
+
+
           </div>
         </div>
 
@@ -1200,6 +1455,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                     {consulta.codigo && (
                       <Badge variant="outline" className="text-xs font-mono bg-muted/50">
                         {consulta.codigo}
+                      </Badge>
+                    )}
+
+                    {isTelemedicina && (
+                      <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30 font-bold gap-1">
+                        <Video className="h-3 w-3 text-sky-600" />
+                        Telemedicina Online
+                      </Badge>
+                    )}
+                    {Boolean(consulta.cita?.paciente_conectado_at) && (
+                      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold gap-1">
+                        <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Paciente en Sala Virtual
                       </Badge>
                     )}
 
@@ -1456,7 +1724,89 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         )}
       </div>
 
-      {/* ── BARRA DE PROGRESO DE LOS PASOS CONFIGURADOS ── */}
+      {/* ── CONTENEDOR PRINCIPAL: HISTORIA CLÍNICA & DOCK DE TELEMEDICINA JITSI MEET ── */}
+      <div
+        className={cn(
+          'transition-all duration-300',
+          jitsiActive && jitsiSession && jitsiViewMode === 'split'
+            ? 'grid grid-cols-1 lg:grid-cols-12 gap-6 items-start'
+            : 'space-y-6'
+        )}
+      >
+        {/* CABINA JITSI EN MODO SPLIT-SCREEN (COLUMNA IZQUIERDA) */}
+        {jitsiActive && jitsiSession && jitsiViewMode === 'split' && (
+          <div className="lg:col-span-5 sticky top-20 z-20 space-y-2">
+            <Card className="border-2 border-sky-500/60 shadow-xl overflow-hidden bg-slate-950 flex flex-col h-[640px] rounded-2xl">
+              {/* Barra superior de la cabina */}
+              <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="size-7 rounded-lg bg-sky-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                    <Video className="size-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold block truncate">
+                      Cabina de Telemedicina
+                    </span>
+                    <span className="text-[10px] text-slate-400 block truncate">
+                      {consulta.paciente
+                        ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}`
+                        : 'Paciente'} • Moderador
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setJitsiViewMode('pip')}
+                    className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    title="Minimizar a Ventana Flotante (PiP)"
+                  >
+                    <Minimize2 className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setJitsiViewMode('modal')}
+                    className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    title="Maximizar a Pantalla Completa"
+                  >
+                    <Maximize2 className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setJitsiActive(false)}
+                    className="size-7 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 cursor-pointer"
+                    title="Cerrar Cabina"
+                  >
+                    <PhoneOff className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Jitsi Meet Embebido */}
+              <div className="flex-1 w-full min-h-0 bg-black">
+                <JitsiMeetingEmbed
+                  session={jitsiSession}
+                  className="w-full h-full"
+                  onHangup={handleHangupJitsi}
+                />
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* COLUMNA CLÍNICA (DERECHA EN SPLIT, 100% EN NORMAL/PIP) */}
+        <div
+          className={cn(
+            jitsiActive && jitsiSession && jitsiViewMode === 'split'
+              ? 'lg:col-span-7 min-w-0 space-y-6'
+              : 'space-y-6'
+          )}
+        >
+          {/* ── BARRA DE PROGRESO DE LOS PASOS CONFIGURADOS ── */}
       <Card className="border-border/80 shadow-xs overflow-hidden">
         <CardContent className="p-3">
           <div className="flex items-center justify-between overflow-x-auto gap-2">
@@ -1873,6 +2223,249 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* ── TARJETA CLÍNICA: FICHA MÉDICA, ALERGIAS Y ANTECEDENTES DEL PACIENTE ── */}
+                <Card className="border-border/80 bg-card shadow-xs overflow-hidden">
+                  <div className="p-4 px-5 bg-muted/40 border-b border-border/60 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="size-8 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                        <HeartPulse className="size-4" />
+                      </div>
+                      <div>
+                        <h5 className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-2">
+                          <span>Ficha Médica y Antecedentes</span>
+                          {fichaAlergias.length > 0 ? (
+                            <Badge variant="destructive" className="text-[10px] bg-rose-600 text-white font-bold px-2 py-0">
+                              ⚠️ {fichaAlergias.length} Alergia(s)
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground font-normal">
+                              Sin alergias
+                            </Badge>
+                          )}
+                        </h5>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {preconsultaRespuestas && Object.keys(preconsultaRespuestas).some((k) => ['grupo_sanguineo', 'alergias', 'antecedentes_patologicos', 'medicacion_habitual'].includes(k))
+                            ? '📥 Suministrado por el paciente en la Preconsulta digital'
+                            : '👤 Perfil clínico base registrado del paciente'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCopiarFichaAEnfermedadActual}
+                        disabled={readOnly}
+                        className="h-7 text-[11px] text-primary hover:text-primary hover:bg-primary/10 gap-1 px-2 cursor-pointer"
+                        title="Inserta estos antecedentes formateados en la evolución/anamnesis"
+                      >
+                        <Sparkles className="size-3 text-amber-500" />
+                        <span>Copiar a Evolución</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSaveFichaMedica}
+                        disabled={savingFicha || readOnly}
+                        className="h-7 text-[11px] border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 gap-1 px-2 cursor-pointer"
+                        title="Guarda estos datos clínicos directamente en la ficha del paciente"
+                      >
+                        <Save className="size-3 text-teal-600" />
+                        <span>{savingFicha ? 'Guardando...' : 'Actualizar Paciente'}</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  <CardContent className="p-4 sm:p-5 space-y-4">
+                    {/* 1. Grupo Sanguíneo */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <Heart className="size-3.5 text-rose-600 fill-rose-600/20" />
+                          <span>Grupo Sanguíneo y Factor Rh</span>
+                        </Label>
+                        {fichaGrupoSanguineo && (
+                          <Badge className="text-[10px] bg-rose-600 text-white font-mono font-bold">
+                            {fichaGrupoSanguineo}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                        {['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'].map((gs) => {
+                          const isSelected = fichaGrupoSanguineo === gs;
+                          return (
+                            <button
+                              key={gs}
+                              type="button"
+                              disabled={readOnly}
+                              onClick={() => setFichaGrupoSanguineo(isSelected ? '' : gs)}
+                              className={cn(
+                                'h-7 rounded-lg text-xs font-bold font-mono transition-all border cursor-pointer',
+                                isSelected
+                                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs ring-2 ring-rose-400/30'
+                                  : 'bg-muted/40 hover:bg-muted text-foreground border-border/80'
+                              )}
+                            >
+                              {gs}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 2. Alergias Conocidas */}
+                    <div className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/5 dark:bg-rose-950/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                          <AlertCircle className="size-3.5 text-rose-600" />
+                          <span>Alergias Medicamentosas y Ambientales</span>
+                        </Label>
+                        <span className="text-[10.5px] text-muted-foreground">
+                          {fichaAlergias.length === 0 ? 'Sin alergias reportadas' : `${fichaAlergias.length} registrada(s)`}
+                        </span>
+                      </div>
+
+                      {fichaAlergias.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {fichaAlergias.map((al, idx) => (
+                            <Badge
+                              key={idx}
+                              variant="destructive"
+                              className="text-xs px-2.5 py-0.5 gap-1.5 font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-2xs"
+                            >
+                              <span>⚠️ {al}</span>
+                              {!readOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFichaAlergia(idx)}
+                                  className="cursor-pointer hover:opacity-80"
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              )}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {!readOnly && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={fichaNuevaAlergia}
+                              onChange={(e) => setFichaNuevaAlergia(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddFichaAlergia();
+                                }
+                              }}
+                              placeholder="Escriba alergia y presione Enter o Añadir..."
+                              className="text-xs h-8 bg-background"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleAddFichaAlergia()}
+                              className="h-8 px-2.5 text-xs bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shrink-0"
+                            >
+                              <Plus className="size-3.5 mr-1" />
+                              Añadir
+                            </Button>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1">
+                            {['Penicilina', 'Dipirona', 'Aspirina / AINEs', 'Sulfas', 'Látex', 'Yodo', 'Mariscos'].map((sug) => {
+                              const yaTiene = fichaAlergias.includes(sug);
+                              return (
+                                <button
+                                  key={sug}
+                                  type="button"
+                                  disabled={yaTiene}
+                                  onClick={() => handleAddFichaAlergia(sug)}
+                                  className={cn(
+                                    'text-[10px] px-1.5 py-0.5 rounded border transition-all cursor-pointer',
+                                    yaTiene
+                                      ? 'opacity-40 cursor-not-allowed bg-muted border-border text-muted-foreground'
+                                      : 'bg-background hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                                  )}
+                                >
+                                  + {sug}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* 3. Antecedentes Patológicos y Familiares */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Antecedentes Personales Patológicos
+                        </Label>
+                        <Textarea
+                          value={fichaPatologicos}
+                          onChange={(e) => setFichaPatologicos(e.target.value)}
+                          placeholder="Hipertensión, Diabetes, Asma, Gastritis, etc."
+                          disabled={readOnly}
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Antecedentes Familiares Relevantes
+                        </Label>
+                        <Textarea
+                          value={fichaFamiliares}
+                          onChange={(e) => setFichaFamiliares(e.target.value)}
+                          placeholder="Cardiopatías, Cáncer, Diabetes en padres o abuelos..."
+                          disabled={readOnly}
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 4. Cirugías y Medicación Habitual */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Cirugías e Intervenciones Quirúrgicas
+                        </Label>
+                        <Textarea
+                          value={fichaQuirurgicos}
+                          onChange={(e) => setFichaQuirurgicos(e.target.value)}
+                          placeholder="Apendicectomía, Cesárea, Traumatismos operados..."
+                          disabled={readOnly}
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Medicación Habitual de Uso Continuo
+                        </Label>
+                        <Textarea
+                          value={fichaMedicacion}
+                          onChange={(e) => setFichaMedicacion(e.target.value)}
+                          placeholder="Fármacos de toma diaria con dosis y horarios..."
+                          disabled={readOnly}
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           </div>
@@ -1971,6 +2564,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                 setDatosPlantilla((prev) => ({ ...prev, [key]: val }));
               }}
               readOnly={readOnly}
+              esPediatrico={tipoPacienteCalculado === 'infantil'}
+              onInsertarEnEvolucion={(resumen) => {
+                setEnfermedadActual((prev) =>
+                  prev ? `${prev}\n\n[Signos Vitales]: ${resumen}` : `[Signos Vitales]: ${resumen}`
+                );
+                setDatosPlantilla((prev) => ({
+                  ...prev,
+                  enfermedad_actual: prev.enfermedad_actual
+                    ? `${prev.enfermedad_actual}\n\n[Signos Vitales]: ${resumen}`
+                    : `[Signos Vitales]: ${resumen}`,
+                }));
+                toast.success('Signos vitales insertados en la anamnesis/evolución');
+              }}
             />
           </div>
         )}
@@ -2018,61 +2624,118 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                         className="resize-y w-full"
                       />
 
-                      {/* ── FRASES RÁPIDAS / MACROS CLÍNICOS ── */}
-                      {!readOnly && (
-                        <div className="pt-2 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
-                              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                              <span>Macros Clínicos y Frases Rápidas (1 Clic para insertar):</span>
-                            </span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setCalculadorasModalOpen(true)}
-                              className="h-6 text-[11px] px-2 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 gap-1 cursor-pointer"
-                            >
-                              <Calculator className="h-3 w-3" />
-                              <span>Abrir Calculadora Clínica</span>
-                            </Button>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-muted/30 border border-border/60">
-                            {SNIPPETS_EXAMEN_FISICO.map((snip, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => handleInsertarSnippetEnEvaluacion(snip)}
-                                className="text-[11px] px-2.5 py-1 rounded-lg bg-background hover:bg-primary/10 hover:text-primary border border-border hover:border-primary/40 transition-all text-left font-medium cursor-pointer shadow-2xs"
-                                title={snip.texto}
-                              >
-                                + {snip.titulo}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
 
                 {/* WIDGET INTERACTIVO DE ODONTOGRAMA SI APLICA */}
-                {(plantillaEfectiva?.widgets_activos || []).includes('odontograma') && (
+                {((plantillaEfectiva?.widgets_activos || []).includes('odontograma') ||
+                  (consulta?.especialidad?.nombre || '').toLowerCase().includes('odont')) && (
                   <Card className="border-border/80 shadow-xs">
                     <CardContent className="p-5 space-y-3">
-                      <div className="flex items-center justify-between pb-3 border-b border-border/60">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border/60">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Sparkles className="h-5 w-5 text-sky-500" />
                           <h4 className="text-base font-bold text-foreground">
                             Odontograma Dental Clínico Interactivo
                           </h4>
+                          {tipoPacienteCalculado && (
+                            <Badge variant="outline" className="text-xs border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-500/10">
+                              {tipoPacienteCalculado === 'infantil' ? '👶 Pediátrico' : '👤 Adulto'}
+                            </Badge>
+                          )}
+                          {esOdontogramaCargadoDeInicial && (
+                            <Badge className="bg-teal-600 text-white text-xs border-none">
+                              ✓ Base 1ra Consulta
+                            </Badge>
+                          )}
                         </div>
-                        <Badge variant="secondary" className="text-xs">
-                          Registro Odontológico
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {consulta?.primer_odontograma && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setModalPrimerOdontoOpen(true)}
+                                className="h-8 text-xs border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer"
+                              >
+                                <Eye className="h-3.5 w-3.5 mr-1 text-teal-600 dark:text-teal-400" />
+                                <span>Ver Odontograma 1ra Consulta</span>
+                              </Button>
+
+                              {!readOnly && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleCargarPrimerOdontograma}
+                                  className="h-8 text-xs border-teal-500/50 bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 cursor-pointer"
+                                  title="Cargar o restaurar el odontograma de la primera consulta en el lienzo actual"
+                                >
+                                  <Download className="h-3.5 w-3.5 mr-1" />
+                                  <span>Cargar Odontograma Inicial</span>
+                                </Button>
+                              )}
+                            </>
+                          )}
+                          <Badge variant="secondary" className="text-xs">
+                            Registro Odontológico
+                          </Badge>
+                        </div>
                       </div>
+
+                      {/* Notificación informativa si se dispone de odontograma de primera consulta */}
+                      {consulta?.primer_odontograma && (
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-xl bg-teal-500/10 border border-teal-500/25 text-teal-950 dark:text-teal-100 text-xs">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-2 rounded-lg bg-teal-500/20 text-teal-600 dark:text-teal-400 shrink-0">
+                              <History className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-bold">
+                                Odontograma de Primera Consulta Disponible (Consulta #{consulta.primer_odontograma.consulta_id} · {new Date(consulta.primer_odontograma.fecha_consulta).toLocaleDateString()})
+                              </p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                Atendido por {consulta.primer_odontograma.medico_nombre} — Dentición: {consulta.primer_odontograma.denticion === 'infantil' ? 'Pediátrica (20 piezas)' : 'Adultos (32 piezas)'}.
+                                {esOdontogramaCargadoDeInicial ? ' (Cargado en el lienzo para esta sesión).' : ' Puedes visualizarlo o cargarlo directamente.'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setModalPrimerOdontoOpen(true)}
+                              className="h-7 text-xs border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 cursor-pointer"
+                            >
+                              <Eye className="h-3.5 w-3.5 mr-1" />
+                              Visualizar
+                            </Button>
+                            {!readOnly && !esOdontogramaCargadoDeInicial && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={handleCargarPrimerOdontograma}
+                                className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+                              >
+                                <Download className="h-3.5 w-3.5 mr-1" />
+                                Cargar en Lienzo
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <OdontogramaWidget
                         initialData={datosPlantilla.odontograma as OdontogramaData}
+                        tipoPaciente={tipoPacienteCalculado}
+                        primerOdontograma={consulta?.primer_odontograma}
+                        onVerPrimerOdontograma={() => setModalPrimerOdontoOpen(true)}
+                        onCargarPrimerOdontograma={handleCargarPrimerOdontograma}
+                        esOdontogramaCargadoDeInicial={esOdontogramaCargadoDeInicial}
+                        readOnly={readOnly}
                         onChange={(odontoData) => {
                           if (!readOnly) {
                             setDatosPlantilla((prev) => ({
@@ -2081,6 +2744,17 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                             }));
                           }
                         }}
+                      />
+
+                      {/* Modal de visualización de odontograma de primera consulta */}
+                      <OdontogramaHistorialModal
+                        open={modalPrimerOdontoOpen}
+                        onOpenChange={setModalPrimerOdontoOpen}
+                        primerOdontograma={consulta?.primer_odontograma || null}
+                        pacienteNombre={consulta?.paciente ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}` : ''}
+                        pacienteEdad={pacienteEdad}
+                        readOnly={readOnly}
+                        onCargarEnConsultaActual={handleCargarPrimerOdontograma}
                       />
                     </CardContent>
                   </Card>
@@ -2379,6 +3053,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
               <TabsContent value="adjuntos" className="mt-4">
                 {consulta.paciente_id ? (
                   <EstudiosArchivosTab
+                    key={`estudios-tab-${consulta.id}-${consulta.paciente_id}`}
                     pacienteId={consulta.paciente_id}
                     consultaId={consulta.id}
                     medicoId={consulta.medico_id || undefined}
@@ -2396,6 +3071,7 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                   onRemove={(idx) => setEstudios((prev) => prev.filter((_, i) => i !== idx))}
                   readOnly={readOnly}
                   especialidadNombre={consulta.especialidad?.nombre}
+                  estudiosSugeridos={plantillaEfectiva?.estudios_sugeridos}
                 />
               </TabsContent>
             </Tabs>
@@ -3096,6 +3772,8 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
               </Button>
             )}
 
+
+
             {!isLastStep && nextStep !== null ? (
               <Button
                 type="button"
@@ -3130,6 +3808,120 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
           </div>
         </div>
       </div>
+
+        </div>
+      </div>
+
+      {/* ── CABINA JITSI FLOTANTE (MODO PICTURE-IN-PICTURE / PiP) ── */}
+      {jitsiActive && jitsiSession && jitsiViewMode === 'pip' && (
+        <div className="fixed bottom-4 right-4 z-50 w-[420px] max-w-[calc(100vw-2rem)] h-[300px] shadow-2xl rounded-2xl border-2 border-sky-500/60 bg-slate-950 overflow-hidden flex flex-col animate-in slide-in-from-bottom-6">
+          <div className="p-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="size-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-xs font-bold truncate">
+                Telemedicina • {consulta.paciente ? consulta.paciente.nombres : 'Paciente'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setJitsiViewMode('split')}
+                className="size-6 text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
+                title="Dividir Pantalla con Historia Clínica"
+              >
+                <Columns2 className="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setJitsiViewMode('modal')}
+                className="size-6 text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
+                title="Maximizar Pantalla Completa"
+              >
+                <Maximize2 className="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setJitsiActive(false)}
+                className="size-6 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 cursor-pointer"
+                title="Cerrar"
+              >
+                <PhoneOff className="size-3" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 w-full min-h-0 bg-black">
+            <JitsiMeetingEmbed
+              session={jitsiSession}
+              className="w-full h-full"
+              onHangup={handleHangupJitsi}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── CABINA JITSI MODAL COMPLETO (MODO EXAMEN DETALLADO) ── */}
+      {jitsiActive && jitsiSession && jitsiViewMode === 'modal' && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full h-[90vh] max-w-6xl rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-2xl flex flex-col">
+            <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="size-7 rounded-lg bg-sky-600 flex items-center justify-center text-white shrink-0">
+                  <Video className="size-3.5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold">
+                    Videoconsulta Médica • Pantalla Completa
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    {consulta.paciente
+                      ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}`
+                      : 'Paciente'} • {consulta.especialidad?.nombre}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setJitsiViewMode('split')}
+                  className="h-7 text-xs text-slate-300 hover:text-white hover:bg-slate-800 gap-1.5 cursor-pointer"
+                >
+                  <Columns2 className="size-3.5" />
+                  <span>Dividir Pantalla</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setJitsiViewMode('pip')}
+                  className="h-7 text-xs text-slate-300 hover:text-white hover:bg-slate-800 gap-1.5 cursor-pointer"
+                >
+                  <Minimize2 className="size-3.5" />
+                  <span>Ventana Flotante (PiP)</span>
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setJitsiActive(false)}
+                  className="h-7 text-xs gap-1 ml-2 cursor-pointer"
+                >
+                  <X className="size-3.5" />
+                  <span>Cerrar</span>
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 w-full min-h-0 bg-black">
+              <JitsiMeetingEmbed
+                session={jitsiSession}
+                className="w-full h-full"
+                onHangup={handleHangupJitsi}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL DE IMPRESIÓN DE DOCUMENTOS CLÍNICOS ── */}
       <DocumentosImpresionModal

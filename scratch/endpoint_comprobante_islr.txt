@@ -1,0 +1,93 @@
+
+
+@router.get("/liquidaciones/{id}/comprobante-islr", response_model=ComprobanteRetencionISLRResponse)
+async def obtener_comprobante_retencion_islr(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_active_user),
+):
+    """
+    Genera el formato estructurado del Comprobante de Retención de ISLR
+    conforme al Decreto N° 1.808 y providencias administrativas del SENIAT.
+    """
+    q = (
+        select(LiquidacionHonorario)
+        .options(
+            selectinload(LiquidacionHonorario.medico).selectinload(Medico.especialidad),
+            selectinload(LiquidacionHonorario.empresa),
+        )
+        .where(LiquidacionHonorario.id == id)
+    )
+    if not current_user.es_superadmin:
+        q = q.where(LiquidacionHonorario.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(q)
+    liq = res.scalar_one_or_none()
+    if not liq:
+        raise HTTPException(status_code=404, detail="Liquidación de honorarios no encontrada")
+
+    empresa = liq.empresa
+    medico = liq.medico
+
+    # Generar correlativo ISLR si no tiene
+    correlativo = liq.numero_comprobante_islr
+    if not correlativo:
+        mes_str = (liq.fecha_emision or datetime.utcnow()).strftime("%Y%m")
+        correlativo = f"{mes_str}{liq.id:08d}"
+
+    # Fechas
+    fecha_dt = liq.fecha_emision or datetime.utcnow()
+    fecha_emision_str = fecha_dt.strftime("%d/%m/%Y")
+    periodo_fiscal = fecha_dt.strftime("%Y-%m")
+
+    # Importes
+    honorarios_usd = float(liq.monto_honorarios_usd or 0.0)
+    tasa = float(liq.tasa_bcv_aplicada or 1.0)
+    base_ves = round(honorarios_usd * tasa, 2)
+
+    pct_islr = float(liq.porcentaje_retencion_islr if liq.porcentaje_retencion_islr is not None else 3.0)
+    monto_ret_usd = float(liq.monto_retencion_islr_usd if liq.monto_retencion_islr_usd is not None else round(honorarios_usd * (pct_islr / 100.0), 2))
+    monto_ret_ves = float(liq.monto_retencion_islr_ves if liq.monto_retencion_islr_ves is not None else round(monto_ret_usd * tasa, 2))
+
+    neto_usd = float(liq.monto_neto_pagar_usd or 0.0)
+    neto_ves = float(liq.monto_neto_pagar_ves or 0.0)
+
+    esp_nombre = medico.especialidad.nombre if medico and medico.especialidad else "Medicina General"
+
+    return ComprobanteRetencionISLRResponse(
+        numero_comprobante=correlativo,
+        codigo_liquidacion=liq.codigo_liquidacion,
+        fecha_emision=fecha_emision_str,
+        periodo_fiscal=periodo_fiscal,
+        ejercicio_fiscal_ano=fecha_dt.year,
+        ejercicio_fiscal_mes=fecha_dt.month,
+        agente_retencion={
+            "nombre": empresa.nombre if empresa else "Centro Clínico Asistencial",
+            "rif": empresa.identificacion_fiscal if empresa else "J-00000000-0",
+            "direccion": empresa.direccion if empresa else "Venezuela",
+            "telefono": empresa.telefono if empresa else "",
+            "email": empresa.email if empresa else "",
+        },
+        sujeto_retenido={
+            "nombre": f"Dr(a). {medico.nombres} {medico.apellidos}" if medico else "Especialista",
+            "documento_tipo": medico.tipo_documento if medico else "V",
+            "documento_numero": medico.documento_identidad if medico else "",
+            "rif": f"{medico.tipo_documento}-{medico.documento_identidad}" if medico else "",
+            "especialidad": esp_nombre,
+            "licencia_medica": medico.licencia_medica if medico else "",
+            "email": medico.email if medico else "",
+            "telefono": medico.telefono if medico else "",
+        },
+        concepto="Honorarios Profesionales Médicos por atenciones y consultas de salud (Decreto 1.808 Art. 9 Num. 1)",
+        exencion_iva="Servicios Médicos Exentos de IVA según Art. 18 Numeral 3 de la Ley del IVA",
+        base_imponible_usd=round(honorarios_usd, 2),
+        tasa_bcv=round(tasa, 4),
+        base_imponible_ves=base_ves,
+        porcentaje_retencion=pct_islr,
+        monto_retenido_usd=monto_ret_usd,
+        monto_retenido_ves=monto_ret_ves,
+        monto_neto_usd=neto_usd,
+        monto_neto_ves=neto_ves,
+        fundamento_legal="Decreto N° 1.808 en materia de Retenciones de ISLR (Art. 9, Numeral 1). Servicios exentos de IVA según Art. 18 Num. 3 de la Ley del IVA.",
+    )
+

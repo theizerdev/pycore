@@ -41,7 +41,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
       ? new Date(user.empresa.plan_vencimiento).getTime() < new Date().getTime() && user.empresa.plan_estado !== 'activo'
       : false;
 
-    const isExpiredScreen = location.pathname.includes('/suscripcion-vencida') || location.pathname.includes('/mi-cuenta');
+    const isExpiredScreen = location.pathname.includes('/suscripcion-vencida') || location.pathname.includes('/mi-cuenta') || location.pathname.includes('/saas/suscripciones') || location.pathname.includes('/saas/planes');
 
     if ((isVencidoStatus || isPastDate) && !isExpiredScreen) {
       return <Navigate to="/suscripcion-vencida" replace />;

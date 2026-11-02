@@ -57,6 +57,10 @@ import {
   EyeOff,
   ChevronLeft,
   ChevronRight,
+  Receipt,
+  Percent,
+  CircleDollarSign,
+  Landmark,
 } from 'lucide-react';
 
 interface DoctorFormModalProps {
@@ -92,6 +96,24 @@ const NIVELES_EXPERIENCIA = [
   { id: 'Jefe de Servicio / Docente', label: 'Jefe de Servicio / Docente Universitario', color: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30' },
 ];
 
+export const BANCOS_VENEZUELA = [
+  'Banesco Banco Universal',
+  'Banco de Venezuela (BDV)',
+  'Banco Mercantil',
+  'Banco Provincial (BBVA)',
+  'Bancamiga Banco Universal',
+  'Banco Nacional de Crédito (BNC)',
+  'Banplus Banco Universal',
+  'Banco Exterior',
+  'Banco Plaza',
+  '100% Banco',
+  'Bancaribe',
+  'Banco Venezolano de Crédito',
+  'Cuenta en Divisas (Custodia)',
+  'Zelle / Bank of America / Wells Fargo',
+  'Otro Banco Internacional',
+];
+
 const COLORES_PREDEFINIDOS = [
   '#0d9488', // Teal
   '#0284c7', // Sky
@@ -103,6 +125,8 @@ const COLORES_PREDEFINIDOS = [
   '#d97706', // Amber
   '#e11d48', // Rose
 ];
+
+export type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' | 'honorarios' | 'acceso';
 
 export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
   open,
@@ -120,7 +144,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
   const [saving, setSaving] = useState(false);
 
   // Pestaña activa
-  const [activeTab, setActiveTab] = useState<'personal' | 'especialidad' | 'subespecialidades' | 'horario' | 'acceso'>('personal');
+  const [activeTab, setActiveTab] = useState<DoctorTab>('personal');
 
   // Formulario principal
   const [nombres, setNombres] = useState('');
@@ -138,6 +162,16 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
   const [biografia, setBiografia] = useState('');
   const [activo, setActivo] = useState(true);
   const [horarioAtencion, setHorarioAtencion] = useState<HorarioDiaConfig[]>(DIAS_SEMANA_DEFAULT);
+
+  // Honorarios y Liquidación
+  const [tipoComision, setTipoComision] = useState<'porcentaje' | 'fijo'>('porcentaje');
+  const [porcentajeHonorario, setPorcentajeHonorario] = useState<number>(70);
+  const [montoFijoHonorario, setMontoFijoHonorario] = useState<number>(0);
+  const [banco, setBanco] = useState('');
+  const [numeroCuenta, setNumeroCuenta] = useState('');
+  const [titular, setTitular] = useState('');
+  const [pagoMovil, setPagoMovil] = useState('');
+  const [zelle, setZelle] = useState('');
 
   // Carrito de Subespecialidades
   const [subespecialidadesCarrito, setSubespecialidadesCarrito] = useState<SubespecialidadItem[]>([]);
@@ -230,6 +264,16 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       } else {
         setHorarioAtencion(DIAS_SEMANA_DEFAULT);
       }
+      // Honorarios & Pagos
+      setTipoComision((medicoToEdit.tipo_comision as 'porcentaje' | 'fijo') || 'porcentaje');
+      setPorcentajeHonorario(medicoToEdit.porcentaje_honorario !== undefined && medicoToEdit.porcentaje_honorario !== null ? Number(medicoToEdit.porcentaje_honorario) : 70);
+      setMontoFijoHonorario(medicoToEdit.monto_fijo_honorario !== undefined && medicoToEdit.monto_fijo_honorario !== null ? Number(medicoToEdit.monto_fijo_honorario) : 0);
+      const b = (medicoToEdit.datos_bancarios as Record<string, any>) || {};
+      setBanco(b.banco || '');
+      setNumeroCuenta(b.numero_cuenta || '');
+      setTitular(b.titular || '');
+      setPagoMovil(b.pago_movil || '');
+      setZelle(b.zelle || '');
       setCrearUsuario(Boolean(medicoToEdit.usuario_id));
       setPassword('');
     } else {
@@ -247,6 +291,14 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       setActivo(true);
       setSubespecialidadesCarrito([]);
       setHorarioAtencion(DIAS_SEMANA_DEFAULT);
+      setTipoComision('porcentaje');
+      setPorcentajeHonorario(70);
+      setMontoFijoHonorario(0);
+      setBanco('');
+      setNumeroCuenta('');
+      setTitular('');
+      setPagoMovil('');
+      setZelle('');
       setCrearUsuario(true);
       generateRandomPassword();
     }
@@ -417,6 +469,16 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
           sucursales_ids: sucursalesIds,
           horario_atencion: horarioAtencion,
           biografia: biografia.trim() || null,
+          tipo_comision: tipoComision,
+          porcentaje_honorario: Number(porcentajeHonorario),
+          monto_fijo_honorario: Number(montoFijoHonorario),
+          datos_bancarios: {
+            banco: banco.trim() || undefined,
+            numero_cuenta: numeroCuenta.trim() || undefined,
+            titular: titular.trim() || undefined,
+            pago_movil: pagoMovil.trim() || undefined,
+            zelle: zelle.trim() || undefined,
+          },
           activo,
           password: password ? password : undefined,
         };
@@ -439,6 +501,16 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
           sucursales_ids: sucursalesIds,
           horario_atencion: horarioAtencion,
           biografia: biografia.trim() || null,
+          tipo_comision: tipoComision,
+          porcentaje_honorario: Number(porcentajeHonorario),
+          monto_fijo_honorario: Number(montoFijoHonorario),
+          datos_bancarios: {
+            banco: banco.trim() || undefined,
+            numero_cuenta: numeroCuenta.trim() || undefined,
+            titular: titular.trim() || undefined,
+            pago_movil: pagoMovil.trim() || undefined,
+            zelle: zelle.trim() || undefined,
+          },
           activo,
           crear_usuario: crearUsuario,
           password: password || undefined,
@@ -478,7 +550,6 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
   const doctorInitials =
     `${nombres?.trim().charAt(0) || ''}${apellidos?.trim().charAt(0) || ''}`.toUpperCase() || 'DR';
 
-type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' | 'acceso';
 
   const STEPS: Array<{
     id: DoctorTab;
@@ -534,8 +605,19 @@ type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' |
       badge: `${horarioAtencion.filter((h) => h.activo).length}d`,
     },
     {
+      id: 'honorarios',
+      label: '5. Honorarios & Pagos',
+      shortTitle: 'Honorarios',
+      subtitle: 'Comisión y datos de pago',
+      titleDetail: 'Honorarios Médicos y Cuentas de Liquidación',
+      descriptionDetail: 'Configura la modalidad de comisión (% o monto fijo) y las cuentas de desembolso para liquidaciones.',
+      icon: Receipt,
+      isComplete: Boolean(tipoComision === 'porcentaje' ? porcentajeHonorario > 0 : montoFijoHonorario > 0),
+      badge: tipoComision === 'porcentaje' ? `${porcentajeHonorario}%` : `$${montoFijoHonorario}`,
+    },
+    {
       id: 'acceso',
-      label: '5. Acceso al Sistema',
+      label: '6. Acceso al Sistema',
       shortTitle: 'Acceso',
       subtitle: 'Cuenta de usuario y rol',
       titleDetail: 'Acceso al Sistema y Credenciales',
@@ -635,6 +717,11 @@ type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' |
                                 {horarioAtencion.filter((h) => h.activo).length}d
                               </span>
                             )}
+                            {step.id === 'honorarios' && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 font-bold shrink-0 font-mono">
+                                {tipoComision === 'porcentaje' ? `${porcentajeHonorario}%` : `$${montoFijoHonorario}`}
+                              </span>
+                            )}
                           </div>
                           <span className="text-[11px] text-muted-foreground truncate block">
                             {step.subtitle}
@@ -677,6 +764,12 @@ type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' |
                       {activo ? '● Activo' : '○ Inactivo'}
                     </span>
                   </div>
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-muted-foreground">Honorarios:</span>
+                    <span className="font-bold font-mono text-teal-600 dark:text-teal-400">
+                      {tipoComision === 'porcentaje' ? `${porcentajeHonorario}%` : `$${montoFijoHonorario.toFixed(2)}`}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -688,7 +781,7 @@ type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' |
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-                      Paso {currentStepIndex + 1} de 5
+                      Paso {currentStepIndex + 1} de {STEPS.length}
                     </span>
                     <h3 className="text-xs sm:text-sm font-bold text-foreground">
                       {currentStep.titleDetail}
@@ -703,11 +796,11 @@ type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' |
                   <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden border border-border/50">
                     <div
                       className="h-full bg-teal-500 transition-all duration-300 rounded-full"
-                      style={{ width: `${((currentStepIndex + 1) / 5) * 100}%` }}
+                      style={{ width: `${((currentStepIndex + 1) / STEPS.length) * 100}%` }}
                     />
                   </div>
                   <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 font-mono">
-                    {Math.round(((currentStepIndex + 1) / 5) * 100)}%
+                    {Math.round(((currentStepIndex + 1) / STEPS.length) * 100)}%
                   </span>
                 </div>
               </div>
@@ -1263,7 +1356,373 @@ type DoctorTab = 'personal' | 'especialidad' | 'subespecialidades' | 'horario' |
               </div>
             )}
 
-            {/* ── PESTAÑA 5: ACCESO AL SISTEMA / USUARIO ─────────────────────── */}
+                        {/* ── PESTAÑA 5: HONORARIOS Y LIQUIDACIÓN ────────────────────────── */}
+            {activeTab === 'honorarios' && (
+              <div className="space-y-4 max-w-3xl">
+                {/* Modalidad de Liquidación / Comisión */}
+                <div className="p-4 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="size-8 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 flex items-center justify-center">
+                        <Receipt className="size-4" />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-bold text-foreground">
+                          Esquema de Comisiones & Honorarios
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Define la modalidad contractual para la liquidación periódica de consultas
+                        </p>
+                      </div>
+                    </div>
+
+                    <Badge
+                      variant="outline"
+                      className="text-[11px] font-mono border-teal-500/30 text-teal-600 dark:text-teal-400 bg-teal-500/5 px-2.5 py-0.5"
+                    >
+                      {tipoComision === 'porcentaje'
+                        ? `${porcentajeHonorario}% Médico • ${100 - porcentajeHonorario}% Clínica`
+                        : `$${montoFijoHonorario.toFixed(2)} USD Fijo / Consulta`}
+                    </Badge>
+                  </div>
+
+                  {/* Selector de Modo */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setTipoComision('porcentaje')}
+                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-3 ${
+                        tipoComision === 'porcentaje'
+                          ? 'border-teal-500/60 bg-teal-500/10 text-foreground ring-1 ring-teal-500/30'
+                          : 'border-border/70 hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      <div
+                        className={`size-7 rounded-lg flex items-center justify-center shrink-0 ${
+                          tipoComision === 'porcentaje'
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        <Percent className="size-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Porcentaje sobre Cobro</span>
+                          {tipoComision === 'porcentaje' && (
+                            <Check className="size-3.5 text-teal-600 shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          El médico percibe un porcentaje de cada recibo y la clínica retiene el remanente.
+                        </p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTipoComision('fijo')}
+                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-3 ${
+                        tipoComision === 'fijo'
+                          ? 'border-teal-500/60 bg-teal-500/10 text-foreground ring-1 ring-teal-500/30'
+                          : 'border-border/70 hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      <div
+                        className={`size-7 rounded-lg flex items-center justify-center shrink-0 ${
+                          tipoComision === 'fijo'
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        <CircleDollarSign className="size-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Monto Fijo por Consulta</span>
+                          {tipoComision === 'fijo' && (
+                            <Check className="size-3.5 text-teal-600 shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Tarifa fija pactada en USD por paciente atendido, independiente del cobro.
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Parámetros según el modo seleccionado */}
+                  <div className="pt-2">
+                    {tipoComision === 'porcentaje' ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-end">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">
+                              Porcentaje para el Especialista (%) <span className="text-destructive">*</span>
+                            </Label>
+                            <div className="relative">
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={porcentajeHonorario}
+                                onChange={(e) => {
+                                  const val = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                                  setPorcentajeHonorario(val);
+                                }}
+                                className="h-9 text-xs font-mono pr-8"
+                              />
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground font-mono">
+                                %
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-muted-foreground">
+                              Retención para la Clínica
+                            </Label>
+                            <div className="h-9 px-3 rounded-lg border border-border/60 bg-muted/30 flex items-center justify-between text-xs font-mono">
+                              <span className="text-muted-foreground">Remanente institucional:</span>
+                              <span className="font-bold text-teal-600 dark:text-teal-400">
+                                {100 - porcentajeHonorario}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Presets rápidos */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[11px] text-muted-foreground font-medium mr-1">
+                            Plantillas habituales:
+                          </span>
+                          {[
+                            { label: '70% / 30% (Estándar)', pct: 70 },
+                            { label: '80% / 20% (Especialista)', pct: 80 },
+                            { label: '60% / 40% (Compartido)', pct: 60 },
+                            { label: '50% / 50% (Hospitalario)', pct: 50 },
+                          ].map((preset) => (
+                            <button
+                              key={preset.pct}
+                              type="button"
+                              onClick={() => setPorcentajeHonorario(preset.pct)}
+                              className={`px-2 py-1 rounded-md text-[11px] font-medium border transition-all cursor-pointer ${
+                                porcentajeHonorario === preset.pct
+                                  ? 'bg-teal-600 text-white border-teal-600 shadow-2xs'
+                                  : 'border-border/60 hover:bg-muted/50 text-muted-foreground hover:text-foreground'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-end">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">
+                              Monto Fijo por Consulta ($ USD) <span className="text-destructive">*</span>
+                            </Label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground font-mono">
+                                $
+                              </span>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={montoFijoHonorario}
+                                onChange={(e) => setMontoFijoHonorario(Math.max(0, Number(e.target.value) || 0))}
+                                className="h-9 text-xs font-mono pl-7"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="text-[11px] text-muted-foreground pb-2">
+                            El especialista percibirá este importe neto cada vez que se emita un cobro asociado a su consulta.
+                          </div>
+                        </div>
+
+                        {/* Presets fijos rápidos */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[11px] text-muted-foreground font-medium mr-1">
+                            Tarifas sugeridas:
+                          </span>
+                          {[25, 30, 35, 40, 50].map((monto) => (
+                            <button
+                              key={monto}
+                              type="button"
+                              onClick={() => setMontoFijoHonorario(monto)}
+                              className={`px-2 py-1 rounded-md text-[11px] font-medium border transition-all cursor-pointer ${
+                                montoFijoHonorario === monto
+                                  ? 'bg-teal-600 text-white border-teal-600 shadow-2xs'
+                                  : 'border-border/60 hover:bg-muted/50 text-muted-foreground hover:text-foreground'
+                              }`}
+                            >
+                              ${monto}.00 USD
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Simulador Interactivo */}
+                  <div className="mt-3 p-3 rounded-lg border border-teal-500/25 bg-teal-500/5 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        <Sparkles className="size-3.5 text-teal-600 dark:text-teal-400" />
+                        Simulador con Consulta Base de $50.00 USD:
+                      </span>
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        Factura total: $50.00
+                      </span>
+                    </div>
+
+                    {(() => {
+                      const base = 50.0;
+                      let honorarioMed = 0;
+                      let retencionCli = 0;
+                      if (tipoComision === 'porcentaje') {
+                        honorarioMed = Math.round((base * (porcentajeHonorario / 100)) * 100) / 100;
+                        retencionCli = Math.round((base - honorarioMed) * 100) / 100;
+                      } else {
+                        honorarioMed = Math.min(montoFijoHonorario, base);
+                        retencionCli = Math.round((base - honorarioMed) * 100) / 100;
+                      }
+                      const pctMed = base > 0 ? (honorarioMed / base) * 100 : 0;
+
+                      return (
+                        <div className="space-y-2">
+                          <div className="h-2 rounded-full bg-muted overflow-hidden flex">
+                            <div
+                              className="bg-emerald-500 h-full transition-all duration-300"
+                              style={{ width: `${pctMed}%` }}
+                              title={`Médico: ${pctMed.toFixed(0)}%`}
+                            />
+                            <div
+                              className="bg-teal-600 dark:bg-teal-400 h-full transition-all duration-300"
+                              style={{ width: `${100 - pctMed}%` }}
+                              title={`Clínica: ${(100 - pctMed).toFixed(0)}%`}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                            <div className="p-2 rounded bg-background/80 border border-emerald-500/30 flex items-center justify-between">
+                              <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-sans font-medium">
+                                Médico ({pctMed.toFixed(0)}%):
+                              </span>
+                              <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                                ${honorarioMed.toFixed(2)} USD
+                              </span>
+                            </div>
+                            <div className="p-2 rounded bg-background/80 border border-teal-500/30 flex items-center justify-between">
+                              <span className="text-[11px] text-teal-700 dark:text-teal-300 font-sans font-medium">
+                                Clínica ({(100 - pctMed).toFixed(0)}%):
+                              </span>
+                              <span className="font-bold text-teal-700 dark:text-teal-300">
+                                ${retencionCli.toFixed(2)} USD
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Vía de Pago y Cuentas Bancarias */}
+                <div className="p-4 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3.5">
+                  <div className="flex items-center gap-2">
+                    <div className="size-8 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 flex items-center justify-center">
+                      <Landmark className="size-4" />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-bold text-foreground">
+                        Datos Bancarios & Vía de Desembolso
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Información precargada para emitir transferencias, pago móvil o Zelle al liquidar honorarios
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Entidad Bancaria</Label>
+                      <Select value={banco} onValueChange={setBanco}>
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue placeholder="Selecciona un banco..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BANCOS_VENEZUELA.map((b) => (
+                            <SelectItem key={b} value={b} className="text-xs">
+                              {b}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold">Número de Cuenta</Label>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {numeroCuenta.replace(/\D/g, '').length}/20 dígitos
+                        </span>
+                      </div>
+                      <Input
+                        type="text"
+                        placeholder="0134-XXXX-XX-XXXXXXXXXX"
+                        value={numeroCuenta}
+                        onChange={(e) => setNumeroCuenta(e.target.value)}
+                        className="h-9 text-xs font-mono"
+                        maxLength={25}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Titular / Identificación</Label>
+                      <Input
+                        type="text"
+                        placeholder="Ej. Dr. Carlos Mendoza - V-14258963"
+                        value={titular}
+                        onChange={(e) => setTitular(e.target.value)}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Pago Móvil</Label>
+                      <Input
+                        type="text"
+                        placeholder="0414-XXXXXXX • V-XXXXXXX"
+                        value={pagoMovil}
+                        onChange={(e) => setPagoMovil(e.target.value)}
+                        className="h-9 text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Zelle / Correo</Label>
+                      <Input
+                        type="text"
+                        placeholder="correo@zelle.com"
+                        value={zelle}
+                        onChange={(e) => setZelle(e.target.value)}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── PESTAÑA 6: ACCESO AL SISTEMA / USUARIO ─────────────────────── */}
             {activeTab === 'acceso' && (
               <div className="space-y-4 max-w-3xl">
                 <div className="p-4 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3">

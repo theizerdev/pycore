@@ -34,13 +34,21 @@ from app.schemas.integracion import (
     WhatsAppMessageResponse,
     BcvRateResponse,
     TasaCambioManualRequest,
+    SetMonedaCobroRequest,
     TasasActualesResponse,
-    TasaHistoricoItem
+    TasaHistoricoItem,
+    UpdateJitsiRequest,
+    JitsiDiagnosticResponse,
+    JitsiSessionRequest,
+    JitsiSessionResponse,
+    JitsiGenerateSecretResponse,
 )
 from app.services.bcv_service import BcvRateService
 from app.services.whatsapp_service import WhatsAppService
 from app.services.whatsapp_resolver import get_whatsapp_target, resolve_whatsapp_service, get_empresa_codigo_pais_resolver
 from app.services.exchange_rate_service import ExchangeRateService
+from app.services.jitsi_service import JitsiService
+from app.services.plan_quota_service import PlanQuotaService
 from app.core.security import registrar_auditoria
 
 router = APIRouter(prefix="/integraciones", tags=["Integraciones"])
@@ -120,6 +128,18 @@ async def get_integraciones_config(
         mercadopago_mode=getattr(empresa, 'mercadopago_mode', "sandbox") or "sandbox",
         mercadopago_public_key=getattr(empresa, 'mercadopago_public_key', None),
         mercadopago_access_token=getattr(empresa, 'mercadopago_access_token', None),
+        jitsi_active=getattr(empresa, 'jitsi_active', True) if getattr(empresa, 'jitsi_active', None) is not None else True,
+        jitsi_provider=getattr(empresa, 'jitsi_provider', "public") or "public",
+        jitsi_domain=getattr(empresa, 'jitsi_domain', "meet.jit.si") or "meet.jit.si",
+        jitsi_app_id=getattr(empresa, 'jitsi_app_id', None),
+        jitsi_jwt_secret=getattr(empresa, 'jitsi_jwt_secret', None),
+        jitsi_key_id=getattr(empresa, 'jitsi_key_id', None),
+        jitsi_room_prefix=getattr(empresa, 'jitsi_room_prefix', "medisoft") or "medisoft",
+        jitsi_lobby_enabled=getattr(empresa, 'jitsi_lobby_enabled', True) if getattr(empresa, 'jitsi_lobby_enabled', None) is not None else True,
+        jitsi_recording_enabled=bool(getattr(empresa, 'jitsi_recording_enabled', False)),
+        jitsi_e2ee_enabled=bool(getattr(empresa, 'jitsi_e2ee_enabled', False)),
+        telemedicina_requiere_pago=getattr(empresa, 'telemedicina_requiere_pago', True) if getattr(empresa, 'telemedicina_requiere_pago', None) is not None else True,
+        telemedicina_consentimiento_texto=getattr(empresa, 'telemedicina_consentimiento_texto', None),
     )
 
 
@@ -1103,6 +1123,43 @@ async def set_manual_rate(
     return {"success": True, "message": f"Tasa de {payload.moneda.upper()} actualizada exitosamente", "data": result}
 
 
+@router.put("/tasas/moneda-cobro")
+async def set_active_billing_currency(
+    payload: SetMonedaCobroRequest,
+    request: Request,
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Configura la tasa de cambio de referencia a usar en el sistema para cobros (USD o EUR)."""
+    empresa_id = current_user.empresa_id or 1
+    moneda_norm = (payload.moneda or "").strip().upper()
+    if moneda_norm not in ["USD", "EUR"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La tasa de cobro sólo puede ser 'USD' (Dólar BCV) o 'EUR' (Euro BCV)"
+        )
+
+    try:
+        result = await ExchangeRateService.set_active_billing_rate(
+            empresa_id=empresa_id,
+            moneda=moneda_norm,
+            db=db
+        )
+        await registrar_auditoria(
+            db=db,
+            usuario_id=current_user.id,
+            empresa_id=empresa_id,
+            accion="CONFIGURAR_TASA_COBRO",
+            modulo="tasas_cambio",
+            request=request,
+            detalles={"moneda_cobro_activa": moneda_norm, "tasa": result.get("tasa_cobro_activa")}
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+
 @router.get("/tasas/historico", response_model=List[TasaHistoricoItem])
 async def get_rates_history(
     moneda: Optional[str] = Query(None, description="USD, EUR, USDT o TODOS"),
@@ -1141,4 +1198,178 @@ async def get_bcv_rate_endpoint(
         moneda_destino="VES",
         exitoso=True
     )
+
+
+# ── 10. JITSI MEET — MOTOR PRINCIPAL WORKSPACE & TELEMEDICINA ───────────
+@router.put("/jitsi", response_model=IntegracionesConfigResponse)
+async def update_jitsi_config(
+    req: UpdateJitsiRequest,
+    request: Request,
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Guarda la configuración de Jitsi Meet y políticas clínicas de MediSoft WorkSpace."""
+    empresa_id = current_user.empresa_id or 1
+    stmt = select(Empresa).where(Empresa.id == empresa_id)
+    result = await db.execute(stmt)
+    empresa = result.scalar_one_or_none()
+
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    provider_norm = (req.jitsi_provider or "public").strip().lower()
+    if provider_norm not in ("public", "self_hosted", "jaas"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El proveedor Jitsi debe ser 'public', 'self_hosted' o 'jaas'."
+        )
+
+    default_domain = "8x8.vc" if provider_norm == "jaas" else "meet.jit.si"
+    normalized_domain = JitsiService.normalize_domain(req.jitsi_domain or default_domain)
+    normalized_prefix = JitsiService.sanitize_slug(req.jitsi_room_prefix or "medisoft") or "medisoft"
+
+    empresa.jitsi_active = req.jitsi_active
+    empresa.jitsi_provider = provider_norm
+    empresa.jitsi_domain = normalized_domain
+    empresa.jitsi_app_id = (req.jitsi_app_id or "").strip() or None
+    empresa.jitsi_jwt_secret = (req.jitsi_jwt_secret or "").strip() or None
+    empresa.jitsi_key_id = (req.jitsi_key_id or "").strip() or None
+    empresa.jitsi_room_prefix = normalized_prefix
+    empresa.jitsi_lobby_enabled = req.jitsi_lobby_enabled
+    empresa.jitsi_recording_enabled = req.jitsi_recording_enabled
+    empresa.jitsi_e2ee_enabled = req.jitsi_e2ee_enabled
+    empresa.telemedicina_requiere_pago = req.telemedicina_requiere_pago
+    empresa.telemedicina_consentimiento_texto = (req.telemedicina_consentimiento_texto or "").strip() or None
+
+    await db.commit()
+    await db.refresh(empresa)
+
+    await registrar_auditoria(
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=empresa.id,
+        accion="CONFIGURAR_JITSI_WORKSPACE",
+        modulo="integraciones",
+        request=request,
+        detalles={
+            "jitsi_active": req.jitsi_active,
+            "jitsi_provider": provider_norm,
+            "jitsi_domain": normalized_domain,
+            "jitsi_lobby_enabled": req.jitsi_lobby_enabled,
+            "telemedicina_requiere_pago": req.telemedicina_requiere_pago,
+        }
+    )
+
+    return await get_integraciones_config(current_user=current_user, db=db)
+
+
+@router.get("/jitsi/diagnostic", response_model=JitsiDiagnosticResponse)
+async def run_jitsi_diagnostic(
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Verifica conectividad HTTPS, script External IFrame API, latencia y firma JWT de Jitsi."""
+    empresa_id = current_user.empresa_id or 1
+    stmt = select(Empresa).where(Empresa.id == empresa_id)
+    result = await db.execute(stmt)
+    empresa = result.scalar_one_or_none()
+
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    jitsi_svc = JitsiService.from_empresa(empresa)
+    diag = await jitsi_svc.diagnose()
+    return JitsiDiagnosticResponse(**diag)
+
+
+@router.post("/jitsi/generate-secret", response_model=JitsiGenerateSecretResponse)
+async def generate_jitsi_secret(
+    current_user: Usuario = Depends(get_current_active_user),
+):
+    """Genera credenciales sugeridas (App ID + JWT Secret HS256 de 256-bit) para nodo propio Docker Jitsi."""
+    empresa_id = current_user.empresa_id or 1
+    app_id = f"medisoft_workspace_emp{empresa_id}"
+    secret = f"ms_jitsi_{secrets.token_hex(28)}"
+    return JitsiGenerateSecretResponse(
+        jitsi_app_id=app_id,
+        jitsi_jwt_secret=secret,
+    )
+
+
+@router.post("/jitsi/session", response_model=JitsiSessionResponse)
+async def create_jitsi_session(
+    req: JitsiSessionRequest,
+    request: Request,
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Genera una sesión segura de Jitsi WorkSpace (con JWT firmado cuando aplica) para:
+    - Cabina de prueba / diagnóstico desde Integraciones ('test')
+    - Junta médica / videollamada interna ('workspace' | 'interconsulta')
+    - Teleconsulta asistencial del médico ('teleconsulta')
+    """
+    empresa_id = current_user.empresa_id or 1
+    stmt = select(Empresa).where(Empresa.id == empresa_id)
+    result = await db.execute(stmt)
+    empresa = result.scalar_one_or_none()
+
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    jitsi_svc = JitsiService.from_empresa(empresa)
+    if not jitsi_svc.active and req.context_type != "test":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El motor Jitsi WorkSpace está desactivado en Integraciones."
+        )
+
+    if req.context_type != "test":
+        await PlanQuotaService.check_telemedicina_access(db, empresa_id)
+
+    full_name = f"{current_user.nombre or ''} {current_user.apellido or ''}".strip() or current_user.email
+    if current_user.rol and current_user.rol.slug == "medico" and not full_name.lower().startswith(("dr.", "dra.")):
+        full_name = f"Dr(a). {full_name}"
+
+    session_data = jitsi_svc.build_session(
+        user_id=str(current_user.id),
+        display_name=full_name,
+        email=current_user.email,
+        avatar_url=getattr(current_user, "avatar_url", None),
+        is_moderator=bool(req.as_moderator),
+        context_type=req.context_type,
+        reference_id=req.reference_id,
+        custom_room=req.custom_room,
+        subject=req.subject,
+    )
+
+    if req.context_type != "test":
+        await registrar_auditoria(
+            db=db,
+            usuario_id=current_user.id,
+            empresa_id=empresa.id,
+            accion="INICIAR_SALA_JITSI_WORKSPACE",
+            modulo="telemedicina",
+            request=request,
+            detalles={
+                "context_type": req.context_type,
+                "room_slug": session_data["room_slug"],
+                "provider": session_data["provider"],
+                "reference_id": req.reference_id,
+            }
+        )
+
+    return JitsiSessionResponse(**session_data)
+
+
+@router.get("/jitsi/stats")
+async def get_jitsi_telemedicina_stats(
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retorna las estadísticas del mes en curso de telemedicina para la empresa actual."""
+    empresa_id = current_user.empresa_id or 1
+    return await PlanQuotaService.get_telemedicina_stats(db, empresa_id)
+
+
 

@@ -9,6 +9,16 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import {
   Printer,
   FileText,
@@ -36,6 +46,17 @@ import {
 import type { ConsultaMedica, MedicamentoPrescrito, EstudioSolicitado } from '../../api/consultas';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
+import { consultasApi } from '../../api/consultas';
+import { toast } from 'sonner';
+import {
+  QrCode,
+  Send,
+  MessageCircle,
+  ExternalLink,
+  ShieldCheck,
+  CheckCircle2,
+  Loader2,
+} from 'lucide-react';
 
 export type TipoDocumentoClinico =
   | 'informe'
@@ -61,6 +82,18 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
   const [documentoActivo, setDocumentoActivo] = useState<TipoDocumentoClinico>(initialDocumento);
 
   // Estados para Acompañante en Constancia de Asistencia
+  // Estados para Despacho por WhatsApp
+  const [modalWhatsAppOpen, setModalWhatsAppOpen] = useState(false);
+  const [enviandoWhatsApp, setEnviandoWhatsApp] = useState(false);
+  const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('');
+  const [textoWhatsAppPersonalizado, setTextoWhatsAppPersonalizado] = useState('');
+  const [ultimoResultadoWhatsApp, setUltimoResultadoWhatsApp] = useState<{
+    success: boolean;
+    message: string;
+    destinatario?: string;
+    preview_mensaje?: string;
+  } | null>(null);
+
   const [modalAcompananteOpen, setModalAcompananteOpen] = useState(false);
   const [tieneAcompanante, setTieneAcompanante] = useState(false);
   const [datosAcompanante, setDatosAcompanante] = useState({
@@ -90,8 +123,13 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
         setTempDatosAcompanante(datosAcompanante);
         setModalAcompananteOpen(true);
       }
+      if (consulta) {
+        const tel = consulta.paciente?.telefono || consulta.paciente?.telefono || '';
+        setTelefonoWhatsApp(tel);
+        setUltimoResultadoWhatsApp(null);
+      }
     }
-  }, [open, initialDocumento]);
+  }, [open, initialDocumento, consulta]);
 
   const handleSelectDocumento = (docId: TipoDocumentoClinico) => {
     setDocumentoActivo(docId);
@@ -100,6 +138,34 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
       setTempDatosAcompanante(datosAcompanante);
       setModalAcompananteOpen(true);
     }
+  };
+
+  const handleEnviarWhatsApp = async () => {
+    if (!consulta) return;
+    setEnviandoWhatsApp(true);
+    try {
+      const res = await consultasApi.enviarDocumentoWhatsApp(consulta.id, {
+        tipo_documento: documentoActivo,
+        telefono_personalizado: telefonoWhatsApp.trim() || undefined,
+        texto_personalizado: textoWhatsAppPersonalizado.trim() || undefined,
+        incluir_indicaciones: true,
+      });
+      setUltimoResultadoWhatsApp(res);
+      toast.success(res.message || 'Documento despachado vía WhatsApp con éxito');
+    } catch (error: any) {
+      const msg = error?.response?.data?.detail || 'No se pudo enviar el documento por WhatsApp';
+      toast.error(msg);
+    } finally {
+      setEnviandoWhatsApp(false);
+    }
+  };
+
+  const handleAbrirWhatsAppWeb = () => {
+    const rawTel = (telefonoWhatsApp || consulta?.paciente?.telefono || '').replace(/[^0-9]/g, '');
+    const defaultText = `Estimado(a) paciente ${nombrePaciente}, le hacemos entrega de su documento médico emitido en ${empresaNombre}.`;
+    const texto = encodeURIComponent(ultimoResultadoWhatsApp?.preview_mensaje || defaultText);
+    const url = rawTel ? `https://api.whatsapp.com/send?phone=${rawTel}&text=${texto}` : `https://api.whatsapp.com/send?text=${texto}`;
+    window.open(url, '_blank');
   };
 
   const handleGuardarAcompanante = () => {
@@ -379,6 +445,19 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <Button
+              type="button"
+              onClick={() => {
+                const tel = consulta?.paciente?.telefono || consulta?.paciente?.telefono || '';
+                setTelefonoWhatsApp(tel);
+                setModalWhatsAppOpen(true);
+              }}
+              variant="outline"
+              className="gap-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 font-semibold h-10 px-4 cursor-pointer"
+            >
+              <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Enviar por WhatsApp</span>
+            </Button>
+            <Button
               onClick={handlePrint}
               className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md h-10 px-5 cursor-pointer"
             >
@@ -624,6 +703,19 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                     consulta.datos_plantilla?.saturacion_oxigeno ||
                     consulta.datos_plantilla?.saturacion_o2,
                   imc: consulta.signos_vitales?.imc || consulta.datos_plantilla?.imc,
+                  glucosa_capilar:
+                    consulta.signos_vitales?.glucosa_capilar ||
+                    consulta.datos_plantilla?.glucosa_capilar,
+                  escala_dolor:
+                    consulta.signos_vitales?.escala_dolor ??
+                    consulta.datos_plantilla?.escala_dolor ??
+                    consulta.preconsulta?.respuestas?.escala_dolor,
+                  perimetro_cefalico:
+                    consulta.signos_vitales?.perimetro_cefalico ||
+                    consulta.datos_plantilla?.perimetro_cefalico,
+                  perimetro_abdominal:
+                    consulta.signos_vitales?.perimetro_abdominal ||
+                    consulta.datos_plantilla?.perimetro_abdominal,
                 };
 
                 if (!sv.imc && sv.peso && sv.talla) {
@@ -662,7 +754,11 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                   'preconsulta_id',
                   'token',
                   'referido_para',
-                  'observaciones_adicionales',
+                  'glucosa_capilar',
+                  'escala_dolor',
+                  'perimetro_cefalico',
+                  'perimetro_abdominal',
+                  'observaciones_triaje',
                   'estado',
                   'created_at',
                   'updated_at',
@@ -788,6 +884,30 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                             <div>
                               <span className="text-zinc-500 font-medium">IMC:</span>{' '}
                               <strong className="text-zinc-900">{sv.imc} kg/m²</strong>
+                            </div>
+                          )}
+                          {sv.glucosa_capilar && (
+                            <div>
+                              <span className="text-zinc-500 font-medium">Glicemia:</span>{' '}
+                              <strong className="text-zinc-900">{sv.glucosa_capilar} mg/dL</strong>
+                            </div>
+                          )}
+                          {sv.escala_dolor !== undefined && sv.escala_dolor !== '' && (
+                            <div>
+                              <span className="text-zinc-500 font-medium">Dolor (EVA):</span>{' '}
+                              <strong className="text-zinc-900">{sv.escala_dolor}/10</strong>
+                            </div>
+                          )}
+                          {sv.perimetro_cefalico && (
+                            <div>
+                              <span className="text-zinc-500 font-medium">P. Cefálico:</span>{' '}
+                              <strong className="text-zinc-900">{sv.perimetro_cefalico} cm</strong>
+                            </div>
+                          )}
+                          {sv.perimetro_abdominal && (
+                            <div>
+                              <span className="text-zinc-500 font-medium">P. Abdominal:</span>{' '}
+                              <strong className="text-zinc-900">{sv.perimetro_abdominal} cm</strong>
                             </div>
                           )}
                         </div>
@@ -1161,8 +1281,8 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
             {/* ── PIE DE PÁGINA: FIRMA Y SELLO MÉDICO ── */}
             <div className="pt-3 border-t border-zinc-200">
-              <div className="grid grid-cols-2 gap-6 items-end">
-                {/* Leyenda y Sello institucional */}
+              <div className="grid grid-cols-3 gap-3 items-end">
+                {/* 1. Leyenda y Sello institucional */}
                 <div className="text-[9px] text-zinc-500 space-y-0.5">
                   <p className="font-bold text-zinc-800 uppercase">{empresaNombre}</p>
                   {empresaDocumento && (
@@ -1172,12 +1292,37 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                   <p className="font-mono text-[8.5px] text-zinc-400">Verificación: {consulta.codigo || `CON-${consulta.id}`}</p>
                 </div>
 
-                {/* Firma y Sello del Médico */}
+                {/* 2. Sello Digital y Código QR de Autenticidad */}
+                <div className="flex items-center justify-center">
+                  <div className="flex items-center gap-2 p-1.5 rounded-lg border border-zinc-200/90 bg-zinc-50/80">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(
+                        `DOC:${documentoActivo.toUpperCase()}|ID:${consulta.codigo || consulta.id}|MED:${colegiadoMedico}|PAC:${documentoPaciente}`
+                      )}`}
+                      alt="QR Autenticidad"
+                      className="w-11 h-11 rounded border border-zinc-200 bg-white p-0.5 shrink-0"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <div className="text-[7.5px] leading-tight text-zinc-600 text-left">
+                      <span className="font-bold text-emerald-700 flex items-center gap-0.5 uppercase tracking-wider">
+                        <ShieldCheck className="h-2.5 w-2.5 inline" /> Certificado
+                      </span>
+                      <p className="font-mono text-zinc-800 font-semibold mt-0.5">
+                        {consulta.codigo || `CON-${consulta.id}`}
+                      </p>
+                      <p className="text-[7px] text-zinc-400">Firma electrónica y QR facultativo</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Firma y Sello del Médico */}
                 <div className="text-center space-y-0.5">
-                  <div className="w-48 mx-auto border-b border-zinc-400 pb-7 mb-0.5" />
-                  <p className="font-bold text-[11px] text-zinc-900">{nombreMedico}</p>
-                  <p className="text-[10px] text-zinc-600">{especialidadNombre}</p>
-                  <p className="text-[9px] text-zinc-500 font-mono">C.M. / Lic: {colegiadoMedico}</p>
+                  <div className="w-40 mx-auto border-b border-zinc-400 pb-6 mb-0.5" />
+                  <p className="font-bold text-[10.5px] text-zinc-900">{nombreMedico}</p>
+                  <p className="text-[9.5px] text-zinc-600">{especialidadNombre}</p>
+                  <p className="text-[8.5px] text-zinc-500 font-mono">C.M. / Lic: {colegiadoMedico}</p>
                 </div>
               </div>
             </div>
@@ -1335,25 +1480,29 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                     <label className="text-[11px] font-semibold text-foreground">
                       Parentesco con el Paciente <span className="text-red-500">*</span>
                     </label>
-                    <select
+                    <Select
                       value={tempDatosAcompanante.parentesco}
-                      onChange={(e) =>
-                        setTempDatosAcompanante({ ...tempDatosAcompanante, parentesco: e.target.value })
+                      onValueChange={(val) =>
+                        setTempDatosAcompanante({ ...tempDatosAcompanante, parentesco: val })
                       }
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                     >
-                      <option value="Madre">Madre</option>
-                      <option value="Padre">Padre</option>
-                      <option value="Cónyuge / Esposo(a)">Cónyuge / Esposo(a)</option>
-                      <option value="Hijo / Hija">Hijo / Hija</option>
-                      <option value="Hermano / Hermana">Hermano / Hermana</option>
-                      <option value="Tutor / Representante Legal">Tutor / Representante Legal</option>
-                      <option value="Abuelo / Abuela">Abuelo / Abuela</option>
-                      <option value="Tío / Tía">Tío / Tía</option>
-                      <option value="Familiar">Familiar</option>
-                      <option value="Acompañante">Acompañante</option>
-                      <option value="Otro">Otro (Especificar)</option>
-                    </select>
+                      <SelectTrigger className="w-full text-xs h-9 rounded-lg">
+                        <SelectValue placeholder="Seleccione parentesco..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Madre">Madre</SelectItem>
+                        <SelectItem value="Padre">Padre</SelectItem>
+                        <SelectItem value="Cónyuge / Esposo(a)">Cónyuge / Esposo(a)</SelectItem>
+                        <SelectItem value="Hijo / Hija">Hijo / Hija</SelectItem>
+                        <SelectItem value="Hermano / Hermana">Hermano / Hermana</SelectItem>
+                        <SelectItem value="Tutor / Representante Legal">Tutor / Representante Legal</SelectItem>
+                        <SelectItem value="Abuelo / Abuela">Abuelo / Abuela</SelectItem>
+                        <SelectItem value="Tío / Tía">Tío / Tía</SelectItem>
+                        <SelectItem value="Familiar">Familiar</SelectItem>
+                        <SelectItem value="Acompañante">Acompañante</SelectItem>
+                        <SelectItem value="Otro">Otro (Especificar)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -1403,6 +1552,133 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    
+
+      {/* MODAL DE DESPACHO DIRECTO DE WHATSAPP */}
+      <Dialog open={modalWhatsAppOpen} onOpenChange={setModalWhatsAppOpen}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden bg-background border-border shadow-2xl">
+          <DialogHeader className="p-5 pb-4 border-b border-border/70 bg-emerald-500/10">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">
+                  Despachar Documento por WhatsApp
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Envío formal al paciente con formato institucional y validación facultativa
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="p-5 space-y-4">
+            <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-xs text-muted-foreground space-y-1">
+              <p className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                Documento a enviar: <span className="font-bold">{documentosList.find(d => d.id === documentoActivo)?.label}</span>
+              </p>
+              <p>
+                Paciente: <strong className="text-foreground">{nombrePaciente}</strong> | Cédula: {tipoDoc} {documentoPaciente}
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                Número de WhatsApp de Destino (con código de país)
+              </label>
+              <input
+                type="text"
+                placeholder="Ej. +58 412 1234567 o 0414..."
+                value={telefonoWhatsApp}
+                onChange={(e) => setTelefonoWhatsApp(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Si el número es nacional (ej. 0412...), el sistema aplicará automáticamente el código país por defecto (+58).
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                Nota o Mensaje Adicional (Opcional)
+              </label>
+              <Textarea
+                rows={2}
+                placeholder="Ej. Recuerde tomar abundante agua y guardar reposo estricto..."
+                value={textoWhatsAppPersonalizado}
+                onChange={(e) => setTextoWhatsAppPersonalizado(e.target.value)}
+                className="w-full text-xs rounded-lg min-h-[58px]"
+              />
+            </div>
+
+            {ultimoResultadoWhatsApp && (
+              <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs space-y-2 animate-in fade-in-50">
+                <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <span>{ultimoResultadoWhatsApp.message}</span>
+                </div>
+                {ultimoResultadoWhatsApp.destinatario && (
+                  <p className="text-[11px] text-muted-foreground font-mono">
+                    Enviado a: +{ultimoResultadoWhatsApp.destinatario}
+                  </p>
+                )}
+                {ultimoResultadoWhatsApp.preview_mensaje && (
+                  <div className="p-2 rounded bg-background/80 border text-[10.5px] font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">
+                    {ultimoResultadoWhatsApp.preview_mensaje}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="p-4 border-t border-border/70 bg-muted/20 flex flex-col sm:flex-row sm:justify-between items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAbrirWhatsAppWeb}
+              className="gap-1.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 cursor-pointer w-full sm:w-auto"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              <span>Abrir WhatsApp Web</span>
+            </Button>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setModalWhatsAppOpen(false)}
+                className="cursor-pointer"
+              >
+                Cerrar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleEnviarWhatsApp}
+                disabled={enviandoWhatsApp || !telefonoWhatsApp.trim()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {enviandoWhatsApp ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Despachando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                    <span>Enviar Directo</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </Dialog>
   );
 };

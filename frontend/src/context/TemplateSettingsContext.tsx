@@ -7,6 +7,7 @@ export interface TemplateSettings {
   skin: 'default' | 'bordered';
   semiDark: boolean;
   collapsed: boolean;
+  sidebarHidden: boolean;
   navbarType: 'sticky' | 'static' | 'hidden';
   contentWidth: 'compact' | 'wide';
   direction: 'ltr' | 'rtl';
@@ -17,6 +18,7 @@ const DEFAULT_SETTINGS: TemplateSettings = {
   skin: 'default',
   semiDark: true,
   collapsed: false,
+  sidebarHidden: false,
   navbarType: 'sticky',
   contentWidth: 'wide',
   direction: 'ltr',
@@ -28,6 +30,7 @@ interface TemplateSettingsContextType {
   resolvedAppearance: 'light' | 'dark';
   updateAppearance: (mode: Appearance) => void;
   updateSetting: <K extends keyof TemplateSettings>(key: K, value: TemplateSettings[K]) => void;
+  updateSettings: (patch: Partial<TemplateSettings>) => void;
   resetSettings: () => void;
 }
 
@@ -71,6 +74,14 @@ export const TemplateSettingsProvider: React.FC<{ children: React.ReactNode }> =
   const updateSetting = <K extends keyof TemplateSettings>(key: K, value: TemplateSettings[K]) => {
     setSettings((prev) => {
       const updated = { ...prev, [key]: value };
+      localStorage.setItem('pycore_template_settings', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const updateSettings = (patch: Partial<TemplateSettings>) => {
+    setSettings((prev) => {
+      const updated = { ...prev, ...patch };
       localStorage.setItem('pycore_template_settings', JSON.stringify(updated));
       return updated;
     });
@@ -165,6 +176,7 @@ export const TemplateSettingsProvider: React.FC<{ children: React.ReactNode }> =
         resolvedAppearance,
         updateAppearance,
         updateSetting,
+        updateSettings,
         resetSettings,
       }}
     >

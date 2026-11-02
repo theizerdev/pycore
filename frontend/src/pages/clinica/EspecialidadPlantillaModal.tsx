@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { especialidadesApi } from '../../api/especialidades';
+import { cn } from '../../lib/utils';
 import type {
   Especialidad,
   EspecialidadPlantilla,
@@ -9,6 +10,9 @@ import type {
   SeccionClinica,
   CampoClinico,
   TipoCampoClinico,
+  KitEstudioConfig,
+  EstudioFrecuenteConfig,
+  EstudiosEspecialidadConfig,
 } from '../../types';
 import { toast } from 'sonner';
 import {
@@ -71,11 +75,28 @@ import {
   ShieldCheck,
   Calculator,
   Scale,
+  FlaskConical,
+  X,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import OdontogramaWidget from '../../components/clinica/OdontogramaWidget';
 import RefraccionWidget from '../../components/clinica/RefraccionWidget';
 import MotorExploracionOftalmologica from '../../components/clinica/MotorExploracionOftalmologica';
 import { PASOS_WIZARD_INFO } from './EspecialidadesPage';
+
+const CATEGORIAS_ESTUDIOS = [
+  'Laboratorio',
+  'Rayos X',
+  'Ecografía',
+  'Tomografía',
+  'Resonancia Magnética',
+  'Electrocardiograma',
+  'Endoscopía',
+  'Biopsia / Patología',
+  'Espirometría',
+  'Otro',
+];
 
 interface EspecialidadPlantillaModalProps {
   open: boolean;
@@ -120,10 +141,11 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
   const { user, hasPermission } = useAuth();
   const canEdit = hasPermission('especialidades.editar');
 
-  const [activeTab, setActiveTab] = useState<'preconsulta' | 'consulta' | 'flujo' | 'medico' | 'preview'>('preconsulta');
+  const [activeTab, setActiveTab] = useState<'preconsulta' | 'consulta' | 'estudios' | 'flujo' | 'medico' | 'preview'>('preconsulta');
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [savingFlujo, setSavingFlujo] = useState<boolean>(false);
+  const [isFullScreen, setIsFullScreen] = useState<boolean>(true);
 
   // Estado Flujo Wizard
   const [pasosActivos, setPasosActivos] = useState<number[]>([1, 2, 3, 4, 5, 6]);
@@ -134,6 +156,32 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
   const [preconsultaSections, setPreconsultaSections] = useState<SeccionClinica[]>([]);
   const [consultaSections, setConsultaSections] = useState<SeccionClinica[]>([]);
   const [activeWidgets, setActiveWidgets] = useState<string[]>([]);
+
+  // Estado Estudios y Kits por Especialidad
+  const [estudiosConfig, setEstudiosConfig] = useState<EstudiosEspecialidadConfig>({
+    kits: [],
+    frecuentes: [],
+  });
+
+  // Sub-modal para crear o editar Kit de Estudios
+  const [kitModalOpen, setKitModalOpen] = useState<boolean>(false);
+  const [editingKitId, setEditingKitId] = useState<string | null>(null);
+  const [kitFormData, setKitFormData] = useState<KitEstudioConfig>({
+    id: '',
+    nombre: '',
+    descripcion: '',
+    color: 'border-blue-300/80 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+    icono: 'FlaskConical',
+    estudios: [],
+  });
+  const [tempEstudioNombre, setTempEstudioNombre] = useState<string>('');
+  const [tempEstudioCategoria, setTempEstudioCategoria] = useState<string>('Laboratorio');
+  const [tempEstudioJustificacion, setTempEstudioJustificacion] = useState<string>('');
+
+  // Formulario para agregar Estudio Frecuente
+  const [nuevoFrecuenteNombre, setNuevoFrecuenteNombre] = useState<string>('');
+  const [nuevoFrecuenteCategoria, setNuevoFrecuenteCategoria] = useState<string>('Laboratorio');
+  const [nuevoFrecuenteJustificacion, setNuevoFrecuenteJustificacion] = useState<string>('');
 
   // Estado Personalización del Médico
   const [plantillaMedico, setPlantillaMedico] = useState<EspecialidadPlantillaMedico | null>(null);
@@ -196,6 +244,7 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
       setPreconsultaSections(base.esquema_preconsulta || []);
       setConsultaSections(base.esquema_consulta || []);
       setActiveWidgets(base.widgets_activos || []);
+      setEstudiosConfig(base.estudios_sugeridos || { kits: [], frecuentes: [] });
 
       // 2. Cargar plantilla del médico
       const med = await especialidadesApi.getPlantillaMedico(especialidad.id);
@@ -256,9 +305,10 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
         esquema_preconsulta: preconsultaSections,
         esquema_consulta: consultaSections,
         widgets_activos: activeWidgets,
+        estudios_sugeridos: estudiosConfig,
       });
       setPlantillaBase(updated);
-      toast.success('Plantilla base institucional guardada exitosamente');
+      toast.success('Plantilla base y catálogo de estudios guardados exitosamente');
       onSaved?.();
       refreshPreview();
     } catch (err: any) {
@@ -326,6 +376,7 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
       setPreconsultaSections(seeded.esquema_preconsulta || []);
       setConsultaSections(seeded.esquema_consulta || []);
       setActiveWidgets(seeded.widgets_activos || []);
+      setEstudiosConfig(seeded.estudios_sugeridos || { kits: [], frecuentes: [] });
       toast.success(`Plantilla clínica oficial precargada para ${especialidad.nombre}`);
       refreshPreview();
     } catch (err: any) {
@@ -333,6 +384,122 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
     } finally {
       setLoading(false);
     }
+  };
+
+  // ── GESTIÓN DE KITS Y ESTUDIOS POR ESPECIALIDAD ──
+  const handleOpenAddKit = () => {
+    setEditingKitId(null);
+    setKitFormData({
+      id: `kit_${Date.now()}`,
+      nombre: '',
+      descripcion: '',
+      color: 'border-blue-300/80 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+      icono: 'FlaskConical',
+      estudios: [],
+    });
+    setTempEstudioNombre('');
+    setTempEstudioCategoria('Laboratorio');
+    setTempEstudioJustificacion('');
+    setKitModalOpen(true);
+  };
+
+  const handleOpenEditKit = (kit: KitEstudioConfig) => {
+    setEditingKitId(kit.id);
+    setKitFormData({
+      ...kit,
+      estudios: [...kit.estudios],
+    });
+    setTempEstudioNombre('');
+    setTempEstudioCategoria('Laboratorio');
+    setTempEstudioJustificacion('');
+    setKitModalOpen(true);
+  };
+
+  const handleAddEstudioToKit = () => {
+    if (!tempEstudioNombre.trim()) return;
+    setKitFormData((prev) => ({
+      ...prev,
+      estudios: [
+        ...prev.estudios,
+        {
+          nombre: tempEstudioNombre.trim(),
+          categoria: tempEstudioCategoria,
+          justificacion: tempEstudioJustificacion.trim() || undefined,
+        },
+      ],
+    }));
+    setTempEstudioNombre('');
+    setTempEstudioJustificacion('');
+  };
+
+  const handleRemoveEstudioFromKit = (idx: number) => {
+    setKitFormData((prev) => ({
+      ...prev,
+      estudios: prev.estudios.filter((_, i) => i !== idx),
+    }));
+  };
+
+  const handleSaveKit = () => {
+    if (!kitFormData.nombre.trim()) {
+      toast.error('El kit debe tener un nombre');
+      return;
+    }
+    setEstudiosConfig((prev) => {
+      const currentKits = prev.kits || [];
+      if (editingKitId) {
+        return {
+          ...prev,
+          kits: currentKits.map((k) => (k.id === editingKitId ? kitFormData : k)),
+        };
+      }
+      return {
+        ...prev,
+        kits: [...currentKits, kitFormData],
+      };
+    });
+    setKitModalOpen(false);
+    toast.success(editingKitId ? 'Kit actualizado' : 'Kit creado');
+  };
+
+  const handleDeleteKit = (kitId: string) => {
+    setEstudiosConfig((prev) => ({
+      ...prev,
+      kits: (prev.kits || []).filter((k) => k.id !== kitId),
+    }));
+    toast.success('Kit eliminado');
+  };
+
+  const handleAddFrecuente = () => {
+    if (!nuevoFrecuenteNombre.trim()) return;
+    setEstudiosConfig((prev) => {
+      const current = prev.frecuentes || [];
+      if (current.some((f) => f.nombre.toLowerCase() === nuevoFrecuenteNombre.trim().toLowerCase())) {
+        toast.info('Este estudio ya se encuentra en la lista de frecuentes');
+        return prev;
+      }
+      return {
+        ...prev,
+        frecuentes: [
+          ...current,
+          {
+            nombre: nuevoFrecuenteNombre.trim(),
+            categoria: nuevoFrecuenteCategoria,
+            justificacion: nuevoFrecuenteJustificacion.trim() || undefined,
+          },
+        ],
+      };
+    });
+    setNuevoFrecuenteNombre('');
+    setNuevoFrecuenteJustificacion('');
+    toast.success('Estudio frecuente agregado');
+  };
+
+  const handleDeleteFrecuente = (index: number) => {
+    setEstudiosConfig((prev) => ({
+      ...prev,
+      frecuentes: (prev.frecuentes || []).filter((_, i) => i !== index),
+    }));
+    toast.success('Estudio frecuente eliminado');
   };
 
   // ── GESTIÓN DE SECCIONES ──
@@ -777,7 +944,16 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-6xl xl:max-w-7xl w-[96vw] max-h-[96vh] h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogContent
+          fullScreen={isFullScreen}
+          hideCloseButton
+          className={cn(
+            "flex flex-col p-0 gap-0 overflow-hidden",
+            isFullScreen
+              ? "w-full h-full max-w-none max-h-none rounded-none border-0"
+              : "sm:max-w-6xl xl:max-w-7xl w-[96vw] max-h-[96vh] h-[92vh]"
+          )}
+        >
           {/* Cabecera del Modal */}
           <div className="p-5 pb-3 border-b border-border/80 bg-muted/20 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -848,9 +1024,43 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                   className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold cursor-pointer h-8 text-xs"
                 >
                   <Save className="size-3.5 mr-1" />
-                  <span>{saving ? 'Guardando...' : 'Guardar Plantilla Base'}</span>
+                  <span>{saving ? 'Guardando...' : (activeTab === 'estudios' ? 'Guardar Estudios & Kits' : 'Guardar Plantilla Base')}</span>
                 </Button>
               ) : null}
+
+              {/* Botón Maximizar / Restaurar Pantalla Completa */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsFullScreen((prev) => !prev)}
+                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer gap-1.5 border-border"
+                title={isFullScreen ? "Restaurar tamaño normal" : "Usar en ventana completa"}
+              >
+                {isFullScreen ? (
+                  <>
+                    <Minimize2 className="size-3.5" />
+                    <span className="hidden sm:inline">Restaurar</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="size-3.5" />
+                    <span className="hidden sm:inline">Ventana Completa</span>
+                  </>
+                )}
+              </Button>
+
+              {/* Botón Cerrar Modal */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                className="size-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer rounded-lg"
+                title="Cerrar modal"
+              >
+                <X className="size-4" />
+              </Button>
             </div>
           </div>
 
@@ -885,11 +1095,22 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                 </TabsTrigger>
 
                 <TabsTrigger
+                  value="estudios"
+                  className="data-[state=active]:bg-purple-500/10 data-[state=active]:text-purple-700 dark:data-[state=active]:text-purple-300 data-[state=active]:border-purple-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5"
+                >
+                  <FlaskConical className="size-3.5" />
+                  <span>3. Estudios & Kits Sugeridos</span>
+                  <Badge variant="secondary" className="text-[10px] px-1 py-0 ml-1">
+                    {(estudiosConfig.kits?.length || 0) + (estudiosConfig.frecuentes?.length || 0)}
+                  </Badge>
+                </TabsTrigger>
+
+                <TabsTrigger
                   value="flujo"
                   className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-700 dark:data-[state=active]:text-cyan-300 data-[state=active]:border-cyan-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5"
                 >
                   <Sliders className="size-3.5" />
-                  <span>3. Flujo del Wizard</span>
+                  <span>4. Flujo del Wizard</span>
                   <Badge variant="secondary" className="text-[10px] px-1 py-0 ml-1">
                     {pasosActivos.length}/6
                   </Badge>
@@ -900,7 +1121,7 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                   className="data-[state=active]:bg-indigo-500/10 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-indigo-500 border-b-2 border-transparent rounded-none px-3 py-1.5 text-xs font-semibold gap-1.5"
                 >
                   <UserCheck className="size-3.5" />
-                  <span>4. Mis Campos como Médico</span>
+                  <span>5. Mis Campos como Médico</span>
                   <Badge variant="secondary" className="text-[10px] px-1 py-0 ml-1">
                     {medicoPreCampos.length + medicoConCampos.length}
                   </Badge>
@@ -1404,7 +1625,273 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                   </div>
                 )}
 
-                {/* ── PESTAÑA 3: PERSONALIZACIÓN INDIVIDUAL POR MÉDICO ── */}
+                {/* ── PESTAÑA 3: ESTUDIOS MÉDICOS Y PERFILES DIAGNÓSTICOS ── */}
+                {activeTab === 'estudios' && (
+                  <div className="space-y-6">
+                    {/* Header explicativo */}
+                    <div className="p-4 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 via-teal-500/5 to-transparent flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="size-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 mt-0.5">
+                          <FlaskConical className="size-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                            <span>Catálogo Dinámico de Estudios Médicos & Perfiles</span>
+                            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">
+                              {especialidad.nombre}
+                            </Badge>
+                          </h4>
+                          <p className="text-xs text-muted-foreground leading-relaxed max-w-3xl">
+                            Configure los <strong>Kits y Perfiles</strong> (baterías diagnósticas en 1 clic) y los <strong>Estudios Frecuentes</strong> específicos para <strong>{especialidad.nombre}</strong>.
+                            Al atender una consulta en esta especialidad, el médico dispondrá de estos estudios en el <strong>Paso 4 (Estudios Médicos)</strong>, agilizando la indicación y eliminando el tipeo repetitivo.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleOpenAddKit}
+                        className="bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 text-xs shrink-0 cursor-pointer h-8"
+                      >
+                        <Plus className="size-3.5 mr-1" />
+                        <span>Nuevo Kit / Perfil</span>
+                      </Button>
+                    </div>
+
+                    {/* SECCIÓN 1: KITS Y PERFILES DIAGNÓSTICOS */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <Layers className="size-3.5 text-primary" />
+                            <span>Kits y Perfiles Diagnósticos</span>
+                            <Badge variant="secondary" className="text-[10px] ml-1">
+                              {estudiosConfig.kits?.length || 0}
+                            </Badge>
+                          </h4>
+                          <p className="text-[11px] text-muted-foreground">
+                            Agrupaciones de exámenes (ej. Perfil Prenatal, Perfil Preoperatorio, Chequeo Metabólico) que el médico agrega en bloque con 1 solo clic.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleOpenAddKit}
+                          className="text-xs text-primary hover:text-primary hover:bg-primary/10 cursor-pointer h-7"
+                        >
+                          <Plus className="size-3 mr-1" />
+                          <span>Agregar Kit</span>
+                        </Button>
+                      </div>
+
+                      {(!estudiosConfig.kits || estudiosConfig.kits.length === 0) ? (
+                        <div className="text-center py-8 border border-dashed rounded-xl bg-muted/10 text-muted-foreground space-y-2">
+                          <FlaskConical className="size-8 mx-auto text-muted-foreground/40" />
+                          <p className="text-xs font-medium">No hay kits diagnósticos configurados para {especialidad.nombre}</p>
+                          <p className="text-[11px] text-muted-foreground max-w-md mx-auto">
+                            Cree un kit agrupado para que los médicos soliciten baterías de análisis en un clic o presione "Cargar Sugeridas" en la barra superior.
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleOpenAddKit}
+                            className="mt-2 text-xs border-primary/30 text-primary cursor-pointer"
+                          >
+                            <Plus className="size-3 mr-1" />
+                            <span>Crear Primer Kit</span>
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {estudiosConfig.kits.map((kit) => (
+                            <Card
+                              key={kit.id}
+                              className={`border transition-all hover:shadow-md relative overflow-hidden flex flex-col justify-between ${kit.color || 'border-border'}`}
+                            >
+                              <CardHeader className="p-3.5 pb-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <FlaskConical className="size-4 shrink-0 text-current" />
+                                      <CardTitle className="text-xs font-bold leading-tight">
+                                        {kit.nombre}
+                                      </CardTitle>
+                                    </div>
+                                    {kit.descripcion && (
+                                      <p className="text-[11px] opacity-80 line-clamp-1">
+                                        {kit.descripcion}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <Badge variant="outline" className="text-[10px] py-0 px-1.5 shrink-0 bg-background/80 font-bold">
+                                    {kit.estudios.length} {kit.estudios.length === 1 ? 'estudio' : 'estudios'}
+                                  </Badge>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="p-3.5 pt-0 space-y-2.5">
+                                {/* Lista de estudios */}
+                                <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                                  {kit.estudios.map((est, sIdx) => (
+                                    <div
+                                      key={sIdx}
+                                      className="flex items-center justify-between text-[11px] py-0.5 border-b border-border/40 last:border-b-0"
+                                    >
+                                      <span className="truncate text-foreground font-medium">• {est.nombre}</span>
+                                      <span className="text-[9px] opacity-70 ml-1 shrink-0 px-1 rounded bg-muted/60">{est.categoria}</span>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Acciones de tarjeta */}
+                                <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-border/50">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleOpenEditKit(kit)}
+                                    className="h-7 px-2 text-xs hover:bg-background/80 cursor-pointer"
+                                  >
+                                    <Edit2 className="size-3 mr-1" />
+                                    <span>Editar</span>
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteKit(kit.id)}
+                                    className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                                  >
+                                    <Trash2 className="size-3 mr-1" />
+                                    <span>Eliminar</span>
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SECCIÓN 2: ESTUDIOS INDIVIDUALES FRECUENTES */}
+                    <div className="space-y-3 pt-4 border-t border-border/80">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <Sparkles className="size-3.5 text-amber-500" />
+                            <span>Estudios Individuales Frecuentes</span>
+                            <Badge variant="secondary" className="text-[10px] ml-1">
+                              {estudiosConfig.frecuentes?.length || 0}
+                            </Badge>
+                          </h4>
+                          <p className="text-[11px] text-muted-foreground">
+                            Botones rápidos que aparecen como etiquetas (chips) para indicar órdenes individuales habituales en 1 clic.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Barra para agregar estudio individual frecuente */}
+                      <div className="p-3 rounded-xl border border-border/80 bg-muted/20 space-y-2">
+                        <div className="text-[11px] font-bold text-foreground flex items-center gap-1">
+                          <Plus className="size-3.5 text-primary" />
+                          <span>Agregar nuevo estudio frecuente para {especialidad.nombre}</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                          <div className="sm:col-span-5">
+                            <Input
+                              placeholder="Nombre del examen (ej. Urocultivo con Antibiograma)..."
+                              value={nuevoFrecuenteNombre}
+                              onChange={(e) => setNuevoFrecuenteNombre(e.target.value)}
+                              className="h-8 text-xs bg-background"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddFrecuente();
+                                }
+                              }}
+                            />
+                          </div>
+                          <div className="sm:col-span-3">
+                            <Select
+                              value={nuevoFrecuenteCategoria}
+                              onValueChange={(val) => setNuevoFrecuenteCategoria(val)}
+                            >
+                              <SelectTrigger className="h-8 text-xs bg-background">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CATEGORIAS_ESTUDIOS.map((cat) => (
+                                  <SelectItem key={cat} value={cat} className="text-xs">
+                                    {cat}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="sm:col-span-3">
+                            <Input
+                              placeholder="Justificación sugerida (opcional)..."
+                              value={nuevoFrecuenteJustificacion}
+                              onChange={(e) => setNuevoFrecuenteJustificacion(e.target.value)}
+                              className="h-8 text-xs bg-background"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddFrecuente();
+                                }
+                              }}
+                            />
+                          </div>
+                          <div className="sm:col-span-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={handleAddFrecuente}
+                              disabled={!nuevoFrecuenteNombre.trim()}
+                              className="h-8 w-full text-xs cursor-pointer bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                            >
+                              <Plus className="size-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Chips / Pills de Estudios Frecuentes */}
+                      {(!estudiosConfig.frecuentes || estudiosConfig.frecuentes.length === 0) ? (
+                        <div className="text-center py-6 border border-dashed rounded-xl bg-muted/10 text-muted-foreground text-xs">
+                          No hay estudios frecuentes registrados. Use el formulario arriba para agregar los más habituales.
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2 p-3 rounded-xl border border-border/60 bg-card">
+                          {estudiosConfig.frecuentes.map((frec, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/80 bg-background text-xs hover:border-primary/50 transition-colors shadow-2xs group"
+                            >
+                              <Badge variant="outline" className="text-[9px] py-0 px-1 bg-muted/50 text-muted-foreground">
+                                {frec.categoria}
+                              </Badge>
+                              <span className="font-semibold text-foreground text-[11px]">{frec.nombre}</span>
+                              {frec.justificacion && (
+                                <span className="text-[10px] text-muted-foreground italic truncate max-w-[120px]" title={frec.justificacion}>
+                                  · {frec.justificacion}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFrecuente(idx)}
+                                className="size-4 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 ml-1 cursor-pointer transition-colors"
+                                title="Eliminar estudio frecuente"
+                              >
+                                <X className="size-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── PESTAÑA 4: PERSONALIZACIÓN INDIVIDUAL POR MÉDICO ── */}
                 {activeTab === 'medico' && (
                   <div className="space-y-5">
                     <div className="p-3.5 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex items-start gap-3">
@@ -2263,6 +2750,201 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
               </Button>
               <Button type="submit" size="sm" className="text-xs">
                 Guardar Campo
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sub-modal para Agregar / Editar Kit de Estudios */}
+      <Dialog open={kitModalOpen} onOpenChange={setKitModalOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <FlaskConical className="size-5 text-primary" />
+              <span>{editingKitId ? 'Editar Kit / Perfil Diagnóstico' : 'Nuevo Kit / Perfil Diagnóstico'}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Agrupe un conjunto de exámenes que los médicos podrán ordenar con 1 solo clic en la atención de {especialidad.nombre}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={(e) => { e.preventDefault(); handleSaveKit(); }} className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Nombre del Kit / Perfil *</Label>
+              <Input
+                placeholder="Ej. Perfil Prenatal Integral, Perfil Cardiológico, Control Anual..."
+                value={kitFormData.nombre}
+                onChange={(e) => setKitFormData({ ...kitFormData, nombre: e.target.value })}
+                required
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Descripción o Indicación Clínica (Opcional)</Label>
+              <Input
+                placeholder="Ej. Chequeo preventivo de rutina, evaluación inicial de gestación..."
+                value={kitFormData.descripcion || ''}
+                onChange={(e) => setKitFormData({ ...kitFormData, descripcion: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+
+            {/* Selector de Color del Kit */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Color / Identificador Visual</Label>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                {[
+                  { label: 'Azul', val: 'border-blue-300/80 bg-blue-500/10 text-blue-700 dark:text-blue-300', dot: 'bg-blue-500' },
+                  { label: 'Teal', val: 'border-teal-300/80 bg-teal-500/10 text-teal-700 dark:text-teal-300', dot: 'bg-teal-500' },
+                  { label: 'Rosa', val: 'border-pink-300/80 bg-pink-500/10 text-pink-700 dark:text-pink-300', dot: 'bg-pink-500' },
+                  { label: 'Ámbar', val: 'border-amber-300/80 bg-amber-500/10 text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
+                  { label: 'Púrpura', val: 'border-purple-300/80 bg-purple-500/10 text-purple-700 dark:text-purple-300', dot: 'bg-purple-500' },
+                  { label: 'Cyan', val: 'border-cyan-300/80 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300', dot: 'bg-cyan-500' },
+                ].map((c) => (
+                  <button
+                    key={c.val}
+                    type="button"
+                    onClick={() => setKitFormData({ ...kitFormData, color: c.val })}
+                    className={`flex items-center gap-1.5 p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                      kitFormData.color === c.val ? 'border-primary ring-2 ring-primary/30 font-bold bg-muted/40' : 'border-border/70 hover:bg-muted/20'
+                    }`}
+                  >
+                    <span className={`size-3 rounded-full ${c.dot}`} />
+                    <span className="text-[11px] truncate">{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Estudios incluidos en este Kit */}
+            <div className="space-y-2 pt-2 border-t border-border/70">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold flex items-center gap-1.5">
+                  <span>Estudios Incluidos en este Perfil ({kitFormData.estudios.length})</span>
+                </Label>
+              </div>
+
+              {/* Lista de estudios dentro del kit */}
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {kitFormData.estudios.length === 0 ? (
+                  <div className="text-center py-4 border border-dashed rounded-lg bg-muted/10 text-muted-foreground text-xs">
+                    No has agregado estudios a este kit todavía. Utiliza el formulario de abajo para agregar los exámenes correspondientes.
+                  </div>
+                ) : (
+                  kitFormData.estudios.map((est, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2 rounded-lg border border-border/80 bg-card text-xs hover:border-primary/40 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 shrink-0 bg-primary/5 text-primary border-primary/20">
+                          {est.categoria}
+                        </Badge>
+                        <div className="truncate">
+                          <span className="font-semibold text-foreground">{est.nombre}</span>
+                          {est.justificacion && (
+                            <span className="text-muted-foreground text-[11px] ml-1.5 truncate">
+                              ({est.justificacion})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveEstudioFromKit(idx)}
+                        className="size-7 p-0 text-muted-foreground hover:text-destructive shrink-0 cursor-pointer"
+                        title="Quitar del kit"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Formulario para agregar un estudio al kit */}
+              <div className="p-3 rounded-xl border border-dashed border-primary/40 bg-primary/5 space-y-2.5 mt-2">
+                <div className="text-[11px] font-bold text-primary flex items-center gap-1">
+                  <Plus className="size-3.5" />
+                  <span>Agregar estudio al perfil</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  <div className="sm:col-span-7">
+                    <Input
+                      placeholder="Nombre del estudio (ej. Hemograma Completo)..."
+                      value={tempEstudioNombre}
+                      onChange={(e) => setTempEstudioNombre(e.target.value)}
+                      className="h-8 text-xs bg-background"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddEstudioToKit();
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="sm:col-span-5">
+                    <Select
+                      value={tempEstudioCategoria}
+                      onValueChange={(val) => setTempEstudioCategoria(val)}
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIAS_ESTUDIOS.map((cat) => (
+                          <SelectItem key={cat} value={cat} className="text-xs">
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Justificación / indicación sugerida (opcional)..."
+                    value={tempEstudioJustificacion}
+                    onChange={(e) => setTempEstudioJustificacion(e.target.value)}
+                    className="h-8 text-xs bg-background flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddEstudioToKit();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleAddEstudioToKit}
+                    disabled={!tempEstudioNombre.trim()}
+                    className="h-8 text-xs shrink-0 cursor-pointer bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                  >
+                    <Plus className="size-3 mr-1" />
+                    <span>Añadir</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setKitModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" size="sm" className="text-xs cursor-pointer">
+                {editingKitId ? 'Actualizar Kit' : 'Guardar Kit'}
               </Button>
             </DialogFooter>
           </form>

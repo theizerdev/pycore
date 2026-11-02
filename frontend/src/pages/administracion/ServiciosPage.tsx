@@ -84,7 +84,7 @@ export const ServiciosPage: React.FC = () => {
   const [seeding, setSeeding] = useState(false);
 
   // Detección de perfil médico autenticado
-  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico' || user?.empresa?.tipo_entidad === 'medico_independiente');
 
   const currentDoctor = useMemo(() => {
     if (!isDoctorUser || !user) return null;

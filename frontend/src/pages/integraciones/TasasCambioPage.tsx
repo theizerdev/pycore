@@ -10,7 +10,9 @@ import {
   Calendar,
   ShieldCheck,
   Search,
-  Download
+  Download,
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -58,6 +60,36 @@ export const TasasCambioPage: React.FC = () => {
   // Calculadora en Vivo
   const [calcAmount, setCalcAmount] = useState<number>(100);
   const [calcCurrency, setCalcCurrency] = useState<'USD' | 'EUR' | 'USDT' | 'VES'>('USD');
+
+  // Selección de Tasa de Cobro Activa del Sistema (USD vs EUR)
+  const [changingMonedaCobro, setChangingMonedaCobro] = useState(false);
+
+  const handleSelectMonedaCobro = async (moneda: 'USD' | 'EUR') => {
+    if (ratesData?.moneda_cobro_activa === moneda) return;
+    try {
+      setChangingMonedaCobro(true);
+      const res = await tasasApi.setMonedaCobroActiva(moneda);
+      setRatesData((prev) =>
+        prev
+          ? {
+              ...prev,
+              moneda_cobro_activa: moneda,
+              tasa_cobro_activa: res.tasa_cobro_activa,
+            }
+          : null
+      );
+      toast.success(
+        `Tasa de cobro predeterminada configurada en ${
+          moneda === 'USD' ? 'Dólar Oficial BCV ($)' : 'Euro Oficial BCV (€)'
+        }`
+      );
+      await fetchRatesAndHistory();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error al cambiar la tasa de cobro');
+    } finally {
+      setChangingMonedaCobro(false);
+    }
+  };
 
   const fetchRatesAndHistory = async () => {
     try {
@@ -290,10 +322,133 @@ export const TasasCambioPage: React.FC = () => {
         </div>
       </ModuleHeader>
 
+      {/* ── SELECTOR PRINCIPAL: TASA ACTIVA PARA COBROS EN EL SISTEMA (USD vs EUR) ── */}
+      <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white border border-indigo-500/30 shadow-xl relative overflow-hidden">
+        {/* Glow de fondo sutil */}
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-2xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="bg-indigo-500/25 text-indigo-200 border border-indigo-400/30 text-[11px] font-semibold gap-1.5 px-2.5 py-0.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                Configuración Financiera de Cobro
+              </Badge>
+              <span className="text-xs text-slate-400 hidden sm:inline">
+                Tasa Referencial para Citas, Odontología y Facturas
+              </span>
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              Moneda y Tasa Predeterminada para Cobros
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              Elige cuál de las tasas oficiales del BCV (<strong>Dólar USD</strong> o <strong>Euro EUR</strong>) utilizará la clínica como base de conversión automática para liquidar pagos en Bolívares (VES), cotizaciones y presupuestos clínicos.
+            </p>
+          </div>
+
+          {/* Selector de Tarjetas: USD vs EUR */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 min-w-[320px] sm:min-w-[440px]">
+            {/* Opción Dólar BCV */}
+            <button
+              type="button"
+              onClick={() => handleSelectMonedaCobro('USD')}
+              disabled={changingMonedaCobro}
+              className={cn(
+                'p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between gap-3 cursor-pointer group',
+                ratesData?.moneda_cobro_activa === 'USD'
+                  ? 'bg-emerald-950/70 border-emerald-500/80 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-950/60'
+                  : 'bg-slate-800/60 border-slate-700/80 hover:bg-slate-800/90 hover:border-slate-500 opacity-80 hover:opacity-100'
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm",
+                    ratesData?.moneda_cobro_activa === 'USD' ? "bg-emerald-500/25 text-emerald-400" : "bg-slate-700 text-slate-300"
+                  )}>
+                    $
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs text-slate-100 block">Dólar BCV (USD)</span>
+                    <span className="text-[10px] text-slate-400">Tasa Oficial</span>
+                  </div>
+                </div>
+                {ratesData?.moneda_cobro_activa === 'USD' ? (
+                  <Badge className="bg-emerald-500 text-white text-[10px] gap-1 px-2 py-0.5 shadow-xs font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Tasa Activa
+                  </Badge>
+                ) : (
+                  <span className="text-[11px] text-slate-400 group-hover:text-emerald-300 font-medium transition-colors">
+                    Clic para usar
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline justify-between mt-1 pt-2 border-t border-white/5">
+                <span className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  Bs. {ratesData?.tasas?.USD?.tasa ? ratesData.tasas.USD.tasa.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '---'}
+                </span>
+                <span className="text-[11px] text-emerald-400 font-medium">USD / VES</span>
+              </div>
+            </button>
+
+            {/* Opción Euro BCV */}
+            <button
+              type="button"
+              onClick={() => handleSelectMonedaCobro('EUR')}
+              disabled={changingMonedaCobro}
+              className={cn(
+                'p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between gap-3 cursor-pointer group',
+                ratesData?.moneda_cobro_activa === 'EUR'
+                  ? 'bg-blue-950/70 border-blue-500/80 ring-2 ring-blue-500/40 shadow-lg shadow-blue-950/60'
+                  : 'bg-slate-800/60 border-slate-700/80 hover:bg-slate-800/90 hover:border-slate-500 opacity-80 hover:opacity-100'
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm",
+                    ratesData?.moneda_cobro_activa === 'EUR' ? "bg-blue-500/25 text-blue-400" : "bg-slate-700 text-slate-300"
+                  )}>
+                    €
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs text-slate-100 block">Euro BCV (EUR)</span>
+                    <span className="text-[10px] text-slate-400">Tasa Oficial</span>
+                  </div>
+                </div>
+                {ratesData?.moneda_cobro_activa === 'EUR' ? (
+                  <Badge className="bg-blue-600 text-white text-[10px] gap-1 px-2 py-0.5 shadow-xs font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Tasa Activa
+                  </Badge>
+                ) : (
+                  <span className="text-[11px] text-slate-400 group-hover:text-blue-300 font-medium transition-colors">
+                    Clic para usar
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline justify-between mt-1 pt-2 border-t border-white/5">
+                <span className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  Bs. {ratesData?.tasas?.EUR?.tasa ? ratesData.tasas.EUR.tasa.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '---'}
+                </span>
+                <span className="text-[11px] text-blue-400 font-medium">EUR / VES</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* 3 Main Currency Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Dólar BCV */}
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 relative overflow-hidden shadow-xs">
+        <div className={cn(
+          "p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border relative overflow-hidden shadow-xs transition-all",
+          ratesData?.moneda_cobro_activa === 'USD'
+            ? 'border-emerald-500/50 ring-2 ring-emerald-500/20 bg-emerald-500/10'
+            : 'border-emerald-500/20'
+        )}>
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -307,7 +462,25 @@ export const TasasCambioPage: React.FC = () => {
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">USD / VES Oficial</p>
               </div>
             </div>
-            <Badge className="bg-emerald-500 text-white text-[10px]">BCV Oficial</Badge>
+            <div className="flex flex-col items-end gap-1">
+              <Badge className="bg-emerald-500 text-white text-[10px]">BCV Oficial</Badge>
+              {ratesData?.moneda_cobro_activa === 'USD' ? (
+                <Badge variant="outline" className="text-[9px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Cobro Activo
+                </Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleSelectMonedaCobro('USD')}
+                  disabled={changingMonedaCobro}
+                  className="h-6 text-[10px] text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15 px-2 cursor-pointer font-semibold"
+                >
+                  Usar para Cobros
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="mt-4">
@@ -326,7 +499,12 @@ export const TasasCambioPage: React.FC = () => {
         </div>
 
         {/* Euro BCV */}
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border border-blue-500/20 relative overflow-hidden shadow-xs">
+        <div className={cn(
+          "p-5 rounded-2xl bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border relative overflow-hidden shadow-xs transition-all",
+          ratesData?.moneda_cobro_activa === 'EUR'
+            ? 'border-blue-500/50 ring-2 ring-blue-500/20 bg-blue-500/10'
+            : 'border-blue-500/20'
+        )}>
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-lg">
@@ -340,7 +518,25 @@ export const TasasCambioPage: React.FC = () => {
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">EUR / VES Oficial</p>
               </div>
             </div>
-            <Badge className="bg-blue-600 text-white text-[10px]">BCV Euro</Badge>
+            <div className="flex flex-col items-end gap-1">
+              <Badge className="bg-blue-600 text-white text-[10px]">BCV Euro</Badge>
+              {ratesData?.moneda_cobro_activa === 'EUR' ? (
+                <Badge variant="outline" className="text-[9px] border-blue-500/40 text-blue-600 dark:text-blue-400 font-bold bg-blue-500/10 gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Cobro Activo
+                </Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleSelectMonedaCobro('EUR')}
+                  disabled={changingMonedaCobro}
+                  className="h-6 text-[10px] text-blue-600 dark:text-blue-400 hover:bg-blue-500/15 px-2 cursor-pointer font-semibold"
+                >
+                  Usar para Cobros
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="mt-4">
@@ -436,22 +632,48 @@ export const TasasCambioPage: React.FC = () => {
           </div>
 
           {/* Resultados de Conversión */}
-          <div className="md:col-span-3 grid grid-cols-3 gap-3">
+          <div className="md:col-span-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 text-center">
               <span className="text-[11px] font-medium text-slate-500">En Bolívares (VES)</span>
-              <p className="text-base font-black text-slate-900 dark:text-white mt-1">
+              <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white mt-1 truncate">
                 Bs. {calculatedValues.VES.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 text-center">
-              <span className="text-[11px] font-medium text-slate-500">En Dólares (USD)</span>
-              <p className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-1">
+            <div className={cn(
+              "p-3 rounded-xl border text-center transition-all",
+              ratesData?.moneda_cobro_activa === 'USD'
+                ? "bg-emerald-500/10 border-emerald-500/30"
+                : "bg-slate-50 dark:bg-slate-800/60 border-slate-200/60 dark:border-slate-700/60"
+            )}>
+              <span className="text-[11px] font-medium text-slate-500 flex items-center justify-center gap-1">
+                En Dólares (USD)
+                {ratesData?.moneda_cobro_activa === 'USD' && (
+                  <span className="text-[9px] bg-emerald-500 text-white px-1 rounded-sm font-bold">Cobro</span>
+                )}
+              </span>
+              <p className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 mt-1 truncate">
                 $ {calculatedValues.USD.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className={cn(
+              "p-3 rounded-xl border text-center transition-all",
+              ratesData?.moneda_cobro_activa === 'EUR'
+                ? "bg-blue-500/10 border-blue-500/30"
+                : "bg-slate-50 dark:bg-slate-800/60 border-slate-200/60 dark:border-slate-700/60"
+            )}>
+              <span className="text-[11px] font-medium text-slate-500 flex items-center justify-center gap-1">
+                En Euros (EUR)
+                {ratesData?.moneda_cobro_activa === 'EUR' && (
+                  <span className="text-[9px] bg-blue-600 text-white px-1 rounded-sm font-bold">Cobro</span>
+                )}
+              </span>
+              <p className="text-sm sm:text-base font-black text-blue-600 dark:text-blue-400 mt-1 truncate">
+                € {calculatedValues.EUR.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 text-center">
               <span className="text-[11px] font-medium text-slate-500">En Binance (USDT)</span>
-              <p className="text-base font-black text-amber-600 dark:text-amber-400 mt-1">
+              <p className="text-sm sm:text-base font-black text-amber-600 dark:text-amber-400 mt-1 truncate">
                 ₮ {calculatedValues.USDT.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>

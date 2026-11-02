@@ -6,6 +6,8 @@ import type {
   CitaEstado,
   CitaEstadoPago,
   CitaNotificarWhatsAppResponse,
+  JitsiSessionConfig,
+  TeleconsultaPublicInfo,
   BloqueoAgenda,
   BloqueoAgendaCreateInput,
 } from '../types';
@@ -19,6 +21,7 @@ export const citasApi = {
     sucursal_id?: number;
     paciente_id?: number;
     estado?: string;
+    modalidad?: string;
   }): Promise<CitaMedica[]> => {
     const response = await api.get<CitaMedica[]>('/citas', { params });
     return response.data;
@@ -70,6 +73,44 @@ export const citasApi = {
       {},
       { timeout: 30000 }
     );
+    return response.data;
+  },
+
+  // ── Telemedicina (MediSoft WorkSpace & Jitsi Meet) ──
+  enviarLinkTeleconsulta: async (id: number): Promise<CitaNotificarWhatsAppResponse> => {
+    const response = await api.post<CitaNotificarWhatsAppResponse>(
+      `/citas/${id}/enviar-link-teleconsulta`,
+      {},
+      { timeout: 35000 }
+    );
+    return response.data;
+  },
+
+  crearSesionTeleconsulta: async (id: number): Promise<JitsiSessionConfig> => {
+    const response = await api.post<JitsiSessionConfig>(
+      `/citas/${id}/teleconsulta-sesion`,
+      {},
+      { timeout: 15000 }
+    );
+    return response.data;
+  },
+
+  getTeleconsultaPublica: async (token: string): Promise<TeleconsultaPublicInfo> => {
+    const response = await api.get<TeleconsultaPublicInfo>(
+      `/citas/public/teleconsulta/${token}`,
+      { timeout: 15000 }
+    );
+    return response.data;
+  },
+
+  confirmarPresenciaTeleconsulta: async (
+    token: string
+  ): Promise<{ success: boolean; paciente_conectado_at: string; estado_cita: string }> => {
+    const response = await api.post<{
+      success: boolean;
+      paciente_conectado_at: string;
+      estado_cita: string;
+    }>(`/citas/public/teleconsulta/${token}/confirmar-presencia`, {}, { timeout: 10000 });
     return response.data;
   },
 

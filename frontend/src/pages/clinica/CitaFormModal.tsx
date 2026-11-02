@@ -4,10 +4,11 @@ import { medicosApi } from '../../api/medicos';
 import { pacientesApi } from '../../api/pacientes';
 import { sucursalesApi } from '../../api/sucursales';
 import { serviciosApi } from '../../api/servicios';
-import type { CitaMedica, Medico, Paciente, Sucursal, Servicio, CitaEstadoPago } from '../../types';
+import type { CitaMedica, Medico, Paciente, Sucursal, Servicio, CitaEstadoPago, CitaModalidad } from '../../types';
 import { formatCleanWhatsAppNumber } from './DoctorWelcomeModal';
 import { PatientFormModal } from './PatientFormModal';
 import { toast } from 'sonner';
+import { getLocalDateString } from '../../lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,7 @@ import {
   CalendarClock,
   UserPlus,
   Lock,
+  Video,
 } from 'lucide-react';
 
 interface CitaFormModalProps {
@@ -57,6 +59,7 @@ interface CitaFormModalProps {
   citaToEdit?: CitaMedica | null;
   initialDate?: string;
   initialTime?: string;
+  initialDuration?: number;
   initialMedicoId?: number;
   initialPacienteId?: number;
   existingCitas?: CitaMedica[];
@@ -69,6 +72,8 @@ const DURACIONES = [
   { value: 30, label: '30 minutos' },
   { value: 45, label: '45 minutos' },
   { value: 60, label: '1 hora' },
+  { value: 90, label: '1 hora 30 min' },
+  { value: 120, label: '2 horas' },
 ];
 
 const HORAS_DISPONIBLES = [
@@ -83,6 +88,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   citaToEdit,
   initialDate,
   initialTime,
+  initialDuration,
   initialMedicoId,
   initialPacienteId,
   existingCitas,
@@ -107,9 +113,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [especialidadId, setEspecialidadId] = useState<number | null>(null);
   const [sucursalId, setSucursalId] = useState<number | null>(null);
   const [servicioId, setServicioId] = useState<number | null>(null);
-  const [fecha, setFecha] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [fecha, setFecha] = useState<string>(getLocalDateString());
   const [horaInicio, setHoraInicio] = useState<string>('09:00');
   const [duracionMinutos, setDuracionMinutos] = useState<number>(30);
   const [motivo, setMotivo] = useState<string>('');
@@ -119,10 +123,11 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [metodoPago, setMetodoPago] = useState<string>('');
   const [esSobreturno, setEsSobreturno] = useState<boolean>(false);
   const [motivoSobreturno, setMotivoSobreturno] = useState<string>('');
+  const [modalidad, setModalidad] = useState<CitaModalidad>('presencial');
   const [notificarWhatsApp, setNotificarWhatsApp] = useState<boolean>(true);
 
   const { user } = useAuth();
-  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico' || user?.empresa?.tipo_entidad === 'medico_independiente');
 
   // Identificar el perfil médico del usuario logueado
   const currentDoctor = React.useMemo(() => {
@@ -179,12 +184,16 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
           setMetodoPago(citaToEdit.metodo_pago || '');
           setEsSobreturno(!!citaToEdit.es_sobreturno);
           setMotivoSobreturno(citaToEdit.motivo_sobreturno || '');
+          setModalidad(citaToEdit.modalidad || 'presencial');
           setNotificarWhatsApp(false);
         } else {
           // Tomar siempre la fecha y hora exacta seleccionada/pulsada
           if (initialDate) setFecha(initialDate);
           if (initialTime) {
             setHoraInicio(initialTime);
+          }
+          if (initialDuration) {
+            setDuracionMinutos(initialDuration);
           }
 
           // Si el usuario es doctor, SIEMPRE preseleccionar su médico e impedir que se pierda
@@ -225,6 +234,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
           setEsSobreturno(false);
           setMotivoSobreturno('');
           setMotivo('');
+          setModalidad('presencial');
           setNotas('');
           setNotificarWhatsApp(true);
         }
@@ -240,7 +250,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
     };
 
     loadData();
-  }, [open, citaToEdit, initialDate, initialTime, initialMedicoId, initialPacienteId, isDoctorUser, user]);
+  }, [open, citaToEdit, initialDate, initialTime, initialDuration, initialMedicoId, initialPacienteId, isDoctorUser, user]);
 
   // Sincronización reactiva: si el usuario es doctor y el catálogo de médicos ya cargó, asegurar selección
   useEffect(() => {
@@ -532,6 +542,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
         estado_pago: estadoPago,
         metodo_pago: metodoPago.trim() ? metodoPago : undefined,
         es_sobreturno: esSobreturno,
+        modalidad,
         motivo_sobreturno: esSobreturno && motivoSobreturno.trim() ? motivoSobreturno : undefined,
       };
 
@@ -761,6 +772,88 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
                 >
                   Cambiar
                 </Button>
+              </div>
+            )}
+          </div>
+
+          {/* ── 1.1 MODALIDAD ASISTENCIAL (PRESENCIAL VS TELEMEDICINA) ── */}
+          <div className="p-3 rounded-xl border border-border/80 bg-card space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Video className="size-3.5 text-teal-600" />
+                <span>Modalidad de Atención Asistencial *</span>
+              </Label>
+              <Badge
+                variant="outline"
+                className={`text-[10px] font-bold px-2 py-0.5 ${
+                  modalidad === 'telemedicina'
+                    ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30'
+                    : 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/30'
+                }`}
+              >
+                {modalidad === 'telemedicina' ? '📹 Videoconsulta WorkSpace' : '🏥 Consulta en Sede'}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setModalidad('presencial')}
+                className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                  modalidad === 'presencial'
+                    ? 'border-teal-600 bg-teal-500/10 ring-1 ring-teal-500'
+                    : 'border-border/70 hover:bg-muted/40'
+                }`}
+              >
+                <div
+                  className={`size-7 rounded-lg flex items-center justify-center shrink-0 ${
+                    modalidad === 'presencial' ? 'bg-teal-600 text-white' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <Building2 className="size-3.5" />
+                </div>
+                <div>
+                  <span className="font-bold text-foreground text-xs block">Consulta Presencial</span>
+                  <span className="text-[10px] text-muted-foreground block">
+                    Atención física en consultorio clínico
+                  </span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalidad('telemedicina')}
+                className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                  modalidad === 'telemedicina'
+                    ? 'border-sky-500 bg-sky-500/15 ring-1 ring-sky-500'
+                    : 'border-border/70 hover:bg-muted/40'
+                }`}
+              >
+                <div
+                  className={`size-7 rounded-lg flex items-center justify-center shrink-0 ${
+                    modalidad === 'telemedicina' ? 'bg-sky-600 text-white' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <Video className="size-3.5" />
+                </div>
+                <div>
+                  <span className="font-bold text-foreground text-xs block">Telemedicina Online</span>
+                  <span className="text-[10px] text-muted-foreground block">
+                    Videollamada Jitsi Meet sin instalar apps
+                  </span>
+                </div>
+              </button>
+            </div>
+
+            {modalidad === 'telemedicina' && (
+              <div className="p-2.5 rounded-lg bg-sky-500/10 border border-sky-500/25 text-sky-900 dark:text-sky-200 text-[11px] flex items-start gap-2">
+                <Sparkles className="size-3.5 text-sky-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block">Aprovisionamiento Automático WorkSpace:</span>
+                  <span>
+                    Se generará una sala virtual segura y un <strong>Enlace Mágico (/teleconsulta/:token)</strong> con acceso a preconsulta que se enviará automáticamente al paciente por WhatsApp según las políticas de cobro de la clínica.
+                  </span>
+                </div>
               </div>
             )}
           </div>

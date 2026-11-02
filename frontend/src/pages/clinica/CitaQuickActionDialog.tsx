@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { citasApi } from '../../api/citas';
-import type { CitaMedica, CitaEstado, Paciente } from '../../types';
+import type { CitaMedica, CitaEstado, JitsiSessionConfig } from '../../types';
+import { JitsiMeetingEmbed } from '../../components/telemedicina/JitsiMeetingEmbed';
 import { formatCleanWhatsAppNumber } from './DoctorWelcomeModal';
 import { toast } from 'sonner';
 import { evaluarPuntualidadCita } from '../../utils/punctuality';
@@ -17,7 +18,6 @@ import { Badge } from '../../components/ui/badge';
 import {
   Calendar,
   Clock,
-  User,
   Stethoscope,
   Building2,
   MessageCircle,
@@ -26,9 +26,9 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
-  ArrowRight,
   Send,
-  Sparkles,
+  Video,
+  Copy,
 } from 'lucide-react';
 
 interface CitaQuickActionDialogProps {
@@ -104,6 +104,9 @@ export const CitaQuickActionDialog: React.FC<CitaQuickActionDialogProps> = ({
   onOpenPatientRecord,
 }) => {
   const [loadingAction, setLoadingAction] = useState(false);
+  const [jitsiModalOpen, setJitsiModalOpen] = useState(false);
+  const [jitsiSession, setJitsiSession] = useState<JitsiSessionConfig | null>(null);
+  const [loadingJitsi, setLoadingJitsi] = useState(false);
 
   if (!cita) return null;
 
@@ -147,8 +150,72 @@ export const CitaQuickActionDialog: React.FC<CitaQuickActionDialogProps> = ({
 
   const cleanPhone = formatCleanWhatsAppNumber(cita.paciente_telefono || '', '58');
 
+  const handleCopiarEnlace = () => {
+    const url =
+      cita.teleconsulta_url ||
+      (cita.teleconsulta_token
+        ? `${window.location.origin}/teleconsulta/${cita.teleconsulta_token}`
+        : null);
+    if (!url) {
+      toast.error('La cita aún no posee un enlace generado');
+      return;
+    }
+    navigator.clipboard.writeText(url);
+    toast.success('Enlace de teleconsulta copiado al portapapeles', {
+      description: url,
+    });
+  };
+
+  const handleEnviarLinkTeleconsulta = async () => {
+    setLoadingAction(true);
+    try {
+      const res = await citasApi.enviarLinkTeleconsulta(cita.id);
+      if (res.success) {
+        toast.success('Enlace mágico enviado por WhatsApp', {
+          description: `Destinatario: ${res.destinatario}`,
+          action: res.whatsapp_direct_url
+            ? {
+                label: 'Ver en Web',
+                onClick: () => window.open(res.whatsapp_direct_url, '_blank'),
+              }
+            : undefined,
+        });
+        onUpdated();
+      } else {
+        toast.warning(res.detalle, {
+          action: res.whatsapp_direct_url
+            ? {
+                label: 'Abrir Web',
+                onClick: () => window.open(res.whatsapp_direct_url, '_blank'),
+              }
+            : undefined,
+        });
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || 'No se pudo enviar el enlace';
+      toast.error(msg);
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleAbrirCabinaJitsi = async () => {
+    setLoadingJitsi(true);
+    try {
+      const session = await citasApi.crearSesionTeleconsulta(cita.id);
+      setJitsiSession(session);
+      setJitsiModalOpen(true);
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || 'No se pudo inicializar la cabina virtual';
+      toast.error(msg);
+    } finally {
+      setLoadingJitsi(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
         {/* Cabecera con franja de color del médico */}
         <div
@@ -380,6 +447,102 @@ export const CitaQuickActionDialog: React.FC<CitaQuickActionDialogProps> = ({
             )}
           </div>
 
+          {/* ── CARD DE TELEMEDICINA (WORKSPACE JITSI MEET) ── */}
+          {cita.modalidad === 'telemedicina' && (
+            <div className="p-3.5 rounded-2xl border border-sky-500/40 bg-sky-500/10 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Video className="size-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-foreground text-xs block">
+                      MediSoft WorkSpace • Sala de Telemedicina
+                    </span>
+                    <span className="text-[11px] text-muted-foreground font-mono block">
+                      Sala: {cita.sala_virtual_id || 'Autogenerada'}
+                    </span>
+                  </div>
+                </div>
+
+                <Badge
+                  className={`text-[10px] font-bold py-0.5 px-2 shrink-0 ${
+                    cita.link_teleconsulta_enviado
+                      ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                      : 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/30'
+                  }`}
+                >
+                  {cita.link_teleconsulta_enviado ? '✅ Link enviado' : '⏳ Link pendiente'}
+                </Badge>
+              </div>
+
+              {cita.estado_pago === 'pendiente' && (
+                <div className="p-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[11px] text-amber-900 dark:text-amber-200">
+                  ⚠️ <strong>Cobro Pendiente:</strong> La clínica requiere pago o cobertura validada antes de enviar el enlace al paciente o iniciar la consulta médica.
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-sky-500/20">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCopiarEnlace}
+                  className="h-7 text-[11px] bg-background/80 hover:bg-background cursor-pointer gap-1.5"
+                  title="Copiar URL del paciente"
+                >
+                  <Copy className="size-3" />
+                  <span>Copiar Link Paciente</span>
+                </Button>
+
+                {cleanPhone && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={loadingAction}
+                      onClick={handleEnviarLinkTeleconsulta}
+                      className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer gap-1.5 shadow-2xs"
+                    >
+                      <MessageCircle className="size-3" />
+                      <span>{cita.link_teleconsulta_enviado ? 'Reenviar WhatsApp' : 'Enviar por WhatsApp'}</span>
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const url =
+                          cita.teleconsulta_url ||
+                          (cita.teleconsulta_token
+                            ? `${window.location.origin}/teleconsulta/${cita.teleconsulta_token}`
+                            : '');
+                        const msg = `👋 ¡Hola *${cita.paciente_nombre}*!\n\n📹 Su sala de videoconsulta médica online en MediSoft WorkSpace está lista:\n👉 ${url}\n\nLe sugerimos conectarse 5 minutos antes para probar cámara y micrófono.`;
+                        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+                      }}
+                      className="h-7 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer px-2"
+                      title="Abrir WhatsApp Web directamente con el enlace cargado"
+                    >
+                      Abrir Web
+                    </Button>
+                  </>
+                )}
+
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={loadingJitsi}
+                  onClick={handleAbrirCabinaJitsi}
+                  className="h-7 text-[11px] bg-sky-600 hover:bg-sky-700 text-white font-bold cursor-pointer gap-1.5 ml-auto shadow-2xs"
+                >
+                  <Video className="size-3.5" />
+                  <span>{loadingJitsi ? 'Conectando...' : 'Abrir Cabina Jitsi'}</span>
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* ── BOTONES DE TRANSICIÓN RÁPIDA DE ESTADO ────────────── */}
           <div className="space-y-2 pt-1">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
@@ -552,6 +715,43 @@ export const CitaQuickActionDialog: React.FC<CitaQuickActionDialogProps> = ({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* ── MODAL DE CABINA JITSI MEET PARA EL MÉDICO / RECEPCIÓN ── */}
+    {jitsiModalOpen && jitsiSession && (
+      <Dialog open={jitsiModalOpen} onOpenChange={setJitsiModalOpen}>
+        <DialogContent className="sm:max-w-5xl h-[88vh] flex flex-col p-0 gap-0 overflow-hidden bg-background">
+          <DialogHeader className="p-4 border-b border-border/80 bg-muted/20 shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="size-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0">
+                  <Video className="size-4" />
+                </div>
+                <div>
+                  <DialogTitle className="text-sm font-bold text-foreground">
+                    Cabina de Telemedicina • Cita #{cita.id}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    {cita.paciente_nombre} ({cita.especialidad_nombre}) • Moderador Clínico
+                  </DialogDescription>
+                </div>
+              </div>
+              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px] font-bold py-0.5 px-2">
+                En vivo
+              </Badge>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 w-full min-h-0 bg-black">
+            <JitsiMeetingEmbed
+              session={jitsiSession}
+              className="h-full"
+              onHangup={() => setJitsiModalOpen(false)}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   );
 };
 

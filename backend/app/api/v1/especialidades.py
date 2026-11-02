@@ -70,7 +70,69 @@ async def list_especialidades(
 
     stmt = stmt.order_by(Especialidad.nombre.asc())
     result = await db.execute(stmt)
-    return result.scalars().all()
+    items = result.scalars().all()
+
+    # Si es un médico independiente y aún no tiene especialidad propia en su empresa, auto-inicializarla
+    if not items and current_user.empresa and getattr(current_user.empresa, "tipo_entidad", "") == "medico_independiente":
+        from app.models.medico import Medico
+        from app.models.plantilla_especialidad import EspecialidadPlantilla
+        from app.services.clinical_templates_seed import get_template_for_specialty
+
+        stmt_med = select(Medico).where(Medico.usuario_id == current_user.id)
+        res_med = await db.execute(stmt_med)
+        med_rec = res_med.scalar_one_or_none()
+
+        base_name = "Medicina General"
+        base_color = "#0d9488"
+        base_icono = "Stethoscope"
+        base_desc = "Atención médica especializada para consultorio privado"
+
+        if med_rec and med_rec.especialidad_id:
+            stmt_orig = select(Especialidad).where(Especialidad.id == med_rec.especialidad_id)
+            res_orig = await db.execute(stmt_orig)
+            orig_esp = res_orig.scalar_one_or_none()
+            if orig_esp:
+                base_name = orig_esp.nombre
+                base_color = orig_esp.color or base_color
+                base_icono = orig_esp.icono or base_icono
+                base_desc = orig_esp.descripcion or base_desc
+
+        nueva_esp = Especialidad(
+            empresa_id=current_user.empresa_id,
+            sucursal_id=current_user.sucursal_defecto_id,
+            nombre=base_name,
+            codigo="ESP-01",
+            descripcion=base_desc,
+            color=base_color,
+            icono=base_icono,
+            pasos_activos=[1, 2, 3, 4, 5, 6],
+            paso_inicial=1,
+            activo=True
+        )
+        db.add(nueva_esp)
+        await db.flush()
+
+        sug = get_template_for_specialty(base_name)
+        plantilla = EspecialidadPlantilla(
+            empresa_id=current_user.empresa_id,
+            especialidad_id=nueva_esp.id,
+            esquema_preconsulta=sug.get("esquema_preconsulta", []),
+            esquema_consulta=sug.get("esquema_consulta", []),
+            widgets_activos=sug.get("widgets_activos", []),
+            estudios_sugeridos=sug.get("estudios_sugeridos", {}),
+            version=1,
+            activo=True
+        )
+        db.add(plantilla)
+
+        if med_rec:
+            med_rec.especialidad_id = nueva_esp.id
+
+        await db.commit()
+        await db.refresh(nueva_esp)
+        return [nueva_esp]
+
+    return items
 
 @router.get("/{id}", response_model=EspecialidadResponse)
 async def get_especialidad(
@@ -484,6 +546,7 @@ async def get_plantilla_especialidad(
             esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
             esquema_consulta=sugerencia.get("esquema_consulta", []),
             widgets_activos=sugerencia.get("widgets_activos", []),
+            estudios_sugeridos=sugerencia.get("estudios_sugeridos", {}),
             version=1,
             activo=True
         )
@@ -491,6 +554,9 @@ async def get_plantilla_especialidad(
         await _safe_commit(db)
         await db.refresh(plantilla)
     else:
+        if not plantilla.estudios_sugeridos:
+            from app.services.clinical_templates_seed import get_default_estudios_for_specialty
+            plantilla.estudios_sugeridos = get_default_estudios_for_specialty(esp.nombre)
         if plantilla.esquema_consulta and _upgrade_signos_vitales_if_needed(plantilla.esquema_consulta):
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(plantilla, "esquema_consulta")
@@ -529,6 +595,7 @@ async def update_plantilla_especialidad(
     preconsulta_data = [s.model_dump() for s in req.esquema_preconsulta]
     consulta_data = [s.model_dump() for s in req.esquema_consulta]
     widgets_data = req.widgets_activos or []
+    estudios_data = req.estudios_sugeridos or {}
 
     if not plantilla:
         plantilla = EspecialidadPlantilla(
@@ -537,6 +604,7 @@ async def update_plantilla_especialidad(
             esquema_preconsulta=preconsulta_data,
             esquema_consulta=consulta_data,
             widgets_activos=widgets_data,
+            estudios_sugeridos=estudios_data,
             version=1,
             activo=True
         )
@@ -545,6 +613,7 @@ async def update_plantilla_especialidad(
         plantilla.esquema_preconsulta = preconsulta_data
         plantilla.esquema_consulta = consulta_data
         plantilla.widgets_activos = widgets_data
+        plantilla.estudios_sugeridos = estudios_data
         plantilla.version += 1
 
     await _safe_commit(db)
@@ -601,6 +670,7 @@ async def seed_plantilla_defaults(
             esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
             esquema_consulta=sugerencia.get("esquema_consulta", []),
             widgets_activos=sugerencia.get("widgets_activos", []),
+            estudios_sugeridos=sugerencia.get("estudios_sugeridos", {}),
             version=1,
             activo=True
         )
@@ -609,6 +679,7 @@ async def seed_plantilla_defaults(
         plantilla.esquema_preconsulta = sugerencia.get("esquema_preconsulta", [])
         plantilla.esquema_consulta = sugerencia.get("esquema_consulta", [])
         plantilla.widgets_activos = sugerencia.get("widgets_activos", [])
+        plantilla.estudios_sugeridos = sugerencia.get("estudios_sugeridos", {})
         plantilla.version += 1
 
     await _safe_commit(db)
@@ -882,6 +953,13 @@ async def get_plantilla_efectiva(
 
     total_medico_count = len(medico_pre) + len(medico_con)
 
+    from app.services.clinical_templates_seed import get_default_estudios_for_specialty
+    estudios_sugeridos_efectivos = (
+        plantilla.estudios_sugeridos
+        if (plantilla and plantilla.estudios_sugeridos)
+        else get_default_estudios_for_specialty(esp.nombre)
+    )
+
     return PlantillaEfectivaResponse(
         especialidad_id=esp.id,
         especialidad_nombre=esp.nombre,
@@ -895,5 +973,6 @@ async def get_plantilla_efectiva(
         consulta_secciones=merged_con,
         total_campos_preconsulta=total_pre_count,
         total_campos_consulta=total_con_count,
-        total_campos_medico=total_medico_count
+        total_campos_medico=total_medico_count,
+        estudios_sugeridos=estudios_sugeridos_efectivos
     )

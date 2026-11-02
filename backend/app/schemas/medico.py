@@ -25,6 +25,10 @@ class MedicoBase(BaseModel):
     sucursales_ids: List[int] = []
     horario_atencion: Optional[Union[List[Dict[str, Any]], Dict[str, Any], List[Any]]] = None
     biografia: Optional[str] = None
+    tipo_comision: str = Field("porcentaje", description="'porcentaje' o 'fijo'")
+    porcentaje_honorario: float = Field(70.00, ge=0.0, le=100.0)
+    monto_fijo_honorario: float = Field(0.00, ge=0.0)
+    datos_bancarios: Optional[Dict[str, Any]] = None
     activo: bool = True
 
 class MedicoCreate(MedicoBase):
@@ -49,6 +53,10 @@ class MedicoUpdate(BaseModel):
     sucursales_ids: Optional[List[int]] = None
     horario_atencion: Optional[Union[List[Dict[str, Any]], Dict[str, Any], List[Any]]] = None
     biografia: Optional[str] = None
+    tipo_comision: Optional[str] = None
+    porcentaje_honorario: Optional[float] = None
+    monto_fijo_honorario: Optional[float] = None
+    datos_bancarios: Optional[Dict[str, Any]] = None
     activo: Optional[bool] = None
     password: Optional[str] = None  # Para actualizar contraseña del usuario vinculado
 

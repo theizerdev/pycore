@@ -22,8 +22,13 @@ import {
   ShieldCheck,
   ChevronRight,
   HeartPulse,
+  Heart,
+  Activity,
+  Plus,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '../../lib/utils';
 
 export const PreconsultaPublicPage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
@@ -32,6 +37,7 @@ export const PreconsultaPublicPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [data, setData] = useState<PreconsultaPublicData | null>(null);
   const [respuestas, setRespuestas] = useState<Record<string, any>>({});
+  const [nuevaAlergiaInput, setNuevaAlergiaInput] = useState('');
   const [completed, setCompleted] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -48,7 +54,28 @@ export const PreconsultaPublicPage: React.FC = () => {
         setLoading(true);
         const res = await preconsultaApi.getPublic(cleanToken);
         setData(res);
-        setRespuestas(res.respuestas || {});
+        const existing = res.respuestas || {};
+        const pac = res.paciente || ({} as any);
+
+        let initAlergias: string[] = [];
+        if (Array.isArray(existing.alergias) && existing.alergias.length > 0) {
+          initAlergias = existing.alergias;
+        } else if (typeof existing.alergias === 'string' && existing.alergias.trim()) {
+          initAlergias = existing.alergias.split(',').map((x: string) => x.trim()).filter(Boolean);
+        } else if (Array.isArray(pac.alergias) && pac.alergias.length > 0) {
+          initAlergias = pac.alergias;
+        }
+
+        setRespuestas({
+          grupo_sanguineo: existing.grupo_sanguineo || pac.grupo_sanguineo || '',
+          alergias: initAlergias,
+          antecedentes_patologicos: existing.antecedentes_patologicos || pac.antecedentes_patologicos || '',
+          antecedentes_familiares: existing.antecedentes_familiares || pac.antecedentes_familiares || '',
+          antecedentes_quirurgicos: existing.antecedentes_quirurgicos || pac.antecedentes_quirurgicos || '',
+          medicacion_habitual: existing.medicacion_habitual || pac.medicacion_habitual || '',
+          ...existing,
+        });
+
         if (res.estado === 'completada') {
           setCompleted(true);
         }
@@ -70,6 +97,16 @@ export const PreconsultaPublicPage: React.FC = () => {
       ...prev,
       [key]: value,
     }));
+  };
+
+  const handleAddAlergia = (alergiaToAdd?: string) => {
+    const val = (alergiaToAdd || nuevaAlergiaInput).trim();
+    if (!val) return;
+    const current = (respuestas['alergias'] as string[]) || [];
+    if (!current.includes(val)) {
+      handleFieldChange('alergias', [...current, val]);
+    }
+    setNuevaAlergiaInput('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -262,6 +299,217 @@ export const PreconsultaPublicPage: React.FC = () => {
 
         {/* Formulario Dinámico de Preguntas */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* ── CARD: FICHA MÉDICA, ALERGIAS Y ANTECEDENTES DE SALUD ── */}
+          <Card className="bg-white dark:bg-slate-900 border-teal-200/80 dark:border-teal-900/40 shadow-md rounded-3xl overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-teal-100 dark:border-teal-900/30 bg-teal-50/50 dark:bg-teal-950/20 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                  <HeartPulse className="size-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>Ficha Médica y Antecedentes de Salud</span>
+                    <Badge variant="outline" className="text-[10px] border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-500/10 font-medium">
+                      Confidencial
+                    </Badge>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Información clínica confidencial para su médico especialista antes de entrar a consulta.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <CardContent className="p-4 sm:p-5 space-y-4">
+              {/* 1. Grupo Sanguíneo */}
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                  <span>Grupo Sanguíneo y Factor Rh</span>
+                  {respuestas['grupo_sanguineo'] && (
+                    <Badge className="text-[10px] bg-rose-500 text-white font-bold font-mono">
+                      {respuestas['grupo_sanguineo']}
+                    </Badge>
+                  )}
+                </Label>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                  {['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'].map((tipo) => {
+                    const isSelected = respuestas['grupo_sanguineo'] === tipo;
+                    return (
+                      <button
+                        key={tipo}
+                        type="button"
+                        onClick={() => handleFieldChange('grupo_sanguineo', isSelected ? '' : tipo)}
+                        className={cn(
+                          'h-9 rounded-xl text-xs font-bold font-mono transition-all border cursor-pointer',
+                          isSelected
+                            ? 'bg-rose-500 text-white border-rose-600 shadow-xs ring-2 ring-rose-400/30'
+                            : 'bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200/70'
+                        )}
+                      >
+                        {tipo}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Alergias Medicamentosas y Ambientales */}
+              <div className="p-3.5 rounded-2xl border border-rose-200/80 dark:border-rose-900/40 bg-rose-50/30 dark:bg-rose-950/10 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                    <AlertCircle className="size-3.5 text-rose-600" />
+                    <span>Alergias Medicamentosas o Ambientales</span>
+                  </Label>
+                  <span className="text-[10.5px] text-slate-400">
+                    {((respuestas['alergias'] as string[]) || []).length > 0
+                      ? `${(respuestas['alergias'] as string[]).length} registrada(s)`
+                      : 'Sin alergias indicadas'}
+                  </span>
+                </div>
+
+                {/* Chips seleccionados */}
+                {((respuestas['alergias'] as string[]) || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {((respuestas['alergias'] as string[]) || []).map((alergia, idx) => (
+                      <Badge
+                        key={idx}
+                        variant="destructive"
+                        className="text-xs px-2.5 py-0.5 gap-1.5 font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-2xs"
+                      >
+                        <span>⚠️ {alergia}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = (respuestas['alergias'] as string[]) || [];
+                            handleFieldChange('alergias', current.filter((_, i) => i !== idx));
+                          }}
+                          className="cursor-pointer hover:opacity-80"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Input para agregar */}
+                <div className="flex gap-2">
+                  <Input
+                    value={nuevaAlergiaInput}
+                    onChange={(e) => setNuevaAlergiaInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddAlergia();
+                      }
+                    }}
+                    placeholder="Escriba una alergia (ej: Penicilina, Látex, Ibuprofeno)..."
+                    className="text-xs h-9 bg-white dark:bg-slate-900 rounded-xl"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleAddAlergia()}
+                    className="h-9 px-3 text-xs bg-rose-600 hover:bg-rose-700 text-white cursor-pointer rounded-xl shrink-0"
+                  >
+                    <Plus className="size-3.5 mr-1" />
+                    Añadir
+                  </Button>
+                </div>
+
+                {/* Sugerencias Rápidas */}
+                <div className="space-y-1">
+                  <span className="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">
+                    Frecuentes (haga clic para agregar):
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {['Penicilina', 'Dipirona', 'Aspirina / AINEs', 'Sulfas', 'Látex', 'Yodo', 'Mariscos'].map((sug) => {
+                      const hasIt = ((respuestas['alergias'] as string[]) || []).includes(sug);
+                      return (
+                        <button
+                          key={sug}
+                          type="button"
+                          disabled={hasIt}
+                          onClick={() => {
+                            const current = (respuestas['alergias'] as string[]) || [];
+                            if (!current.includes(sug)) {
+                              handleFieldChange('alergias', [...current, sug]);
+                            }
+                          }}
+                          className={cn(
+                            'text-[10.5px] px-2 py-0.5 rounded-md border transition-all cursor-pointer',
+                            hasIt
+                              ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-400'
+                              : 'bg-white dark:bg-slate-900 border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100/50'
+                          )}
+                        >
+                          + {sug}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Antecedentes Patológicos y Familiares */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    Antecedentes Personales Patológicos
+                  </Label>
+                  <Textarea
+                    value={respuestas['antecedentes_patologicos'] || ''}
+                    onChange={(e) => handleFieldChange('antecedentes_patologicos', e.target.value)}
+                    placeholder="Hipertensión arterial, Diabetes, Asma, Gastritis, Tiroides, etc."
+                    rows={2}
+                    className="text-xs rounded-xl"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    Antecedentes Familiares Relevantes
+                  </Label>
+                  <Textarea
+                    value={respuestas['antecedentes_familiares'] || ''}
+                    onChange={(e) => handleFieldChange('antecedentes_familiares', e.target.value)}
+                    placeholder="Cardiopatías, Diabetes, Cáncer en padres o abuelos..."
+                    rows={2}
+                    className="text-xs rounded-xl"
+                  />
+                </div>
+              </div>
+
+              {/* 4. Cirugías y Medicación Habitual */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    Cirugías o Intervenciones Quirúrgicas Previas
+                  </Label>
+                  <Textarea
+                    value={respuestas['antecedentes_quirurgicos'] || ''}
+                    onChange={(e) => handleFieldChange('antecedentes_quirurgicos', e.target.value)}
+                    placeholder="Apendicectomía, Cesárea, Fracturas operadas..."
+                    rows={2}
+                    className="text-xs rounded-xl"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    Medicamentos de Uso Diario / Continuo
+                  </Label>
+                  <Textarea
+                    value={respuestas['medicacion_habitual'] || ''}
+                    onChange={(e) => handleFieldChange('medicacion_habitual', e.target.value)}
+                    placeholder="Fármacos que toma habitualmente con dosis y horarios..."
+                    rows={2}
+                    className="text-xs rounded-xl"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           {data.secciones.length === 0 ? (
             <Card className="bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 p-6 text-center">
               <CardContent className="p-0 space-y-3">

@@ -18,7 +18,10 @@ class PacienteMini(BaseModel):
     grupo_sanguineo: Optional[str] = None
     alergias: Optional[Any] = None
     antecedentes_patologicos: Optional[str] = None
+    antecedentes_familiares: Optional[str] = None
+    antecedentes_quirurgicos: Optional[str] = None
     medicacion_habitual: Optional[str] = None
+    observaciones_medicas: Optional[str] = None
     contacto_emergencia_nombre: Optional[str] = None
     contacto_emergencia_parentesco: Optional[str] = None
 
@@ -76,6 +79,11 @@ class CitaMini(BaseModel):
     hora_fin: Optional[str] = None
     estado: Optional[str] = None
     motivo: Optional[str] = None
+    modalidad: Optional[str] = "presencial"
+    sala_virtual_id: Optional[str] = None
+    teleconsulta_token: Optional[str] = None
+    paciente_conectado_at: Optional[datetime] = None
+    precio_estimado: Optional[float] = 0.0
 
     class Config:
         from_attributes = True
@@ -139,6 +147,20 @@ class ConsultaPreviaResumen(BaseModel):
     signos_vitales: Optional[Dict[str, Any]] = {}
     receta_medica: Optional[List[Any]] = []
     estudios_solicitados: Optional[List[Any]] = []
+    datos_plantilla: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+class PrimerOdontogramaInfo(BaseModel):
+    consulta_id: int
+    codigo: Optional[str] = None
+    fecha_consulta: datetime
+    medico_nombre: Optional[str] = None
+    especialidad_nombre: Optional[str] = None
+    diagnostico_principal: Optional[str] = None
+    denticion: Optional[str] = "adulto"
+    odontograma: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -169,6 +191,7 @@ class ConsultaResponse(BaseModel):
     observaciones_adicionales: Optional[str] = None
     referido_para: Optional[str] = None
     estado: str
+    estado_pago: str = "pendiente"
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -176,6 +199,10 @@ class ConsultaResponse(BaseModel):
     es_subsecuente: bool = False
     total_consultas_previas: int = 0
     consulta_previa: Optional[ConsultaPreviaResumen] = None
+
+    # Odontograma histórico de la primera consulta y consulta previa
+    primer_odontograma: Optional[PrimerOdontogramaInfo] = None
+    odontograma_previo: Optional[PrimerOdontogramaInfo] = None
 
     # Relaciones anidadas
     paciente: Optional[PacienteMini] = None

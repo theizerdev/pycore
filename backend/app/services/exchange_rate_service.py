@@ -189,9 +189,17 @@ class ExchangeRateService:
         if not rates_dict.get("USD") or not rates_dict.get("EUR") or not rates_dict.get("USDT"):
             return await cls.sync_all_rates(empresa_id, db)
 
+        empresa_stmt = select(Empresa).where(Empresa.id == empresa_id)
+        emp_res = await db.execute(empresa_stmt)
+        emp = emp_res.scalar_one_or_none()
+        moneda_cobro_activa = getattr(emp, "moneda_cobro_activa", "USD") or "USD"
+        tasa_cobro_activa = rates_dict.get(moneda_cobro_activa, {}).get("tasa") if rates_dict.get(moneda_cobro_activa) else None
+
         return {
             "tasas": rates_dict,
-            "sincronizado_at": datetime.now().isoformat()
+            "sincronizado_at": datetime.now().isoformat(),
+            "moneda_cobro_activa": moneda_cobro_activa,
+            "tasa_cobro_activa": tasa_cobro_activa
         }
 
     @classmethod
@@ -300,11 +308,89 @@ class ExchangeRateService:
 
         await db.commit()
 
+        empresa_stmt = select(Empresa).where(Empresa.id == empresa_id)
+        emp_res = await db.execute(empresa_stmt)
+        emp = emp_res.scalar_one_or_none()
+        moneda_cobro_activa = getattr(emp, "moneda_cobro_activa", "USD") or "USD"
+        tasa_cobro_activa = rates_res.get(moneda_cobro_activa, {}).get("tasa") if rates_res.get(moneda_cobro_activa) else None
+
         return {
             "status": "success",
             "message": "Tasas actualizadas exitosamente desde BCV y Binance",
             "tasas": rates_res,
-            "sincronizado_at": now.isoformat()
+            "sincronizado_at": now.isoformat(),
+            "moneda_cobro_activa": moneda_cobro_activa,
+            "tasa_cobro_activa": tasa_cobro_activa
+        }
+
+    @classmethod
+    async def set_active_billing_rate(
+        cls,
+        empresa_id: int,
+        moneda: str,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """Configura la tasa de cobro activa en el sistema (USD o EUR)."""
+        moneda_norm = (moneda or "").strip().upper()
+        if moneda_norm not in ["USD", "EUR"]:
+            raise ValueError("La moneda de cobro sólo puede ser 'USD' o 'EUR'")
+
+        empresa_stmt = select(Empresa).where(Empresa.id == empresa_id)
+        emp_res = await db.execute(empresa_stmt)
+        emp = emp_res.scalar_one_or_none()
+        if not emp:
+            raise ValueError("Empresa no encontrada")
+
+        emp.moneda_cobro_activa = moneda_norm
+        await db.commit()
+        await db.refresh(emp)
+
+        # Buscar última tasa para esta moneda
+        stmt = select(TasaCambio).where(
+            TasaCambio.empresa_id == empresa_id,
+            TasaCambio.moneda_origen == moneda_norm
+        ).order_by(desc(TasaCambio.created_at)).limit(1)
+        res = await db.execute(stmt)
+        tasa_obj = res.scalar_one_or_none()
+        tasa_valor = tasa_obj.tasa if tasa_obj else None
+
+        return {
+            "success": True,
+            "moneda_cobro_activa": moneda_norm,
+            "tasa_cobro_activa": tasa_valor,
+            "message": f"Tasa de cobro predeterminada configurada exitosamente en {moneda_norm} (BCV)"
+        }
+
+    @classmethod
+    async def get_active_billing_rate(cls, empresa_id: int, db: AsyncSession) -> Dict[str, Any]:
+        """Obtiene la tasa activa configurada para el cálculo de cobros y facturación."""
+        empresa_stmt = select(Empresa).where(Empresa.id == empresa_id)
+        emp_res = await db.execute(empresa_stmt)
+        emp = emp_res.scalar_one_or_none()
+        moneda_activa = getattr(emp, "moneda_cobro_activa", "USD") or "USD"
+
+        stmt = select(TasaCambio).where(
+            TasaCambio.empresa_id == empresa_id,
+            TasaCambio.moneda_origen == moneda_activa
+        ).order_by(desc(TasaCambio.created_at)).limit(1)
+        res = await db.execute(stmt)
+        tasa_obj = res.scalar_one_or_none()
+
+        if not tasa_obj:
+            rates_info = await cls.sync_all_rates(empresa_id, db)
+            tasa_item = rates_info.get("tasas", {}).get(moneda_activa)
+            return {
+                "moneda": moneda_activa,
+                "tasa": tasa_item.get("tasa") if tasa_item else 1.0,
+                "fuente": tasa_item.get("fuente") if tasa_item else "BCV",
+                "es_oficial": True
+            }
+
+        return {
+            "moneda": moneda_activa,
+            "tasa": tasa_obj.tasa,
+            "fuente": tasa_obj.fuente,
+            "es_oficial": tasa_obj.es_oficial
         }
 
     @classmethod
