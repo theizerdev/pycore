@@ -31,6 +31,7 @@ api.interceptors.response.use(
       const isPublicPath =
         currentPath === '/' ||
         currentPath === '/landing' ||
+        currentPath === '/lading' ||
         currentPath.startsWith('/login') ||
         currentPath.startsWith('/register') ||
         currentPath.startsWith('/verify-whatsapp') ||

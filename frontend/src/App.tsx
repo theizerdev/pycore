@@ -100,6 +100,7 @@ export const App: React.FC = () => {
                 {/* Rutas Públicas */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/landing" element={<LandingPage />} />
+            <Route path="/lading" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Login initialView="register" />} />
             <Route path="/verify-whatsapp" element={<Login initialView="verify-whatsapp" />} />
