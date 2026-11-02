@@ -19,12 +19,17 @@ if sys.platform == "win32":
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
 
-# Localizar Python de backend
-VENV_PYTHON = os.path.join(BACKEND_DIR, "venv", "Scripts", "python.exe")
+# Localizar Python y Alembic de backend (compatible con Windows y Linux)
+if sys.platform == "win32":
+    VENV_PYTHON = os.path.join(BACKEND_DIR, "venv", "Scripts", "python.exe")
+    ALEMBIC_BIN = os.path.join(BACKEND_DIR, "venv", "Scripts", "alembic.exe")
+else:
+    VENV_PYTHON = os.path.join(BACKEND_DIR, "venv", "bin", "python")
+    ALEMBIC_BIN = os.path.join(BACKEND_DIR, "venv", "bin", "alembic")
+
 if not os.path.exists(VENV_PYTHON):
     VENV_PYTHON = sys.executable
 
-ALEMBIC_BIN = os.path.join(BACKEND_DIR, "venv", "Scripts", "alembic.exe")
 if not os.path.exists(ALEMBIC_BIN):
     ALEMBIC_BIN = "alembic"
 
