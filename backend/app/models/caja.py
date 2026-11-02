@@ -76,6 +76,7 @@ class Cobro(Base, TimestampMixin):
     medico_id = Column(Integer, ForeignKey("medicos.id", ondelete="SET NULL"), nullable=True, index=True)
     cita_id = Column(Integer, ForeignKey("citas_medicas.id", ondelete="SET NULL"), nullable=True, index=True)
     consulta_id = Column(Integer, ForeignKey("consultas_medicas.id", ondelete="SET NULL"), nullable=True, index=True)
+    liquidacion_id = Column(Integer, nullable=True, index=True)
 
     numero_recibo = Column(String(50), nullable=False, index=True)  # Ej. "REC-2026-00001"
     fecha_emision = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

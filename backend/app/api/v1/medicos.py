@@ -1,6 +1,7 @@
 import re
 import urllib.parse
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,6 +85,17 @@ def format_clean_whatsapp_number(phone: str, default_country_code: str = "58") -
 
     return clean
 
+
+def get_empresa_codigo_pais(empresa: Any) -> str:
+    """Obtiene el código telefónico internacional del país de la empresa (default: '58')."""
+    if empresa:
+        if hasattr(empresa, "pais_telefono") and empresa.pais_telefono and getattr(empresa.pais_telefono, "codigo_telefonico", None):
+            return str(empresa.pais_telefono.codigo_telefonico).replace("+", "").strip()
+        if hasattr(empresa, "pais") and empresa.pais and getattr(empresa.pais, "codigo_telefonico", None):
+            return str(empresa.pais.codigo_telefonico).replace("+", "").strip()
+    return "58"
+
+
 router = APIRouter(prefix="/medicos", tags=["Médicos / Especialistas"])
 
 def _format_medico_response(m: Medico) -> MedicoResponse:
@@ -120,7 +132,11 @@ def _format_medico_response(m: Medico) -> MedicoResponse:
         pais_codigo_iso2=m.pais_telefono.codigo_iso2 if m.pais_telefono else None,
         pais_codigo_telefonico=m.pais_telefono.codigo_telefonico if m.pais_telefono else None,
         sucursal_nombre=m.sucursal_defecto.nombre if m.sucursal_defecto else None,
-        usuario_activo=m.usuario.activo if m.usuario else None
+        usuario_activo=m.usuario.activo if m.usuario else None,
+        tipo_comision=m.tipo_comision or "porcentaje",
+        porcentaje_honorario=float(m.porcentaje_honorario if m.porcentaje_honorario is not None else 70.00),
+        monto_fijo_honorario=float(m.monto_fijo_honorario if m.monto_fijo_honorario is not None else 0.00),
+        datos_bancarios=m.datos_bancarios or {},
     )
 
 @router.get("", response_model=List[MedicoResponse])
@@ -307,6 +323,10 @@ async def create_medico(
         subespecialidades=subesp_dicts,
         sucursales_ids=req.sucursales_ids,
         horario_atencion=req.horario_atencion if req.horario_atencion is not None else {},
+        tipo_comision=req.tipo_comision or "porcentaje",
+        porcentaje_honorario=Decimal(str(req.porcentaje_honorario if req.porcentaje_honorario is not None else 70.00)),
+        monto_fijo_honorario=Decimal(str(req.monto_fijo_honorario if req.monto_fijo_honorario is not None else 0.00)),
+        datos_bancarios=req.datos_bancarios or {},
         activo=req.activo
     )
     db.add(nuevo_medico)
@@ -452,6 +472,14 @@ async def update_medico(
         ]
     if req.horario_atencion is not None:
         medico.horario_atencion = req.horario_atencion
+    if req.tipo_comision is not None:
+        medico.tipo_comision = req.tipo_comision
+    if req.porcentaje_honorario is not None:
+        medico.porcentaje_honorario = Decimal(str(req.porcentaje_honorario))
+    if req.monto_fijo_honorario is not None:
+        medico.monto_fijo_honorario = Decimal(str(req.monto_fijo_honorario))
+    if req.datos_bancarios is not None:
+        medico.datos_bancarios = req.datos_bancarios
 
     # Sincronizar con Usuario vinculado si existe
     if medico.usuario:

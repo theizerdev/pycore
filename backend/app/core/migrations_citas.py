@@ -41,6 +41,15 @@ async def run_citas_migrations():
             # Columnas para medicos
             medicos_columns = [
                 ("horario_atencion", "JSON NULL" if dialect_name == "mysql" else "TEXT NULL"),
+                ("tipo_comision", "VARCHAR(20) DEFAULT 'porcentaje'"),
+                ("porcentaje_honorario", "DECIMAL(5, 2) DEFAULT 70.00"),
+                ("monto_fijo_honorario", "DECIMAL(12, 2) DEFAULT 0.00"),
+                ("datos_bancarios", "JSON NULL" if dialect_name == "mysql" else "TEXT NULL"),
+            ]
+
+            # Columnas para cobros
+            cobros_columns = [
+                ("liquidacion_id", "INT NULL"),
             ]
 
             # Columnas para empresas
@@ -99,6 +108,18 @@ async def run_citas_migrations():
                             await conn.execute(text(f"ALTER TABLE empresas ADD COLUMN {col_name} {col_type}"))
                     except Exception as err:
                         logger.warning(f"Error verificando columna {col_name} en empresas: {err}")
+                for col_name, col_type in cobros_columns:
+                    try:
+                        res = await conn.execute(text(
+                            f"SELECT COUNT(*) FROM information_schema.columns "
+                            f"WHERE table_schema = DATABASE() AND table_name = 'cobros' AND column_name = '{col_name}'"
+                        ))
+                        exists = res.scalar() > 0
+                        if not exists:
+                            logger.info(f"Agregando columna {col_name} a cobros...")
+                            await conn.execute(text(f"ALTER TABLE cobros ADD COLUMN {col_name} {col_type}"))
+                    except Exception as err:
+                        logger.warning(f"Error verificando columna {col_name} en cobros: {err}")
 
             elif dialect_name == "sqlite":
                 res = await conn.execute(text("PRAGMA table_info(citas_medicas)"))

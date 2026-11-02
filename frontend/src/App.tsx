@@ -71,11 +71,13 @@ const ConsultasPage = lazyComponent(() => import('./pages/clinica/ConsultasPage'
 const ConsultaAtencionPage = lazyComponent<{ readOnly?: boolean }>(() => import('./pages/clinica/ConsultaAtencionPage'), 'ConsultaAtencionPage');
 const WorkSpaceHubPage = lazyComponent(() => import('./pages/clinica/WorkSpaceHubPage'), 'WorkSpaceHubPage');
 const ServiciosPage = lazyComponent(() => import('./pages/administracion/ServiciosPage'), 'ServiciosPage');
+const EstudiosPage = lazyComponent(() => import('./pages/clinica/EstudiosPage'), 'EstudiosPage');
 const LandingPage = lazyComponent(() => import('./pages/public/LandingPage'), 'LandingPage');
 const LandingCmsPage = lazyComponent(() => import('./pages/administracion/LandingCmsPage'), 'LandingCmsPage');
 const PuntoCobroPage = lazyComponent(() => import('./pages/facturacion/PuntoCobroPage'), 'PuntoCobroPage');
 const CajasControlPage = lazyComponent(() => import('./pages/facturacion/CajasControlPage'), 'CajasControlPage');
 const RecibosHistorialPage = lazyComponent(() => import('./pages/facturacion/RecibosHistorialPage'), 'RecibosHistorialPage');
+const HonorariosMedicosPage = lazyComponent(() => import('./pages/facturacion/HonorariosMedicosPage'), 'HonorariosMedicosPage');
 
 const HomeRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -216,6 +218,14 @@ export const App: React.FC = () => {
                 }
               />
               <Route
+                path="clinica/estudios"
+                element={
+                  <ProtectedRoute requiredPermission="consultas.ver">
+                    <EstudiosPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="clinica/servicios"
                 element={<Navigate to="/administracion/servicios" replace />}
               />
@@ -242,6 +252,14 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <RecibosHistorialPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="facturacion/honorarios"
+                element={
+                  <ProtectedRoute>
+                    <HonorariosMedicosPage />
                   </ProtectedRoute>
                 }
               />

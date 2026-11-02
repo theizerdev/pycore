@@ -39,6 +39,7 @@ import {
   Receipt,
   CircleDollarSign,
   Video,
+  FlaskConical,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -156,6 +157,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           icon: Users,
           permission: 'pacientes.ver',
         },
+        {
+          title: 'Estudios & Laboratorios',
+          href: '/clinica/estudios',
+          icon: FlaskConical,
+          permission: 'consultas.ver',
+        },
       ],
     },
     {
@@ -210,6 +217,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           title: 'Historial de Recibos y Ventas',
           href: '/facturacion/recibos',
           icon: Receipt,
+        },
+        {
+          title: 'Honorarios Médicos & Comisiones',
+          href: '/facturacion/honorarios',
+          icon: Calculator,
         },
       ],
     },

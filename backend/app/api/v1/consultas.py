@@ -3,6 +3,7 @@ import time
 from datetime import datetime, date, time as dtime
 from typing import List, Optional, Dict, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -22,6 +23,9 @@ from app.models.auditoria import AuditoriaLog
 from app.schemas.integracion import JitsiSessionResponse
 from app.services.jitsi_service import JitsiService
 from app.services.plan_quota_service import PlanQuotaService
+from app.services.whatsapp_resolver import resolve_whatsapp_service
+from app.api.v1.medicos import format_clean_whatsapp_number, get_empresa_codigo_pais
+from app.models.sucursal import Sucursal
 from app.schemas.consulta import (
     ConsultaCreate,
     ConsultaUpdate,
@@ -748,3 +752,188 @@ async def crear_sesion_teleconsulta_consulta(
 
     return JitsiSessionResponse(**session_data)
 
+
+class EnviarDocumentoWhatsAppRequest(BaseModel):
+    tipo_documento: str = "receta"  # "receta", "estudios", "reposo", "constancia", "informe"
+    telefono_personalizado: Optional[str] = None
+    incluir_indicaciones: Optional[bool] = True
+    texto_personalizado: Optional[str] = None
+
+
+@router.post("/{id}/enviar-documento-whatsapp")
+async def enviar_documento_consulta_whatsapp(
+    id: int,
+    payload: EnviarDocumentoWhatsAppRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("consultas.ver")),
+):
+    """
+    Despacha el récipe médico digital, orden de exámenes, reposo o constancia médica
+    directamente al WhatsApp verificado del paciente con membrete institucional.
+    """
+    query = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.paciente),
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad),
+            selectinload(ConsultaMedica.sucursal),
+            selectinload(ConsultaMedica.empresa),
+        )
+        .where(ConsultaMedica.id == id)
+    )
+    if not current_user.es_superadmin:
+        query = query.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(query)
+    consulta = res.scalar_one_or_none()
+    if not consulta:
+        raise HTTPException(status_code=404, detail="Consulta médica no encontrada")
+
+    paciente = consulta.paciente
+    if not paciente:
+        raise HTTPException(status_code=400, detail="La consulta no tiene un paciente vinculado")
+
+    raw_phone = payload.telefono_personalizado or paciente.telefono
+    if not raw_phone or not raw_phone.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="El paciente no tiene un número telefónico registrado para despacho de WhatsApp",
+        )
+
+    empresa = consulta.empresa
+    if not empresa:
+        res_emp = await db.execute(select(Empresa).where(Empresa.id == consulta.empresa_id))
+        empresa = res_emp.scalar_one_or_none()
+
+    cod_pais = get_empresa_codigo_pais(empresa)
+    clean_phone = format_clean_whatsapp_number(raw_phone, cod_pais)
+    if not clean_phone:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El formato del número ({raw_phone}) no es válido para WhatsApp con código país {cod_pais}",
+        )
+
+    nombre_clinica = empresa.nombre if empresa else "Centro Médico"
+    sucursal_nombre = consulta.sucursal.nombre if consulta.sucursal else "Sede Principal"
+    nombre_doc = (
+        f"{consulta.medico.nombres} {consulta.medico.apellidos}"
+        if consulta.medico
+        else current_user.nombre
+    )
+    esp_nombre = consulta.especialidad.nombre if consulta.especialidad else "Medicina General"
+    pac_nombre = f"{paciente.nombres} {paciente.apellidos}".strip()
+    pac_doc = f"{getattr(paciente, 'tipo_documento', 'V')}-{getattr(paciente, 'documento_identidad', '')}"
+    fecha_str = consulta.fecha.strftime("%d/%m/%Y") if hasattr(consulta, 'fecha') and consulta.fecha else datetime.now().strftime("%d/%m/%Y")
+
+    tipo = (payload.tipo_documento or "receta").lower()
+    cuerpo_documento = ""
+
+    nl = "\n"
+    if tipo == "receta":
+        titulo_doc = "💊 *RÉCIPE Y PRESCRIPCIÓN MÉDICA OFICIAL*"
+        meds = consulta.medicamentos_prescritos or []
+        if meds:
+            items_txt = []
+            for idx, m in enumerate(meds, 1):
+                nom = m.get("medicamento") or m.get("nombre") or "Fármaco"
+                pres = f" ({m.get('presentacion')})" if m.get("presentacion") else ""
+                dos = f"{nl}   • Dosis/Vía: {m.get('dosis')}" if m.get("dosis") else ""
+                dur = f"{nl}   • Duración: {m.get('duracion')}" if m.get("duracion") else ""
+                ind = f"{nl}   • Indicaciones: {m.get('indicaciones')}" if m.get("indicaciones") else ""
+                items_txt.append(f"*{idx}. {nom}*{pres}{dos}{dur}{ind}")
+            cuerpo_documento = f"{nl}{nl}".join(items_txt)
+        else:
+            cuerpo_documento = "_(Sin medicamentos farmacológicos prescritos en esta consulta)_"
+
+        if payload.incluir_indicaciones and consulta.plan_tratamiento:
+            cuerpo_documento += f"{nl}{nl}📝 *Indicaciones Generales & Cuidados:*{nl}{consulta.plan_tratamiento}"
+
+    elif tipo == "estudios":
+        titulo_doc = "🔬 *ORDEN DE ESTUDIOS Y EXÁMENES COMPLEMENTARIOS*"
+        estudios_req = consulta.estudios_solicitados or []
+        if estudios_req:
+            items_txt = []
+            for idx, est in enumerate(estudios_req, 1):
+                nom = est.get("estudio") or est.get("nombre") or "Examen Paraclínico"
+                ind = f" - _{est.get('indicaciones')}_" if est.get("indicaciones") else ""
+                items_txt.append(f"*{idx}. {nom}*{ind}")
+            cuerpo_documento = nl.join(items_txt)
+        else:
+            cuerpo_documento = "_(Sin órdenes de estudios adicionales en esta consulta)_"
+
+    elif tipo == "reposo":
+        titulo_doc = "🛌 *CERTIFICADO DE REPOSO MÉDICO*"
+        motivo_txt = consulta.diagnostico_principal or consulta.motivo_consulta or "Evaluación clínica"
+        cuerpo_documento = (
+            f"Se hace constar que el paciente *{pac_nombre}* fue atendido en consulta y amerita reposo médico "
+            f"para su adecuada recuperación por motivo de: *{motivo_txt}*."
+        )
+
+    elif tipo == "constancia":
+        titulo_doc = "📋 *CONSTANCIA DE ATENCIÓN MÉDICA*"
+        hora_str = consulta.hora_inicio.strftime("%I:%M %p") if getattr(consulta, 'hora_inicio', None) else "turno correspondiente"
+        cuerpo_documento = (
+            f"Se certifica que el ciudadano(a) *{pac_nombre}*, titular de la cédula *{pac_doc}*, "
+            f"asistió y fue atendido(a) en nuestras instalaciones el día *{fecha_str}* a las *{hora_str}*."
+        )
+
+    else:
+        titulo_doc = "📄 *INFORME MÉDICO RESUMIDO*"
+        diag = consulta.diagnostico_principal or "En observación"
+        cuerpo_documento = (
+            f"📌 *Motivo:* {consulta.motivo_consulta or 'Consulta regular'}{nl}"
+            f"📌 *Diagnóstico:* {diag}{nl}"
+            f"📌 *Evolución / Plan:* {consulta.plan_tratamiento or 'Seguimiento clínico ambulatorio'}"
+        )
+
+    if payload.texto_personalizado:
+        cuerpo_documento += f"{nl}{nl}💬 *Nota del Especialista:*{nl}{payload.texto_personalizado}"
+
+    # Plantilla final WhatsApp institucional
+    sep = "━━━━━━━━━━━━━━━━━━━━━━"
+    mensaje_ws = (
+        f"👋 Estimado(a) *{pac_nombre}*,{nl}{nl}"
+        f"Desde *{nombre_clinica}* ({sucursal_nombre}) le hacemos entrega de su documento clínico digital:{nl}{nl}"
+        f"{sep}{nl}"
+        f"{titulo_doc}{nl}"
+        f"{sep}{nl}"
+        f"👨‍⚕️ *Especialista:* Dr(a). {nombre_doc}{nl}"
+        f"🩺 *Especialidad:* {esp_nombre}{nl}"
+        f"📅 *Fecha:* {fecha_str}{nl}"
+        f"🆔 *Doc. Paciente:* {pac_doc}{nl}{nl}"
+        f"{cuerpo_documento}{nl}{nl}"
+        f"{sep}{nl}"
+        f"🔒 _Documento digital emitido y autenticado en MediSoft Suite._{nl}"
+        f"📞 Ante cualquier inquietud o duda con su tratamiento, puede contactarnos a través de este canal."
+    )
+
+    wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(
+        db, consulta.empresa_id, consulta.sucursal_id
+    )
+
+    send_res = await wa_service.send_message(to=clean_phone, message=mensaje_ws)
+
+    db.add(
+        AuditoriaLog(
+            empresa_id=consulta.empresa_id,
+            usuario_id=current_user.id,
+            accion="ENVIAR_DOCUMENTO_WHATSAPP",
+            modulo="consultas",
+            detalles={
+                "consulta_id": consulta.id,
+                "paciente_id": paciente.id,
+                "tipo_documento": tipo,
+                "destinatario": clean_phone,
+                "success": bool(send_res.get("success", True)),
+            },
+        )
+    )
+    await db.commit()
+
+    return {
+        "success": bool(send_res.get("success", True)),
+        "message": f"Documento ({tipo.upper()}) despachado exitosamente por WhatsApp al paciente.",
+        "destinatario": clean_phone,
+        "preview_mensaje": mensaje_ws,
+    }

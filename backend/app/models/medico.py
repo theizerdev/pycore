@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, Text, JSON
+from sqlalchemy import Column, String, Boolean, Integer, Numeric, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.models.base import TimestampMixin
@@ -30,6 +30,12 @@ class Medico(Base, TimestampMixin):
 
     # Configuración de turnos y disponibilidad horaria del médico
     horario_atencion = Column(JSON, default=dict, nullable=False)
+
+    # Configuración de honorarios y comisiones médicas
+    tipo_comision = Column(String(20), default="porcentaje", nullable=False)  # "porcentaje" o "fijo"
+    porcentaje_honorario = Column(Numeric(5, 2), default=70.00, nullable=False)  # % para el médico (ej. 70%)
+    monto_fijo_honorario = Column(Numeric(12, 2), default=0.00, nullable=False)  # Monto fijo en USD si aplica
+    datos_bancarios = Column(JSON, default=dict, nullable=False)  # Banco, cuenta, titular, documento, pago móvil, zelle
 
     activo = Column(Boolean, default=True, nullable=False)
 

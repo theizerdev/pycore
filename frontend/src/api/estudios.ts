@@ -27,6 +27,7 @@ export interface EstudioAdjunto {
   paciente_id: number;
   consulta_id?: number;
   medico_id?: number;
+  sucursal_id?: number;
   titulo: string;
   categoria: 'laboratorio' | 'imagenologia' | 'informe' | 'otro';
   subtipo?: string;
@@ -44,7 +45,54 @@ export interface EstudioAdjunto {
   created_at?: string;
 }
 
+export interface EstudioItemResponse extends EstudioAdjunto {
+  paciente_nombre?: string;
+  paciente_documento?: string;
+  paciente_telefono?: string;
+  paciente_email?: string;
+  paciente_foto_url?: string;
+  consulta_codigo?: string;
+  medico_nombre?: string;
+  sucursal_nombre?: string;
+}
+
+export interface EstudioStats {
+  total: number;
+  laboratorio: number;
+  imagenologia: number;
+  con_alertas: number;
+  pendientes: number;
+  revisados: number;
+}
+
+export interface ListarEstudiosResponse {
+  items: EstudioItemResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  stats: EstudioStats;
+}
+
+export interface ListarEstudiosParams {
+  page?: number;
+  page_size?: number;
+  categoria?: string;
+  estado_analisis?: string;
+  search?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
+  paciente_id?: number;
+  medico_id?: number;
+  sucursal_id?: number;
+}
+
 export const estudiosApi = {
+  listarGlobal: async (params?: ListarEstudiosParams) => {
+    const { data } = await api.get<ListarEstudiosResponse>('/estudios', { params });
+    return data;
+  },
+
   listarPorPaciente: async (
     pacienteId: number,
     categoria?: string,

@@ -575,6 +575,10 @@ export interface Medico {
   sucursales_ids: number[];
   horario_atencion?: Record<string, any> | any[] | null;
   biografia?: string | null;
+  tipo_comision?: 'porcentaje' | 'fijo';
+  porcentaje_honorario?: number;
+  monto_fijo_honorario?: number;
+  datos_bancarios?: Record<string, any>;
   activo: boolean;
   created_at?: string;
   updated_at?: string;
@@ -607,6 +611,10 @@ export interface MedicoCreateInput {
   sucursales_ids?: number[];
   horario_atencion?: Record<string, any> | any[] | null;
   biografia?: string | null;
+  tipo_comision?: 'porcentaje' | 'fijo';
+  porcentaje_honorario?: number;
+  monto_fijo_honorario?: number;
+  datos_bancarios?: Record<string, any>;
   activo?: boolean;
   crear_usuario?: boolean;
   password?: string | null;
@@ -630,6 +638,10 @@ export interface MedicoUpdateInput {
   sucursales_ids?: number[];
   horario_atencion?: Record<string, any> | any[] | null;
   biografia?: string | null;
+  tipo_comision?: 'porcentaje' | 'fijo';
+  porcentaje_honorario?: number;
+  monto_fijo_honorario?: number;
+  datos_bancarios?: Record<string, any>;
   activo?: boolean;
   password?: string | null;
 }

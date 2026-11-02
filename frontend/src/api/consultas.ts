@@ -275,4 +275,17 @@ export const consultasApi = {
     );
     return response.data;
   },
+
+  enviarDocumentoWhatsApp: async (
+    id: number,
+    payload: {
+      tipo_documento: string;
+      telefono_personalizado?: string;
+      incluir_indicaciones?: boolean;
+      texto_personalizado?: string;
+    }
+  ): Promise<{ success: boolean; message: string; destinatario?: string; preview_mensaje?: string }> => {
+    const response = await api.post(`/consultas/${id}/enviar-documento-whatsapp`, payload);
+    return response.data;
+  },
 };

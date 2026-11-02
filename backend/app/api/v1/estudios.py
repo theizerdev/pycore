@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from pydantic import BaseModel
-from sqlalchemy import select, or_, and_, desc
+from sqlalchemy import select, or_, and_, desc, func, case
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 import base64
@@ -12,6 +12,8 @@ from app.models.usuario import Usuario
 from app.models.paciente import Paciente
 from app.models.estudio import EstudioAdjunto
 from app.models.consulta import ConsultaMedica
+from app.models.medico import Medico
+from app.models.sucursal import Sucursal
 from app.core.security import get_current_user, require_permission
 
 router = APIRouter(prefix="/estudios", tags=["Estudios Médicos y Visor Inteligente"])
@@ -276,6 +278,160 @@ def ejecutar_bot_analisis_imagenologia(titulo: str, subtipo: Optional[str], dato
 # ==========================================
 # RUTAS DE API
 # ==========================================
+
+@router.get("", response_model=None)
+@router.get("/", response_model=None)
+async def listar_estudios_global(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=100),
+    categoria: Optional[str] = Query(None),
+    estado_analisis: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    fecha_desde: Optional[date] = Query(None),
+    fecha_hasta: Optional[date] = Query(None),
+    paciente_id: Optional[int] = Query(None),
+    medico_id: Optional[int] = Query(None),
+    sucursal_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """
+    Listado centralizado de estudios clínicos (laboratorios, imagenología, informes)
+    para el módulo de Estudios y Exámenes Complementarios con soporte para búsqueda,
+    filtros avanzados por fecha/categoría/estado y métricas globales.
+    """
+    base_conditions = [EstudioAdjunto.empresa_id == current_user.empresa_id]
+
+    if categoria and categoria.lower() != "todos":
+        base_conditions.append(EstudioAdjunto.categoria == categoria.lower())
+
+    if estado_analisis and estado_analisis.lower() != "todos":
+        base_conditions.append(EstudioAdjunto.estado_analisis == estado_analisis.lower())
+
+    if fecha_desde:
+        base_conditions.append(EstudioAdjunto.fecha_estudio >= fecha_desde)
+    if fecha_hasta:
+        base_conditions.append(EstudioAdjunto.fecha_estudio <= fecha_hasta)
+
+    if paciente_id:
+        base_conditions.append(EstudioAdjunto.paciente_id == paciente_id)
+    if medico_id:
+        base_conditions.append(EstudioAdjunto.medico_id == medico_id)
+    if sucursal_id:
+        base_conditions.append(EstudioAdjunto.sucursal_id == sucursal_id)
+
+    search_join_needed = False
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        search_join_needed = True
+        base_conditions.append(
+            or_(
+                func.lower(EstudioAdjunto.titulo).like(term),
+                func.lower(EstudioAdjunto.subtipo).like(term),
+                func.lower(EstudioAdjunto.archivo_nombre).like(term),
+                func.lower(EstudioAdjunto.notas).like(term),
+                func.lower(Paciente.nombres).like(term),
+                func.lower(Paciente.apellidos).like(term),
+                func.lower(Paciente.documento_identidad).like(term),
+            )
+        )
+
+    count_query = select(func.count(EstudioAdjunto.id)).where(*base_conditions)
+    if search_join_needed:
+        count_query = count_query.join(Paciente, EstudioAdjunto.paciente_id == Paciente.id, isouter=True)
+
+    res_count = await db.execute(count_query)
+    total_items = res_count.scalar() or 0
+
+    query = (
+        select(EstudioAdjunto)
+        .options(
+            selectinload(EstudioAdjunto.paciente),
+            selectinload(EstudioAdjunto.medico),
+            selectinload(EstudioAdjunto.consulta),
+            selectinload(EstudioAdjunto.sucursal),
+        )
+        .where(*base_conditions)
+    )
+    if search_join_needed:
+        query = query.join(Paciente, EstudioAdjunto.paciente_id == Paciente.id, isouter=True)
+
+    query = query.order_by(EstudioAdjunto.fecha_estudio.desc(), EstudioAdjunto.id.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    res_items = await db.execute(query)
+    items = res_items.scalars().all()
+
+    # Métricas estadísticas
+    stats_query = select(
+        func.count(EstudioAdjunto.id).label("total"),
+        func.sum(case((EstudioAdjunto.categoria == "laboratorio", 1), else_=0)).label("laboratorio"),
+        func.sum(case((EstudioAdjunto.categoria == "imagenologia", 1), else_=0)).label("imagenologia"),
+        func.sum(case((EstudioAdjunto.estado_analisis == "analizado_alterado", 1), else_=0)).label("con_alertas"),
+        func.sum(case((EstudioAdjunto.estado_analisis == "pendiente", 1), else_=0)).label("pendientes"),
+        func.sum(case((EstudioAdjunto.estado_analisis == "revisado_medico", 1), else_=0)).label("revisados"),
+    ).where(EstudioAdjunto.empresa_id == current_user.empresa_id)
+
+    res_stats = await db.execute(stats_query)
+    stats_row = res_stats.one_or_none()
+    stats = {
+        "total": int(getattr(stats_row, "total", 0) or 0),
+        "laboratorio": int(getattr(stats_row, "laboratorio", 0) or 0),
+        "imagenologia": int(getattr(stats_row, "imagenologia", 0) or 0),
+        "con_alertas": int(getattr(stats_row, "con_alertas", 0) or 0),
+        "pendientes": int(getattr(stats_row, "pendientes", 0) or 0),
+        "revisados": int(getattr(stats_row, "revisados", 0) or 0),
+    }
+
+    formatted_items = []
+    for e in items:
+        pac = e.paciente
+        med = e.medico
+        con = e.consulta
+        suc = e.sucursal
+        formatted_items.append({
+            "id": e.id,
+            "empresa_id": e.empresa_id,
+            "paciente_id": e.paciente_id,
+            "paciente_nombre": f"{pac.nombres} {pac.apellidos}".strip() if pac else f"Paciente #{e.paciente_id}",
+            "paciente_documento": f"{getattr(pac, 'tipo_documento', 'V')}-{getattr(pac, 'documento_identidad', '')}" if pac else "",
+            "paciente_telefono": getattr(pac, "telefono", None) if pac else None,
+            "paciente_email": getattr(pac, "email", None) if pac else None,
+            "paciente_foto_url": getattr(pac, "foto_url", None) if pac else None,
+            "consulta_id": e.consulta_id,
+            "consulta_codigo": getattr(con, "codigo", None) if con else None,
+            "medico_id": e.medico_id,
+            "medico_nombre": f"Dr(a). {med.nombres} {med.apellidos}".strip() if med else None,
+            "sucursal_id": e.sucursal_id,
+            "sucursal_nombre": getattr(suc, "nombre", None) if suc else None,
+            "titulo": e.titulo,
+            "categoria": e.categoria,
+            "subtipo": e.subtipo,
+            "archivo_nombre": e.archivo_nombre,
+            "archivo_tipo": e.archivo_tipo,
+            "archivo_tamano": e.archivo_tamano,
+            "archivo_url": e.archivo_url,
+            "fecha_estudio": str(e.fecha_estudio),
+            "estado_analisis": e.estado_analisis,
+            "valores_laboratorio": e.valores_laboratorio or [],
+            "datos_imagenologia": e.datos_imagenologia,
+            "alertas_detectadas": e.alertas_detectadas or [],
+            "interpretacion_clinica": e.interpretacion_clinica,
+            "notas": e.notas,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        })
+
+    total_pages = max(1, (total_items + page_size - 1) // page_size)
+
+    return {
+        "items": formatted_items,
+        "total": total_items,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "stats": stats,
+    }
+
 
 @router.get("/paciente/{paciente_id}")
 async def listar_estudios_paciente(
