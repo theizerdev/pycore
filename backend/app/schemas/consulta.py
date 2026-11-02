@@ -83,6 +83,7 @@ class CitaMini(BaseModel):
     sala_virtual_id: Optional[str] = None
     teleconsulta_token: Optional[str] = None
     paciente_conectado_at: Optional[datetime] = None
+    precio_estimado: Optional[float] = 0.0
 
     class Config:
         from_attributes = True
