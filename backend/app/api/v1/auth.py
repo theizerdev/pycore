@@ -228,13 +228,34 @@ async def update_profile(
     return UsuarioResponse.model_validate(updated_user)
 
 
+@router.get("/public-especialidades")
+async def get_public_especialidades(db: AsyncSession = Depends(get_db)):
+    """Retorna el listado público de especialidades activas para el formulario de auto-registro."""
+    from app.models.especialidad import Especialidad
+    stmt = select(Especialidad).where(Especialidad.activo == True).order_by(Especialidad.nombre.asc())
+    res = await db.execute(stmt)
+    items = res.scalars().all()
+    if not items:
+        return [
+            {"id": 1, "nombre": "Medicina General", "color": "#0d9488"},
+            {"id": 2, "nombre": "Cardiología Clínica", "color": "#e11d48"},
+            {"id": 3, "nombre": "Pediatría", "color": "#0284c7"},
+            {"id": 4, "nombre": "Ginecología & Obstetricia", "color": "#db2777"},
+            {"id": 5, "nombre": "Traumatología y Ortopedia", "color": "#d97706"},
+            {"id": 6, "nombre": "Dermatología", "color": "#7c3aed"},
+            {"id": 7, "nombre": "Oftalmología", "color": "#059669"},
+            {"id": 8, "nombre": "Odontología Integral", "color": "#0891b2"},
+        ]
+    return [{"id": item.id, "nombre": item.nombre, "color": item.color or "#0d9488"} for item in items]
+
+
 @router.post("/register-public", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register_public_empresa(
     req: RegisterPublicRequest,
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Permite el auto-registro de una nueva empresa/clínica con Plan Prueba de 7 Días ($0.00)."""
+    """Permite el auto-registro de una nueva empresa/clínica o médico independiente con Plan Prueba de 7 Días ($0.00)."""
     stmt_usr = select(Usuario).where(Usuario.email == req.email)
     res_usr = await db.execute(stmt_usr)
     if res_usr.scalar_one_or_none():
@@ -262,25 +283,32 @@ async def register_public_empresa(
         res_fb = await db.execute(stmt_fb)
         plan_prueba = res_fb.scalar_one_or_none()
 
-    # 0. Resolver teléfono (soporta req.telefono y req.company_phone de FixSale POS)
+    # 0. Resolver tipo de entidad (clínica vs médico independiente) y teléfono
+    is_doctor = req.tipo_entidad == "medico_independiente"
+    tipo_entidad_val = "medico_independiente" if is_doctor else "clinica"
     phone_number = (req.telefono or req.company_phone or "").strip() or None
 
     # 1. Documento Fiscal (RIF/DNI)
     doc_fiscal = req.company_document.strip() if req.company_document else f"S/D-{secrets.token_hex(3).upper()}"
 
     # 2. Instancia WhatsApp limpia (ej. "centro-medico" -> "centromedicosalud")
-    base_name = req.nombre_comercial or req.company_name
+    base_name = req.nombre_comercial or req.company_name or req.representante_legal
     clean_instance = re.sub(r'[^a-zA-Z0-9_-]', '', base_name.replace(' ', '').lower())
     if not clean_instance:
-        clean_instance = f"empresa_wa_{secrets.token_hex(4)}"
+        clean_instance = f"dr_wa_{secrets.token_hex(4)}" if is_doctor else f"empresa_wa_{secrets.token_hex(4)}"
 
     # 3. Generar API Keys de 32 caracteres y código OTP de 8 dígitos
     api_key_str = f"mf_{secrets.token_hex(16)}"
     wa_api_key_str = f"wa_{secrets.token_hex(16)}"
     otp_code_str = str(random.randint(10000000, 99999999))
 
+    nombre_empresa = req.company_name
+    if is_doctor and not nombre_empresa:
+        nombre_empresa = req.nombre_comercial or f"Consultorio Dr(a). {req.representante_legal}"
+
     empresa = Empresa(
-        nombre=req.company_name,
+        nombre=nombre_empresa,
+        tipo_entidad=tipo_entidad_val,
         identificacion_fiscal=doc_fiscal,
         email=req.email,
         telefono=phone_number,
@@ -302,7 +330,7 @@ async def register_public_empresa(
     sub_prueba = Suscripcion(
         empresa_id=empresa.id,
         plan_id=plan_prueba.id if plan_prueba else None,
-        nombre_plan="Prueba Gratuita",
+        nombre_plan="Prueba Gratuita - Profesional" if is_doctor else "Prueba Gratuita",
         ciclo_meses=0,
         max_sucursales=1,
         monto_total=0.00,
@@ -313,11 +341,16 @@ async def register_public_empresa(
     db.add(sub_prueba)
     await db.flush()
 
-    # 5. Crear Sucursal Principal
+    # 5. Crear Sucursal Principal / Consultorio
+    partes_nombre = req.representante_legal.strip().split(' ', 1)
+    nombre = partes_nombre[0]
+    apellido = partes_nombre[1] if len(partes_nombre) > 1 else ("Especialista" if is_doctor else "Administrador")
+
+    sucursal_nombre = f"Consultorio Dr(a). {nombre} {apellido}" if is_doctor else "Sucursal Principal"
     sucursal = Sucursal(
         empresa_id=empresa.id,
-        nombre="Sucursal Principal",
-        direccion="Sede Principal",
+        nombre=sucursal_nombre,
+        direccion="Consultorio Médico Privado" if is_doctor else "Sede Principal",
         telefono=phone_number,
         pais_id=req.pais_id or 2,
         activo=True
@@ -329,10 +362,6 @@ async def register_public_empresa(
     stmt_rol = select(Rol).where(Rol.id == 2)
     res_rol = await db.execute(stmt_rol)
     rol_admin = res_rol.scalar_one_or_none()
-
-    partes_nombre = req.representante_legal.strip().split(' ', 1)
-    nombre = partes_nombre[0]
-    apellido = partes_nombre[1] if len(partes_nombre) > 1 else "Administrador"
 
     user = Usuario(
         nombre=nombre,
@@ -358,15 +387,70 @@ async def register_public_empresa(
     )
     db.add(usr_suc)
 
+    # 6.1 Si es Médico Independiente, crear automáticamente su perfil en medicos
+    if is_doctor:
+        from app.models.medico import Medico
+        from app.models.especialidad import Especialidad
+
+        target_esp_id = req.especialidad_id
+        if not target_esp_id:
+            stmt_esp = select(Especialidad).where(Especialidad.activo == True).order_by(Especialidad.id.asc()).limit(1)
+            res_esp = await db.execute(stmt_esp)
+            first_esp = res_esp.scalar_one_or_none()
+            target_esp_id = first_esp.id if first_esp else 1
+
+        default_sched = {
+            dia: {"activo": True, "desde": "08:00", "hasta": "17:00"}
+            for dia in ["lunes", "martes", "miercoles", "jueves", "viernes"]
+        }
+        default_sched["sabado"] = {"activo": False, "desde": "08:00", "hasta": "13:00"}
+        default_sched["domingo"] = {"activo": False, "desde": "08:00", "hasta": "13:00"}
+
+        doc_tipo = "V"
+        doc_num = doc_fiscal
+        if doc_fiscal and "-" in doc_fiscal:
+            parts = doc_fiscal.split("-", 1)
+            if parts[0].isalpha():
+                doc_tipo = parts[0].upper()
+                doc_num = parts[1]
+
+        medico_profile = Medico(
+            empresa_id=empresa.id,
+            usuario_id=user.id,
+            especialidad_id=target_esp_id,
+            pais_telefono_id=req.pais_id or 2,
+            sucursal_defecto_id=sucursal.id,
+            nombres=nombre,
+            apellidos=apellido,
+            tipo_documento=doc_tipo,
+            documento_identidad=doc_num,
+            email=req.email,
+            telefono=phone_number,
+            licencia_medica=req.licencia_medica or f"MPPS-{random.randint(10000, 99999)}",
+            color="#0d9488",
+            subespecialidades=[],
+            sucursales_ids=[sucursal.id],
+            horario_atencion=default_sched,
+            tipo_comision="porcentaje",
+            porcentaje_honorario=100.00,  # 100% de sus honorarios al ser consultorio propio
+            monto_fijo_honorario=0.00,
+            datos_bancarios={},
+            activo=True
+        )
+        db.add(medico_profile)
+        await db.flush()
+
     # 7. Registrar Mensaje Oficial de Bienvenida de WhatsApp con OTP de 8 Dígitos en BD
     if phone_number:
+        saludo_destinatario = f"Dr(a). *{req.representante_legal}*" if is_doctor else f"*{req.representante_legal}*"
+        entidad_registrada = f"su consultorio médico *{nombre_empresa}*" if is_doctor else f"la clínica *{nombre_empresa}*"
         msg_welcome = (
-            f"🔐 *Bienvenido a PyCore SaaS*\n\n"
-            f"Estimado(a) *{req.representante_legal}*,\n"
-            f"¡Gracias por registrar la empresa *{req.company_name}*!\n\n"
+            f"🔐 *Bienvenido a MediSoft Suite*\n\n"
+            f"Estimado(a) {saludo_destinatario},\n"
+            f"¡Gracias por registrar {entidad_registrada}!\n\n"
             f"Su Plan Prueba de 7 Días ha sido activado exitosamente.\n\n"
             f"🔑 *Su código de verificación OTP de 8 dígitos es:* *{otp_code_str}*\n\n"
-            f"Para vincular su instancia de WhatsApp y enviar notificaciones a sus clientes, ingrese a: /integraciones/whatsapp\n\n"
+            f"Para vincular su instancia de WhatsApp y enviar confirmaciones de citas a sus pacientes, ingrese a: /integraciones/whatsapp\n\n"
             f"¡Muchas gracias por su confianza!"
         )
         msg_obj = WhatsAppMessage(

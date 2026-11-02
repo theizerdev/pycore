@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
   Building2,
+  Stethoscope,
   User,
   Phone,
   Globe,
@@ -32,6 +33,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { cn } from '../../lib/utils';
 
 type AuthView = 'login' | 'register' | 'forgot' | 'verify-whatsapp';
 
@@ -66,11 +68,15 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Register State (Réplica 1:1 FixSale POS + Shadcn UI)
+  // Register State (Dual Mode: Médico Independiente vs Clínica)
+  const [regTipoEntidad, setRegTipoEntidad] = useState<'medico_independiente' | 'clinica'>('medico_independiente');
   const [regCompanyName, setRegCompanyName] = useState('');
   const [regNombreComercial, setRegNombreComercial] = useState('');
   const [regCompanyDocument, setRegCompanyDocument] = useState('');
   const [regRepresentanteLegal, setRegRepresentanteLegal] = useState('');
+  const [regEspecialidadId, setRegEspecialidadId] = useState<number | undefined>(undefined);
+  const [regLicenciaMedica, setRegLicenciaMedica] = useState('');
+  const [especialidadesList, setEspecialidadesList] = useState<Array<{ id: number; nombre: string; color: string }>>([]);
   const [regEmail, setRegEmail] = useState('');
   const [regPaisId, setRegPaisId] = useState<number>(2); // 2: Venezuela, 1: México, 3: Colombia
   const [regCompanyPhone, setRegCompanyPhone] = useState('');
@@ -78,6 +84,29 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
   const [regPasswordConfirmation, setRegPasswordConfirmation] = useState('');
   const [regShowPassword, setRegShowPassword] = useState(false);
   const [regShowConfirmPassword, setRegShowConfirmPassword] = useState(false);
+
+  useEffect(() => {
+    authApi.getPublicEspecialidades()
+      .then((data) => {
+        setEspecialidadesList(data);
+        if (data.length > 0) {
+          setRegEspecialidadId(data[0].id);
+        }
+      })
+      .catch(() => {
+        setEspecialidadesList([
+          { id: 1, nombre: 'Medicina General', color: '#0d9488' },
+          { id: 2, nombre: 'Cardiología Clínica', color: '#e11d48' },
+          { id: 3, nombre: 'Pediatría', color: '#0284c7' },
+          { id: 4, nombre: 'Ginecología & Obstetricia', color: '#db2777' },
+          { id: 5, nombre: 'Traumatología y Ortopedia', color: '#d97706' },
+          { id: 6, nombre: 'Dermatología', color: '#7c3aed' },
+          { id: 7, nombre: 'Oftalmología', color: '#059669' },
+          { id: 8, nombre: 'Odontología Integral', color: '#0891b2' },
+        ]);
+        setRegEspecialidadId(1);
+      });
+  }, []);
 
   // Forgot Password WhatsApp OTP State (Paso 1: Email, Paso 2: OTP + Nueva Contraseña)
   const [forgotEmail, setForgotEmail] = useState('');
@@ -234,15 +263,23 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
     setIsLoading(true);
 
     try {
+      const isDoctor = regTipoEntidad === 'medico_independiente';
+      const companyFinal = isDoctor
+        ? (regNombreComercial.trim() || `Consultorio Dr(a). ${regRepresentanteLegal.trim()}`)
+        : regCompanyName.trim();
+
       const regData: RegisterPublicData = {
-        company_name: regCompanyName,
-        nombre_comercial: regNombreComercial || undefined,
-        company_document: regCompanyDocument || undefined,
-        representante_legal: regRepresentanteLegal,
-        email: regEmail,
+        tipo_entidad: regTipoEntidad,
+        company_name: companyFinal,
+        nombre_comercial: isDoctor ? companyFinal : (regNombreComercial.trim() || undefined),
+        company_document: regCompanyDocument.trim() || undefined,
+        representante_legal: regRepresentanteLegal.trim(),
+        especialidad_id: isDoctor ? regEspecialidadId : undefined,
+        licencia_medica: isDoctor ? (regLicenciaMedica.trim() || undefined) : undefined,
+        email: regEmail.trim(),
         password: regPassword,
-        telefono: regCompanyPhone || undefined,
-        company_phone: regCompanyPhone || undefined,
+        telefono: regCompanyPhone.trim() || undefined,
+        company_phone: regCompanyPhone.trim() || undefined,
         pais_id: regPaisId,
         pais_telefono_id: regPaisId
       };
@@ -250,11 +287,15 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
       const data = await authApi.registerPublic(regData);
       login(data);
 
-      // Redirigir a Verificación de WhatsApp en lugar de ir directo al dashboard (Réplica FixSale POS)
+      // Redirigir a Verificación de WhatsApp en lugar de ir directo al dashboard
       setPendingOtpPhone(regCompanyPhone || data.user.telefono || '');
       setDebugOtpCode(data.debug_otp_code || null);
       setCurrentView('verify-whatsapp');
-      toast.success('¡Registro exitoso! Por favor verifica tu código OTP de WhatsApp para activar tu acceso.');
+      toast.success(
+        isDoctor
+          ? '¡Registro de consultorio exitoso! Por favor verifica tu código OTP de WhatsApp para activar tu acceso.'
+          : '¡Registro de clínica exitoso! Por favor verifica tu código OTP de WhatsApp para activar tu acceso.'
+      );
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Error al completar el registro. Por favor verifica tus datos.');
     } finally {
@@ -540,59 +581,213 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                   </Badge>
                 </div>
 
+                {/* Selector de Tipo de Cuenta: Médico Independiente vs Clínica */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Tipo de Cuenta Médica
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2.5 p-1 bg-muted/40 rounded-xl border border-border">
+                    <button
+                      type="button"
+                      onClick={() => setRegTipoEntidad('medico_independiente')}
+                      className={cn(
+                        "flex flex-col items-center justify-center p-3 rounded-lg border text-center transition cursor-pointer select-none",
+                        regTipoEntidad === 'medico_independiente'
+                          ? "bg-card border-primary shadow-sm text-primary font-bold ring-1 ring-primary/20"
+                          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-card/50 font-medium"
+                      )}
+                    >
+                      <div className={cn(
+                        "size-8 rounded-full flex items-center justify-center mb-1.5 transition",
+                        regTipoEntidad === 'medico_independiente' ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                      )}>
+                        <Stethoscope className="size-4" />
+                      </div>
+                      <span className="text-xs font-bold leading-tight">Médico Especialista</span>
+                      <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Consultorio privado</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRegTipoEntidad('clinica')}
+                      className={cn(
+                        "flex flex-col items-center justify-center p-3 rounded-lg border text-center transition cursor-pointer select-none",
+                        regTipoEntidad === 'clinica'
+                          ? "bg-card border-primary shadow-sm text-primary font-bold ring-1 ring-primary/20"
+                          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-card/50 font-medium"
+                      )}
+                    >
+                      <div className={cn(
+                        "size-8 rounded-full flex items-center justify-center mb-1.5 transition",
+                        regTipoEntidad === 'clinica' ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                      )}>
+                        <Building2 className="size-4" />
+                      </div>
+                      <span className="text-xs font-bold leading-tight">Clínica / Centro Médico</span>
+                      <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Múltiples médicos y sedes</span>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex flex-col space-y-1">
                   <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
-                    <Building2 className="size-6 text-primary" />
-                    <span>Crear una cuenta</span>
+                    {regTipoEntidad === 'medico_independiente' ? (
+                      <>
+                        <Stethoscope className="size-6 text-primary" />
+                        <span>Registro de Consultorio Privado</span>
+                      </>
+                    ) : (
+                      <>
+                        <Building2 className="size-6 text-primary" />
+                        <span>Registro de Clínica o Centro Médico</span>
+                      </>
+                    )}
                   </h1>
                   <p className="text-xs text-muted-foreground">
-                    Ingrese sus datos para comenzar con su prueba gratis de 7 días
+                    {regTipoEntidad === 'medico_independiente'
+                      ? 'Configure su consultorio independiente y active su agenda online en 7 días gratis'
+                      : 'Registre su institución médica con gestión multi-especialista y 7 días gratis'}
                   </p>
                 </div>
 
                 <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
-                  {/* 1. Nombre de la Empresa / Razón Social */}
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="company_name" className="text-xs font-semibold">Nombre de la Empresa / Razón Social *</Label>
-                    <Input
-                      id="company_name"
-                      type="text"
-                      required
-                      value={regCompanyName}
-                      onChange={(e) => setRegCompanyName(e.target.value)}
-                      placeholder="Ej: Restaurante y Café Bajo el Reloj C.A."
-                      className="h-10 text-xs"
-                    />
-                  </div>
+                  {/* CAMPOS ESPECÍFICOS SEGÚN TIPO DE CUENTA */}
+                  {regTipoEntidad === 'medico_independiente' ? (
+                    <>
+                      {/* Médico: Nombre y Apellido */}
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="representante_legal" className="text-xs font-semibold">Nombre y Apellido del Dr(a). *</Label>
+                        <Input
+                          id="representante_legal"
+                          type="text"
+                          required
+                          value={regRepresentanteLegal}
+                          onChange={(e) => setRegRepresentanteLegal(e.target.value)}
+                          placeholder="Ej: Dr. Fernando José Briceño"
+                          className="h-10 text-xs"
+                        />
+                      </div>
 
-                  {/* 2. Nombre Comercial / Marca */}
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="nombre_comercial" className="text-xs font-semibold">Nombre Comercial / Marca (Opcional)</Label>
-                    <Input
-                      id="nombre_comercial"
-                      type="text"
-                      value={regNombreComercial}
-                      onChange={(e) => setRegNombreComercial(e.target.value)}
-                      placeholder="Ej: Bajo el Reloj"
-                      className="h-10 text-xs"
-                    />
-                  </div>
+                      {/* Médico: Cédula o RIF Personal */}
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="company_document" className="text-xs font-semibold">Cédula o RIF Personal *</Label>
+                        <Input
+                          id="company_document"
+                          type="text"
+                          required
+                          value={regCompanyDocument}
+                          onChange={(e) => setRegCompanyDocument(e.target.value)}
+                          placeholder="Ej: V-14258963"
+                          className="h-10 text-xs"
+                        />
+                      </div>
 
-                  {/* 3. Representante Legal */}
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="representante_legal" className="text-xs font-semibold">Representante Legal (Nombre Completo) *</Label>
-                    <Input
-                      id="representante_legal"
-                      type="text"
-                      required
-                      value={regRepresentanteLegal}
-                      onChange={(e) => setRegRepresentanteLegal(e.target.value)}
-                      placeholder="Ej: Juan Pérez"
-                      className="h-10 text-xs"
-                    />
-                  </div>
+                      {/* Médico: Especialidad y MPPS */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="reg-especialidad" className="text-xs font-semibold">Especialidad Principal *</Label>
+                          <select
+                            id="reg-especialidad"
+                            value={regEspecialidadId || ''}
+                            onChange={(e) => setRegEspecialidadId(Number(e.target.value))}
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background focus:outline-hidden focus:ring-1 focus:ring-primary"
+                          >
+                            {especialidadesList.map((esp) => (
+                              <option key={esp.id} value={esp.id}>
+                                {esp.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                  {/* 4. Correo Electrónico & País */}
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="licencia_medica" className="text-xs font-semibold">N° MPPS / Matrícula</Label>
+                          <Input
+                            id="licencia_medica"
+                            type="text"
+                            value={regLicenciaMedica}
+                            onChange={(e) => setRegLicenciaMedica(e.target.value)}
+                            placeholder="Ej: MPPS 74521 / CMD 1284"
+                            className="h-10 text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Médico: Nombre del Consultorio */}
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="nombre_comercial" className="text-xs font-semibold">Nombre de su Consultorio (Opcional)</Label>
+                        <Input
+                          id="nombre_comercial"
+                          type="text"
+                          value={regNombreComercial}
+                          onChange={(e) => setRegNombreComercial(e.target.value)}
+                          placeholder="Ej: Consultorio de Traumatología Dr. Briceño"
+                          className="h-10 text-xs"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Clínica: Razón Social */}
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="company_name" className="text-xs font-semibold">Nombre de la Empresa / Razón Social *</Label>
+                        <Input
+                          id="company_name"
+                          type="text"
+                          required
+                          value={regCompanyName}
+                          onChange={(e) => setRegCompanyName(e.target.value)}
+                          placeholder="Ej: Centro Médico Integral VitalSalud C.A."
+                          className="h-10 text-xs"
+                        />
+                      </div>
+
+                      {/* Clínica: Nombre Comercial y RIF */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="nombre_comercial" className="text-xs font-semibold">Nombre Comercial / Marca</Label>
+                          <Input
+                            id="nombre_comercial"
+                            type="text"
+                            value={regNombreComercial}
+                            onChange={(e) => setRegNombreComercial(e.target.value)}
+                            placeholder="Ej: VitalSalud Centro Médico"
+                            className="h-10 text-xs"
+                          />
+                        </div>
+
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="company_document" className="text-xs font-semibold">RIF Jurídico de la Empresa *</Label>
+                          <Input
+                            id="company_document"
+                            type="text"
+                            required
+                            value={regCompanyDocument}
+                            onChange={(e) => setRegCompanyDocument(e.target.value)}
+                            placeholder="Ej: J-12345678-9"
+                            className="h-10 text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Clínica: Representante Legal */}
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="representante_legal" className="text-xs font-semibold">Representante Legal (Nombre Completo) *</Label>
+                        <Input
+                          id="representante_legal"
+                          type="text"
+                          required
+                          value={regRepresentanteLegal}
+                          onChange={(e) => setRegRepresentanteLegal(e.target.value)}
+                          placeholder="Ej: Dr. Carlos Mendoza"
+                          className="h-10 text-xs"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* CAMPOS COMUNES PARA AMBOS */}
+                  {/* Correo Electrónico & País */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
                       <Label htmlFor="reg-email" className="text-xs font-semibold">Correo Electrónico *</Label>
@@ -602,7 +797,7 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                         required
                         value={regEmail}
                         onChange={(e) => setRegEmail(e.target.value)}
-                        placeholder="contacto@empresa.com"
+                        placeholder="contacto@medisoft.com"
                         className="h-10 text-xs"
                       />
                     </div>
@@ -625,12 +820,15 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                     </div>
                   </div>
 
-                  {/* 5. Teléfono de Contacto */}
+                  {/* Teléfono / WhatsApp de Pacientes */}
                   <div className="grid gap-1.5">
-                    <Label htmlFor="company_phone" className="text-xs font-semibold">Teléfono de Contacto</Label>
+                    <Label htmlFor="company_phone" className="text-xs font-semibold">
+                      {regTipoEntidad === 'medico_independiente' ? 'WhatsApp de Atención a Pacientes *' : 'Teléfono Central / WhatsApp de la Clínica *'}
+                    </Label>
                     <Input
                       id="company_phone"
                       type="tel"
+                      required
                       value={regCompanyPhone}
                       onChange={(e) => setRegCompanyPhone(e.target.value)}
                       placeholder="Ej: 4121234567"
@@ -638,7 +836,7 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                     />
                   </div>
 
-                  {/* 6. Contraseña & Confirmación */}
+                  {/* Contraseña & Confirmación */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
                       <Label htmlFor="reg-pass" className="text-xs font-semibold">Contraseña *</Label>
@@ -650,7 +848,7 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                           minLength={6}
                           value={regPassword}
                           onChange={(e) => setRegPassword(e.target.value)}
-                          placeholder="Contraseña"
+                          placeholder="Mínimo 6 caracteres"
                           className="h-10 pr-9 text-xs"
                         />
                         <button
@@ -687,10 +885,16 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                     </div>
                   </div>
 
-                  {/* Banner FixSale POS Official Text */}
+                  {/* Banner Explicativo de la Prueba */}
                   <div className="p-3 bg-primary/5 rounded-lg border border-primary/20 text-xs text-muted-foreground flex items-start gap-2.5">
                     <CheckCircle2 className="size-4 text-primary shrink-0 mt-0.5" />
-                    <span>Al registrarse obtendrá <strong>7 días de prueba totalmente gratis</strong> con perfil de <strong>Administrador</strong> y acceso completo a <strong>todos los módulos del sistema</strong>.</span>
+                    <span>
+                      {regTipoEntidad === 'medico_independiente' ? (
+                        <>Al registrarse obtendrá <strong>7 días de prueba gratis</strong> con su <strong>Panel Médico</strong>, agenda digital, emisión de récipes, telemedicina e historia clínica completa.</>
+                      ) : (
+                        <>Al registrarse obtendrá <strong>7 días de prueba gratis</strong> con perfil de <strong>Administrador</strong>, gestión de múltiples doctores, turnero, caja POS y liquidaciones.</>
+                      )}
+                    </span>
                   </div>
 
                   <Button
@@ -701,7 +905,7 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                     {isLoading ? (
                       <div className="size-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <span>Completar Registro</span>
+                      <span>Completar Registro y Activar Prueba</span>
                     )}
                   </Button>
                 </form>

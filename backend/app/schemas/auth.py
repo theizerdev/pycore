@@ -31,10 +31,13 @@ class SelectSucursalRequest(BaseModel):
     sucursal_id: int
 
 class RegisterPublicRequest(BaseModel):
+    tipo_entidad: Optional[str] = "clinica"  # "clinica" o "medico_independiente"
     company_name: str
     nombre_comercial: Optional[str] = None
     company_document: Optional[str] = None
     representante_legal: str
+    especialidad_id: Optional[int] = None
+    licencia_medica: Optional[str] = None
     email: EmailStr
     password: str
     telefono: Optional[str] = None

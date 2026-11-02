@@ -155,7 +155,7 @@ export const AgendaCalendarioPage: React.FC = () => {
     'all' | 'paciente_retrasado' | 'doctor_retrasado' | 'alertas'
   >('all');
 
-  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico' || user?.empresa?.tipo_entidad === 'medico_independiente');
 
   const currentDoctor = useMemo(() => {
     if (!isDoctorUser || !user) return null;

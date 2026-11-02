@@ -127,7 +127,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [notificarWhatsApp, setNotificarWhatsApp] = useState<boolean>(true);
 
   const { user } = useAuth();
-  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico' || user?.empresa?.tipo_entidad === 'medico_independiente');
 
   // Identificar el perfil médico del usuario logueado
   const currentDoctor = React.useMemo(() => {

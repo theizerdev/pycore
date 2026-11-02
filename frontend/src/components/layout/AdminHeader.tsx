@@ -468,7 +468,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
                   {user ? `${user.nombre} ${user.apellido}` : 'Usuario'}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
-                  {user?.es_superadmin ? 'Superadmin' : user?.rol?.nombre || 'Personal'}
+                  {user?.es_superadmin ? 'Superadmin' : user?.empresa?.tipo_entidad === 'medico_independiente' ? 'Médico Especialista' : user?.rol?.nombre || 'Personal'}
                 </span>
               </div>
               <ChevronDown className="h-3 w-3 opacity-50" />

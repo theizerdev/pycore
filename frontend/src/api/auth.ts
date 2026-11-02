@@ -2,10 +2,13 @@ import api from './client';
 import type { TokenResponse, LoginCredentials, Usuario } from '../types';
 
 export interface RegisterPublicData {
+  tipo_entidad?: 'clinica' | 'medico_independiente';
   company_name: string;
   nombre_comercial?: string;
   company_document?: string;
   representante_legal: string;
+  especialidad_id?: number;
+  licencia_medica?: string;
   email: string;
   password: string;
   telefono?: string;
@@ -53,6 +56,10 @@ export const authApi = {
   },
   resendWhatsAppOTP: async (): Promise<{ success: boolean; mensaje: string; debug_otp_code?: string }> => {
     const res = await api.post<{ success: boolean; mensaje: string; debug_otp_code?: string }>('/auth/resend-whatsapp-otp');
+    return res.data;
+  },
+  getPublicEspecialidades: async (): Promise<Array<{ id: number; nombre: string; color: string }>> => {
+    const res = await api.get<Array<{ id: number; nombre: string; color: string }>>('/auth/public-especialidades');
     return res.data;
   }
 };

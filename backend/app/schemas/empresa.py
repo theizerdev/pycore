@@ -6,6 +6,7 @@ from app.schemas.plan import PlanResponse
 
 class EmpresaBase(BaseModel):
     nombre: str
+    tipo_entidad: Optional[str] = "clinica"
     identificacion_fiscal: Optional[str] = None
     email: Optional[EmailStr] = None
     telefono: Optional[str] = None
@@ -37,6 +38,7 @@ class EmpresaCreate(EmpresaBase):
 
 class EmpresaUpdate(BaseModel):
     nombre: Optional[str] = None
+    tipo_entidad: Optional[str] = None
     identificacion_fiscal: Optional[str] = None
     email: Optional[EmailStr] = None
     telefono: Optional[str] = None

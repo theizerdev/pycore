@@ -127,7 +127,7 @@ export const ConsultasPage: React.FC = () => {
   const [selectedEspecialidad, setSelectedEspecialidad] = useState<string>('all');
   const [selectedSucursal, setSelectedSucursal] = useState<string>('all');
 
-  const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+  const isDoctorUser = Boolean(user?.rol?.slug === 'medico' || user?.empresa?.tipo_entidad === 'medico_independiente');
 
   // Identificar el perfil médico del usuario autenticado
   const currentDoctor = useMemo(() => {

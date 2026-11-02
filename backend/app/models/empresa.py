@@ -7,6 +7,7 @@ class Empresa(Base, TimestampMixin):
     __tablename__ = "empresas"
 
     nombre = Column(String(150), nullable=False, index=True)
+    tipo_entidad = Column(String(30), default="clinica", nullable=False) # "clinica" o "medico_independiente"
     identificacion_fiscal = Column(String(50), nullable=True, unique=True, index=True) # RIF / RUC / NIT
     email = Column(String(120), nullable=True)
     telefono = Column(String(50), nullable=True)

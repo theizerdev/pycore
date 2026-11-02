@@ -1,6 +1,7 @@
 export interface Empresa {
   id: number;
   nombre: string;
+  tipo_entidad?: 'clinica' | 'medico_independiente' | string;
   identificacion_fiscal?: string | null;
   documento?: string | null;
   email?: string | null;

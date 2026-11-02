@@ -110,20 +110,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   );
 
   const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
+  const isIndependentDoctor = Boolean(user?.empresa?.tipo_entidad === 'medico_independiente');
   const isSuperAdmin = Boolean(user?.es_superadmin || user?.empresa_id === 1);
 
   // Definición completa de la estructura de menú agrupada por sectores
   const menuStructure: SectorMenuItem[] = [
     {
       id: 'dashboard',
-      title: isDoctorUser ? 'Panel Médico' : isSuperAdmin ? 'Panel Principal' : 'Dashboard',
+      title: (isDoctorUser || isIndependentDoctor) ? 'Panel Médico' : isSuperAdmin ? 'Panel Principal' : 'Dashboard',
       sectorKey: 'inicio',
-      href: isDoctorUser ? '/medico/dashboard' : isSuperAdmin ? '/admin/dashboard' : '/dashboard',
+      href: (isDoctorUser || isIndependentDoctor) ? '/medico/dashboard' : isSuperAdmin ? '/admin/dashboard' : '/dashboard',
       icon: LayoutDashboard,
     },
     {
       id: 'sector-clinica',
-      title: 'Clínica',
+      title: isIndependentDoctor ? 'Mi Consultorio' : 'Clínica',
       sectorKey: 'clinica',
       icon: HeartPulse,
       children: [
@@ -218,11 +219,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           href: '/facturacion/recibos',
           icon: Receipt,
         },
-        {
-          title: 'Honorarios Médicos & Comisiones',
-          href: '/facturacion/honorarios',
-          icon: Calculator,
-        },
+        ...(!isIndependentDoctor ? [
+          {
+            title: 'Honorarios Médicos & Comisiones',
+            href: '/facturacion/honorarios',
+            icon: Calculator,
+          }
+        ] : []),
       ],
     },
     {
@@ -231,18 +234,20 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       sectorKey: 'organizacion',
       icon: Building2,
       children: [
-        {
-          title: 'Empresas',
-          href: '/seguridad/empresas',
-          icon: Building2,
-          permission: 'empresas.ver',
-        },
-        {
-          title: 'Sucursales / Sedes',
-          href: '/seguridad/sucursales',
-          icon: MapPin,
-          permission: 'sucursales.ver',
-        },
+        ...(!isIndependentDoctor ? [
+          {
+            title: 'Empresas',
+            href: '/seguridad/empresas',
+            icon: Building2,
+            permission: 'empresas.ver',
+          },
+          {
+            title: 'Sucursales / Sedes',
+            href: '/seguridad/sucursales',
+            icon: MapPin,
+            permission: 'sucursales.ver',
+          },
+        ] : []),
         {
           title: 'Suscripción & Tarifas',
           href: '/saas/suscripciones',
@@ -444,7 +449,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           )}
         >
           <Link
-            to={isDoctorUser ? '/medico/dashboard' : isSuperAdmin ? '/admin/dashboard' : '/dashboard'}
+            to={(isDoctorUser || isIndependentDoctor) ? '/medico/dashboard' : isSuperAdmin ? '/admin/dashboard' : '/dashboard'}
             className="flex items-center gap-3 overflow-hidden"
           >
             {user?.empresa?.logo_mini_url || user?.empresa?.logo_mini_dark_url || user?.empresa?.logo_url ? (
@@ -792,7 +797,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   {user ? `${user.nombre} ${user.apellido}` : 'Usuario'}
                 </p>
                 <p className="truncate text-[10px] text-sidebar-foreground/60">
-                  {user?.es_superadmin ? 'Superadmin' : user?.rol?.nombre || user?.email}
+                  {user?.es_superadmin ? 'Superadmin' : user?.empresa?.tipo_entidad === 'medico_independiente' ? 'Médico Especialista' : user?.rol?.nombre || user?.email}
                 </p>
               </div>
             )}

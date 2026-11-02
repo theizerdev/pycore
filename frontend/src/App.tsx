@@ -81,7 +81,7 @@ const HonorariosMedicosPage = lazyComponent(() => import('./pages/facturacion/Ho
 
 const HomeRedirect: React.FC = () => {
   const { user } = useAuth();
-  if (user?.rol?.slug === 'medico') {
+  if (user?.rol?.slug === 'medico' || user?.empresa?.tipo_entidad === 'medico_independiente') {
     return <Navigate to="/medico/dashboard" replace />;
   }
   if (user?.es_superadmin || user?.empresa_id === 1) {
@@ -228,6 +228,22 @@ export const App: React.FC = () => {
               <Route
                 path="clinica/servicios"
                 element={<Navigate to="/administracion/servicios" replace />}
+              />
+              <Route
+                path="admin/servicios"
+                element={<Navigate to="/administracion/servicios" replace />}
+              />
+              <Route
+                path="servicios"
+                element={<Navigate to="/administracion/servicios" replace />}
+              />
+              <Route
+                path="administracion/servicios"
+                element={
+                  <ProtectedRoute requiredPermission="servicios.ver">
+                    <ServiciosPage />
+                  </ProtectedRoute>
+                }
               />
 
               {/* Módulo de Caja, Cobros & Facturación */}
