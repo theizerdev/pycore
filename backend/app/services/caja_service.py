@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import desc, func, and_
+from sqlalchemy import desc, func, and_, or_
 
 from app.models.caja import Caja, TurnoCaja, Cobro, CobroDetalle, CobroPago, MovimientoCaja
 from app.models.cita import CitaMedica
@@ -481,6 +481,7 @@ class CajaService:
         sucursal_id: Optional[int] = None,
         turno_caja_id: Optional[int] = None,
         paciente_id: Optional[int] = None,
+        medico_id: Optional[int] = None,
         fecha_desde: Optional[date] = None,
         fecha_hasta: Optional[date] = None,
         limit: int = 50,
@@ -494,6 +495,18 @@ class CajaService:
             stmt = stmt.where(Cobro.turno_caja_id == turno_caja_id)
         if paciente_id:
             stmt = stmt.where(Cobro.paciente_id == paciente_id)
+        if medico_id:
+            stmt = stmt.where(
+                or_(
+                    Cobro.medico_id == medico_id,
+                    Cobro.cita_id.in_(
+                        select(CitaMedica.id).where(CitaMedica.medico_id == medico_id)
+                    ),
+                    Cobro.consulta_id.in_(
+                        select(ConsultaMedica.id).where(ConsultaMedica.medico_id == medico_id)
+                    ),
+                )
+            )
         if fecha_desde:
             stmt = stmt.where(func.date(Cobro.fecha_emision) >= fecha_desde)
         if fecha_hasta:

@@ -287,19 +287,30 @@ async def list_cobros(
     sucursal_id: Optional[int] = Query(None),
     turno_caja_id: Optional[int] = Query(None),
     paciente_id: Optional[int] = Query(None),
+    medico_id: Optional[int] = Query(None, description="Filtrar por médico especialista"),
     fecha_desde: Optional[date] = Query(None),
     fecha_hasta: Optional[date] = Query(None),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=1000),
     current_user: Usuario = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Obtiene el historial de cobros y recibos emitidos con filtros."""
     empresa_id = current_user.empresa_id or 1
+    
+    target_medico_id = medico_id
+    if target_medico_id is None:
+        from app.api.v1.consultas import get_medico_id_for_user
+        doc_auto_id = await get_medico_id_for_user(db, current_user)
+        user_role = (getattr(current_user, "rol", None) and getattr(current_user.rol, "nombre", "")) or ""
+        if doc_auto_id is not None and user_role.lower() not in ["superadmin", "admin", "administrador", "recepcion", "recepcionista", "cajero", "cajera"]:
+            target_medico_id = doc_auto_id
+
     cobros = await CajaService.get_cobros(
         empresa_id=empresa_id,
         sucursal_id=sucursal_id,
         turno_caja_id=turno_caja_id,
         paciente_id=paciente_id,
+        medico_id=target_medico_id,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         limit=limit,

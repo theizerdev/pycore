@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useRegional } from '../../context/RegionalContext';
 import { citasApi } from '../../api/citas';
 import { consultasApi, type ConsultaMedica } from '../../api/consultas';
+import { cajasApi, type Cobro } from '../../api/cajas';
 import { medicosApi } from '../../api/medicos';
 import { especialidadesApi } from '../../api/especialidades';
 import type { CitaMedica, Medico, Especialidad } from '../../types';
@@ -75,6 +76,7 @@ export const MedicoDashboardPage: React.FC = () => {
   const [citasRango, setCitasRango] = useState<CitaMedica[]>([]);
   const [consultasRango, setConsultasRango] = useState<ConsultaMedica[]>([]);
   const [consultasHoy, setConsultasHoy] = useState<ConsultaMedica[]>([]);
+  const [cobrosRango, setCobrosRango] = useState<Cobro[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -178,7 +180,7 @@ export const MedicoDashboardPage: React.FC = () => {
           setSelectedDoctorId(docToLoad.id);
         }
 
-        const [citasRangoRes, consultasRangoRes, consultasHoyRes] = await Promise.allSettled([
+        const [citasRangoRes, consultasRangoRes, consultasHoyRes, cobrosRangoRes] = await Promise.allSettled([
           citasApi.list({
             medico_id: docToLoad.id,
             sucursal_id: sucursalActiva?.id,
@@ -196,6 +198,13 @@ export const MedicoDashboardPage: React.FC = () => {
             sucursal_id: sucursalActiva?.id,
             fecha: todayIso,
           }),
+          cajasApi.listCobros({
+            medico_id: docToLoad.id,
+            sucursal_id: sucursalActiva?.id,
+            fecha_desde: fechaDesde,
+            fecha_hasta: fechaHasta,
+            limit: 500,
+          }),
         ]);
 
         if (citasRangoRes.status === 'fulfilled') {
@@ -206,6 +215,9 @@ export const MedicoDashboardPage: React.FC = () => {
         }
         if (consultasHoyRes.status === 'fulfilled') {
           setConsultasHoy(consultasHoyRes.value || []);
+        }
+        if (cobrosRangoRes.status === 'fulfilled') {
+          setCobrosRango(cobrosRangoRes.value || []);
         }
       }
 
@@ -252,15 +264,30 @@ export const MedicoDashboardPage: React.FC = () => {
     const pacientesUnicosIds = new Set([
       ...consultasRango.map((c) => c.paciente_id),
       ...citasRango.map((c) => c.paciente_id),
+      ...cobrosRango.map((cb) => cb.paciente_id),
     ]);
 
-    // Estimación económica de prestaciones en el período
+    // Cobros reales registrados en caja
+    const cobrosValidos = cobrosRango.filter((cb) => cb.estado !== 'anulado');
+    const totalCobradoUSD = cobrosValidos.reduce((acc, cb) => acc + (Number(cb.total_divisa) || 0), 0);
+    const totalCobradoVES = cobrosValidos.reduce((acc, cb) => acc + (Number(cb.total_ves) || 0), 0);
+
+    // Tasa BCV aplicada en los cobros: tasa efectiva ponderada o la tasa del cobro más reciente
+    const tasaCobroAplicada = cobrosValidos.length > 0
+      ? (totalCobradoUSD > 0 ? (totalCobradoVES / totalCobradoUSD) : (cobrosValidos[0].tasa_bcv_aplicada || tasaBcv))
+      : tasaBcv;
+
+    // Estimación económica de prestaciones en el período (fallback si no hay cobros en caja)
     const facturacionEstimada = citasRango.reduce((acc, c) => {
       if (c.estado === 'atendida' || c.estado_pago === 'pagado') {
         return acc + (Number(c.precio_estimado) || 0);
       }
       return acc;
     }, 0);
+
+    const tieneCobros = cobrosValidos.length > 0;
+    const facturacionUSD = tieneCobros ? totalCobradoUSD : facturacionEstimada;
+    const facturacionVES = tieneCobros ? totalCobradoVES : (facturacionEstimada * tasaBcv);
 
     return {
       totalConsultas,
@@ -269,9 +296,14 @@ export const MedicoDashboardPage: React.FC = () => {
       citasCompletadas,
       tasaAsistencia,
       pacientesUnicos: pacientesUnicosIds.size,
+      tieneCobros,
+      cobrosCount: cobrosValidos.length,
+      facturacionUSD,
+      facturacionVES,
+      tasaCobroAplicada,
       facturacionEstimada,
     };
-  }, [consultasRango, citasRango]);
+  }, [consultasRango, citasRango, cobrosRango, tasaBcv]);
 
   // Diagnósticos más frecuentes del período
   const topDiagnosticos = useMemo(() => {
@@ -898,24 +930,46 @@ export const MedicoDashboardPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* 6. Tarifas Estimadas / Facturación */}
+        {/* 6. Tarifas Estimadas / Facturación Real */}
         <Card className="border-border/60 bg-card/60 backdrop-blur-xs">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tarifas / Ingresos</p>
-              <Badge variant="outline" className="text-[9px] px-1 py-0 font-mono text-emerald-600 border-emerald-500/30">
-                {moneda === 'USD' ? 'USD ($)' : 'VES (Bs.)'}
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                {kpisPeriodo.tieneCobros ? 'Cobros / Ingresos' : 'Tarifas / Ingresos'}
+              </p>
+              <Badge
+                variant="outline"
+                className={cn(
+                  'text-[9px] px-1.5 py-0 font-mono border-emerald-500/30',
+                  kpisPeriodo.tieneCobros
+                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 font-bold'
+                    : 'text-emerald-600'
+                )}
+              >
+                {kpisPeriodo.tieneCobros
+                  ? `${kpisPeriodo.cobrosCount} ${kpisPeriodo.cobrosCount === 1 ? 'cobro' : 'cobros'}`
+                  : (moneda === 'USD' ? 'USD ($)' : 'VES (Bs.)')}
               </Badge>
             </div>
             <h3 className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 truncate font-mono">
-              {formatMoneyDual(kpisPeriodo.facturacionEstimada).primary}
+              {moneda === 'USD'
+                ? `$ ${kpisPeriodo.facturacionUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : `Bs. ${kpisPeriodo.facturacionVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </h3>
             <div className="text-[11px] text-muted-foreground mt-0.5 font-medium flex items-center gap-1 truncate font-mono">
               <Coins className="size-3 text-emerald-500 shrink-0" />
-              <span className="text-foreground/80 font-bold">{formatMoneyDual(kpisPeriodo.facturacionEstimada).secondary}</span>
+              <span className="text-foreground/80 font-bold">
+                {moneda === 'USD'
+                  ? `Bs. ${kpisPeriodo.facturacionVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : `$ ${kpisPeriodo.facturacionUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </span>
             </div>
-            <p className="text-[9px] text-muted-foreground/70 mt-1 truncate">
-              {moneda === 'USD' ? `≈ Equiv. BCV (${tasaBcv.toFixed(2)} Bs/$)` : `≈ Equiv. USD (${tasaBcv.toFixed(2)} Bs/$)`}
+            <p className="text-[9px] text-muted-foreground/80 mt-1 truncate font-medium">
+              {kpisPeriodo.tieneCobros
+                ? `Tasa Cobro: Bs. ${kpisPeriodo.tasaCobroAplicada.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / USD`
+                : (moneda === 'USD'
+                    ? `≈ Equiv. BCV (${tasaBcv.toFixed(2)} Bs/$)`
+                    : `≈ Equiv. USD (${tasaBcv.toFixed(2)} Bs/$)`)}
             </p>
           </CardContent>
         </Card>
@@ -1179,6 +1233,10 @@ export const MedicoDashboardPage: React.FC = () => {
                     const nombrePac = pac ? `${pac.nombres} ${pac.apellidos}` : 'Paciente sin nombre';
                     const docId = pac?.documento_identidad || pac?.numero_documento || 'S/D';
 
+                    const cobroAsociado = cobrosRango.find(
+                      (cb) => (cb.consulta_id && cb.consulta_id === c.id) || (c.cita_id && cb.cita_id === c.cita_id)
+                    );
+
                     let estadoBadge = (
                       <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10">
                         En Espera
@@ -1218,6 +1276,11 @@ export const MedicoDashboardPage: React.FC = () => {
                                   Triaje Listo
                                 </Badge>
                               )}
+                              {cobroAsociado && (
+                                <Badge variant="outline" className="text-[9px] border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 font-mono">
+                                  ✓ Cobrado ({cobroAsociado.numero_recibo})
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground font-mono">
                               <span>Doc: {docId}</span>
@@ -1236,7 +1299,18 @@ export const MedicoDashboardPage: React.FC = () => {
                               {c.fecha_consulta && (
                                 <span>{c.fecha_consulta.split('T')[0]}</span>
                               )}
-                              {c.cita?.precio_estimado ? (
+                              {cobroAsociado ? (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
+                                  <Coins className="size-3 text-emerald-500 shrink-0" />
+                                  <span>$ {Number(cobroAsociado.total_divisa).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <span className="text-[10px] text-emerald-600/80 font-normal">
+                                    (Bs. {Number(cobroAsociado.total_ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                  </span>
+                                  <span className="text-[9px] font-mono font-medium text-emerald-800 dark:text-emerald-200 bg-emerald-500/20 px-1 py-0.2 rounded">
+                                    Tasa: {Number(cobroAsociado.tasa_bcv_aplicada || tasaBcv).toFixed(2)} Bs/$
+                                  </span>
+                                </span>
+                              ) : c.cita?.precio_estimado ? (
                                 <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold">
                                   <DollarSign className="size-3 text-emerald-500" />
                                   <span>{formatMoney(c.cita.precio_estimado)}</span>
@@ -1401,6 +1475,14 @@ export const MedicoDashboardPage: React.FC = () => {
                   Bs. {tasaBcv.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                 </span>
               </div>
+              {kpisPeriodo.tieneCobros && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Tasa Cobro Aplicada:</span>
+                  <span className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">
+                    Bs. {kpisPeriodo.tasaCobroAplicada.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40">
                 <span className="truncate">{tasaBcvFuente}</span>
                 <button

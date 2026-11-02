@@ -278,6 +278,7 @@ export const cajasApi = {
     sucursal_id?: number;
     turno_caja_id?: number;
     paciente_id?: number;
+    medico_id?: number;
     fecha_desde?: string;
     fecha_hasta?: string;
     limit?: number;
