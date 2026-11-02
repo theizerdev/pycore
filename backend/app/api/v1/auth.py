@@ -92,6 +92,23 @@ async def login(
     elif user.rol and user.rol.permisos:
         permisos = [p.slug for p in user.rol.permisos]
 
+    # Si es médico independiente, garantizar que siempre disponga de los permisos de administración de su especialidad, servicios y consultorio
+    if user.empresa and getattr(user.empresa, "tipo_entidad", "") == "medico_independiente":
+        doctor_perms = [
+            "especialidades.ver", "especialidades.crear", "especialidades.editar", "especialidades.eliminar",
+            "servicios.ver", "servicios.crear", "servicios.editar", "servicios.eliminar",
+            "citas.ver", "citas.crear", "citas.editar", "citas.atender", "citas.cancelar", "citas.cambiar_estado",
+            "consultas.ver", "consultas.sala_espera", "consultas.en_consulta", "consultas.atendidas",
+            "consultas.atender", "consultas.crear", "consultas.editar", "consultas.recetar",
+            "pacientes.ver", "pacientes.crear", "pacientes.editar", "pacientes.historial",
+            "medicos.ver", "medicos.editar",
+            "turnero.ver", "turnero.llamar",
+            "teleconsulta.iniciar"
+        ]
+        for dp in doctor_perms:
+            if dp not in permisos:
+                permisos.append(dp)
+
     token_data = {
         "sub": str(user.id),
         "email": user.email,
@@ -132,6 +149,23 @@ async def get_my_profile(
         permisos = ["*"]
     elif current_user.rol and current_user.rol.permisos:
         permisos = [p.slug for p in current_user.rol.permisos]
+
+    # Si es médico independiente, garantizar que siempre disponga de los permisos de administración de su especialidad, servicios y consultorio
+    if current_user.empresa and getattr(current_user.empresa, "tipo_entidad", "") == "medico_independiente":
+        doctor_perms = [
+            "especialidades.ver", "especialidades.crear", "especialidades.editar", "especialidades.eliminar",
+            "servicios.ver", "servicios.crear", "servicios.editar", "servicios.eliminar",
+            "citas.ver", "citas.crear", "citas.editar", "citas.atender", "citas.cancelar", "citas.cambiar_estado",
+            "consultas.ver", "consultas.sala_espera", "consultas.en_consulta", "consultas.atendidas",
+            "consultas.atender", "consultas.crear", "consultas.editar", "consultas.recetar",
+            "pacientes.ver", "pacientes.crear", "pacientes.editar", "pacientes.historial",
+            "medicos.ver", "medicos.editar",
+            "turnero.ver", "turnero.llamar",
+            "teleconsulta.iniciar"
+        ]
+        for dp in doctor_perms:
+            if dp not in permisos:
+                permisos.append(dp)
 
     token_data = {
         "sub": str(current_user.id),
@@ -399,18 +433,82 @@ async def register_public_empresa(
     )
     db.add(usr_suc)
 
-    # 6.1 Si es Médico Independiente, crear automáticamente su perfil en medicos
+    # 6.1 Si es Médico Independiente, inicializar su especialidad propia, plantilla clínica y perfil médico
     if is_doctor:
         from app.models.medico import Medico
         from app.models.especialidad import Especialidad
+        from app.models.plantilla_especialidad import EspecialidadPlantilla
+        from app.models.servicio import Servicio
+        from app.services.clinical_templates_seed import get_template_for_specialty
 
-        target_esp_id = req.especialidad_id
-        if not target_esp_id:
+        fuente_esp = None
+        if req.especialidad_id:
+            stmt_esp = select(Especialidad).where(Especialidad.id == req.especialidad_id)
+            res_esp = await db.execute(stmt_esp)
+            fuente_esp = res_esp.scalar_one_or_none()
+
+        if not fuente_esp:
             stmt_esp = select(Especialidad).where(Especialidad.activo == True).order_by(Especialidad.id.asc()).limit(1)
             res_esp = await db.execute(stmt_esp)
-            first_esp = res_esp.scalar_one_or_none()
-            target_esp_id = first_esp.id if first_esp else 1
+            fuente_esp = res_esp.scalar_one_or_none()
 
+        # 1. Crear la Especialidad propia del consultorio independiente en su empresa
+        esp_nombre = fuente_esp.nombre if fuente_esp else "Medicina General"
+        esp_codigo = fuente_esp.codigo if fuente_esp else "MED-GEN"
+        esp_color = fuente_esp.color if fuente_esp else "#0d9488"
+        esp_icono = fuente_esp.icono if fuente_esp else "Stethoscope"
+        esp_desc = fuente_esp.descripcion if fuente_esp else f"Atención especializada para {nombre_empresa}"
+        esp_pasos = fuente_esp.pasos_activos if (fuente_esp and fuente_esp.pasos_activos) else [1, 2, 3, 4, 5, 6]
+        esp_paso_init = fuente_esp.paso_inicial if (fuente_esp and fuente_esp.paso_inicial) else 1
+
+        nueva_esp_doctor = Especialidad(
+            empresa_id=empresa.id,
+            sucursal_id=sucursal.id,
+            nombre=esp_nombre,
+            codigo=esp_codigo,
+            descripcion=esp_desc,
+            color=esp_color,
+            icono=esp_icono,
+            pasos_activos=esp_pasos,
+            paso_inicial=esp_paso_init,
+            activo=True
+        )
+        db.add(nueva_esp_doctor)
+        await db.flush()
+
+        # 2. Asignar la plantilla clínica y estudios dinámicos oficiales para esta especialidad
+        sugerencia = get_template_for_specialty(esp_nombre)
+        plantilla_doctor = EspecialidadPlantilla(
+            empresa_id=empresa.id,
+            especialidad_id=nueva_esp_doctor.id,
+            esquema_preconsulta=sugerencia.get("esquema_preconsulta", []),
+            esquema_consulta=sugerencia.get("esquema_consulta", []),
+            widgets_activos=sugerencia.get("widgets_activos", []),
+            estudios_sugeridos=sugerencia.get("estudios_sugeridos", {}),
+            version=1,
+            activo=True
+        )
+        db.add(plantilla_doctor)
+        await db.flush()
+
+        # 3. Crear servicio inicial de consulta para el consultorio
+        servicio_consulta = Servicio(
+            empresa_id=empresa.id,
+            sucursal_id=sucursal.id,
+            especialidad_id=nueva_esp_doctor.id,
+            codigo=f"SRV-{nueva_esp_doctor.codigo or 'CONS'}-01",
+            nombre=f"Consulta de {nueva_esp_doctor.nombre}",
+            categoria="Consulta",
+            precio_base=40.00,
+            duracion_estimada_minutos=30,
+            requiere_medico=True,
+            color=nueva_esp_doctor.color or "#0d9488",
+            activo=True
+        )
+        db.add(servicio_consulta)
+        await db.flush()
+
+        # 4. Crear Perfil Médico enlazado a su especialidad propia
         default_sched = {
             dia: {"activo": True, "desde": "08:00", "hasta": "17:00"}
             for dia in ["lunes", "martes", "miercoles", "jueves", "viernes"]
@@ -429,7 +527,7 @@ async def register_public_empresa(
         medico_profile = Medico(
             empresa_id=empresa.id,
             usuario_id=user.id,
-            especialidad_id=target_esp_id,
+            especialidad_id=nueva_esp_doctor.id,
             pais_telefono_id=req.pais_id or 2,
             sucursal_defecto_id=sucursal.id,
             nombres=nombre,
@@ -439,12 +537,12 @@ async def register_public_empresa(
             email=req.email,
             telefono=phone_number,
             licencia_medica=req.licencia_medica or f"MPPS-{random.randint(10000, 99999)}",
-            color="#0d9488",
+            color=nueva_esp_doctor.color or "#0d9488",
             subespecialidades=[],
             sucursales_ids=[sucursal.id],
             horario_atencion=default_sched,
             tipo_comision="porcentaje",
-            porcentaje_honorario=100.00,  # 100% de sus honorarios al ser consultorio propio
+            porcentaje_honorario=100.00,  # 100% de honorarios en consultorio propio
             monto_fijo_honorario=0.00,
             datos_bancarios={},
             activo=True

@@ -18,7 +18,10 @@ class PacienteMini(BaseModel):
     grupo_sanguineo: Optional[str] = None
     alergias: Optional[Any] = None
     antecedentes_patologicos: Optional[str] = None
+    antecedentes_familiares: Optional[str] = None
+    antecedentes_quirurgicos: Optional[str] = None
     medicacion_habitual: Optional[str] = None
+    observaciones_medicas: Optional[str] = None
     contacto_emergencia_nombre: Optional[str] = None
     contacto_emergencia_parentesco: Optional[str] = None
 

@@ -8,6 +8,7 @@ import {
   type ReposoMedico,
 } from '../../api/consultas';
 import { especialidadesApi } from '../../api/especialidades';
+import { pacientesApi } from '../../api/pacientes';
 import type { PlantillaEfectiva, SeccionClinica, CampoClinico } from '../../types';
 import OdontogramaWidget, { type OdontogramaData } from '../../components/clinica/OdontogramaWidget';
 import OdontogramaHistorialModal from '../../components/clinica/OdontogramaHistorialModal';
@@ -89,7 +90,9 @@ import {
   Maximize2,
   Columns2,
   PhoneOff,
-
+  Heart,
+  Plus,
+  Activity,
   X,
 } from 'lucide-react';
 
@@ -527,6 +530,77 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const [observacionesAdicionales, setObservacionesAdicionales] = useState<string>('');
   const [referidoPara, setReferidoPara] = useState<string>('');
 
+  // ── FICHA MÉDICA Y ANTECEDENTES DEL PACIENTE (PASO 1) ──
+  const [fichaGrupoSanguineo, setFichaGrupoSanguineo] = useState<string>('');
+  const [fichaAlergias, setFichaAlergias] = useState<string[]>([]);
+  const [fichaNuevaAlergia, setFichaNuevaAlergia] = useState<string>('');
+  const [fichaPatologicos, setFichaPatologicos] = useState<string>('');
+  const [fichaFamiliares, setFichaFamiliares] = useState<string>('');
+  const [fichaQuirurgicos, setFichaQuirurgicos] = useState<string>('');
+  const [fichaMedicacion, setFichaMedicacion] = useState<string>('');
+  const [savingFicha, setSavingFicha] = useState<boolean>(false);
+
+  const handleAddFichaAlergia = (alergiaToAdd?: string) => {
+    const val = (alergiaToAdd || fichaNuevaAlergia).trim();
+    if (!val) return;
+    if (!fichaAlergias.includes(val)) {
+      setFichaAlergias((prev) => [...prev, val]);
+    }
+    setFichaNuevaAlergia('');
+  };
+
+  const handleRemoveFichaAlergia = (idx: number) => {
+    setFichaAlergias((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSaveFichaMedica = async () => {
+    if (!consulta?.paciente?.id) return;
+    setSavingFicha(true);
+    try {
+      await pacientesApi.update(consulta.paciente.id, {
+        grupo_sanguineo: fichaGrupoSanguineo || null,
+        alergias: fichaAlergias,
+        antecedentes_patologicos: fichaPatologicos.trim() || null,
+        antecedentes_familiares: fichaFamiliares.trim() || null,
+        antecedentes_quirurgicos: fichaQuirurgicos.trim() || null,
+        medicacion_habitual: fichaMedicacion.trim() || null,
+      });
+      if (consulta.paciente) {
+        consulta.paciente.grupo_sanguineo = fichaGrupoSanguineo;
+        consulta.paciente.alergias = fichaAlergias;
+        consulta.paciente.antecedentes_patologicos = fichaPatologicos;
+        (consulta.paciente as any).antecedentes_familiares = fichaFamiliares;
+        (consulta.paciente as any).antecedentes_quirurgicos = fichaQuirurgicos;
+        consulta.paciente.medicacion_habitual = fichaMedicacion;
+      }
+      toast.success('Ficha médica y antecedentes guardados en el historial del paciente');
+    } catch (err: any) {
+      console.error('Error guardando ficha médica:', err);
+      toast.error('No se pudo actualizar la ficha médica del paciente');
+    } finally {
+      setSavingFicha(false);
+    }
+  };
+
+  const handleCopiarFichaAEnfermedadActual = () => {
+    const lines: string[] = [];
+    if (fichaGrupoSanguineo) lines.push(`Grupo Sanguíneo: ${fichaGrupoSanguineo}`);
+    if (fichaAlergias.length > 0) lines.push(`Alergias: ${fichaAlergias.join(', ')}`);
+    if (fichaPatologicos) lines.push(`Antecedentes Patológicos: ${fichaPatologicos}`);
+    if (fichaFamiliares) lines.push(`Antecedentes Familiares: ${fichaFamiliares}`);
+    if (fichaQuirurgicos) lines.push(`Cirugías Previas: ${fichaQuirurgicos}`);
+    if (fichaMedicacion) lines.push(`Medicación Habitual: ${fichaMedicacion}`);
+
+    if (lines.length === 0) {
+      toast.info('No hay antecedentes clínicos para copiar');
+      return;
+    }
+
+    const block = `[Antecedentes y Ficha Médica]:\n${lines.join('\n')}`;
+    setEnfermedadActual((prev) => (prev ? `${prev}\n\n${block}` : block));
+    toast.success('Antecedentes copiados a la Anamnesis / Evolución');
+  };
+
   // Signos Vitales
   const [signosVitales, setSignosVitales] = useState<Record<string, any>>({
     peso: '',
@@ -709,6 +783,27 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         observaciones_triaje: data.signos_vitales?.observaciones_triaje || '',
       });
 
+      // Inicializar Ficha Médica desde Preconsulta o Paciente
+      const pac = data.paciente || ({} as any);
+      const pre = data.preconsulta?.respuestas || data.datos_plantilla?.preconsulta_respuestas || {};
+
+      setFichaGrupoSanguineo(pre.grupo_sanguineo || pac.grupo_sanguineo || '');
+
+      let alList: string[] = [];
+      if (Array.isArray(pre.alergias) && pre.alergias.length > 0) {
+        alList = pre.alergias;
+      } else if (typeof pre.alergias === 'string' && pre.alergias.trim()) {
+        alList = pre.alergias.split(',').map((x: string) => x.trim()).filter(Boolean);
+      } else if (Array.isArray(pac.alergias) && pac.alergias.length > 0) {
+        alList = pac.alergias;
+      }
+      setFichaAlergias(alList);
+
+      setFichaPatologicos(pre.antecedentes_patologicos || pre.antecedentes || pac.antecedentes_patologicos || '');
+      setFichaFamiliares(pre.antecedentes_familiares || pac.antecedentes_familiares || '');
+      setFichaQuirurgicos(pre.antecedentes_quirurgicos || pac.antecedentes_quirurgicos || '');
+      setFichaMedicacion(pre.medicacion_habitual || pre.medicamentos_actuales || pac.medicacion_habitual || '');
+
       let datosPlantillaRecibidos = data.datos_plantilla || {};
 
       // Si la consulta actual no tiene odontograma aún, pero el paciente tiene odontograma de primera consulta registrado:
@@ -845,6 +940,14 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
         observaciones_adicionales: observacionesAdicionales,
         referido_para: referidoPara,
         fecha_proximo_control: fechaProximoControl,
+        ficha_medica: {
+          grupo_sanguineo: fichaGrupoSanguineo,
+          alergias: fichaAlergias,
+          antecedentes_patologicos: fichaPatologicos,
+          antecedentes_familiares: fichaFamiliares,
+          antecedentes_quirurgicos: fichaQuirurgicos,
+          medicacion_habitual: fichaMedicacion,
+        },
       },
       estudios_solicitados: estudios,
       receta_medica: medicamentos,
@@ -864,6 +967,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       setSaving(true);
       const payload = buildPayload(false);
       await consultasApi.updateConsulta(consulta.id, payload);
+
+      // Sincronizar Ficha Médica directamente con la ficha del paciente
+      if (consulta.paciente?.id) {
+        pacientesApi.update(consulta.paciente.id, {
+          grupo_sanguineo: fichaGrupoSanguineo || null,
+          alergias: fichaAlergias,
+          antecedentes_patologicos: fichaPatologicos.trim() || null,
+          antecedentes_familiares: fichaFamiliares.trim() || null,
+          antecedentes_quirurgicos: fichaQuirurgicos.trim() || null,
+          medicacion_habitual: fichaMedicacion.trim() || null,
+        }).catch((e) => console.warn('Sync paciente silencioso:', e));
+      }
+
       toast.success('Borrador de la atención médica guardado exitosamente');
     } catch (error: any) {
       console.error('Error al guardar borrador:', error);
@@ -888,6 +1004,19 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
       const payload = buildPayload(true);
       await consultasApi.updateConsulta(consulta.id, payload);
       await consultasApi.cambiarEstado(consulta.id, 'finalizada');
+
+      // Sincronizar Ficha Médica directamente con la ficha del paciente
+      if (consulta.paciente?.id) {
+        pacientesApi.update(consulta.paciente.id, {
+          grupo_sanguineo: fichaGrupoSanguineo || null,
+          alergias: fichaAlergias,
+          antecedentes_patologicos: fichaPatologicos.trim() || null,
+          antecedentes_familiares: fichaFamiliares.trim() || null,
+          antecedentes_quirurgicos: fichaQuirurgicos.trim() || null,
+          medicacion_habitual: fichaMedicacion.trim() || null,
+        }).catch((e) => console.warn('Sync paciente silencioso:', e));
+      }
+
       toast.success('🎉 ¡Consulta Médica finalizada y registrada exitosamente!');
       navigate('/clinica/consultas/atendidas');
     } catch (error: any) {
@@ -2049,6 +2178,249 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                       <p>
                         En este primer paso valide las respuestas previas del paciente y registre el motivo de la consulta. En el <strong>Paso 2</strong> registrará las constantes vitales y en el <strong>Paso 3</strong> detallará la anamnesis próxima, evolución semiológica, datos de interconsulta/referencia y el examen físico especializado.
                       </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* ── TARJETA CLÍNICA: FICHA MÉDICA, ALERGIAS Y ANTECEDENTES DEL PACIENTE ── */}
+                <Card className="border-border/80 bg-card shadow-xs overflow-hidden">
+                  <div className="p-4 px-5 bg-muted/40 border-b border-border/60 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="size-8 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                        <HeartPulse className="size-4" />
+                      </div>
+                      <div>
+                        <h5 className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-2">
+                          <span>Ficha Médica y Antecedentes</span>
+                          {fichaAlergias.length > 0 ? (
+                            <Badge variant="destructive" className="text-[10px] bg-rose-600 text-white font-bold px-2 py-0">
+                              ⚠️ {fichaAlergias.length} Alergia(s)
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground font-normal">
+                              Sin alergias
+                            </Badge>
+                          )}
+                        </h5>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {preconsultaRespuestas && Object.keys(preconsultaRespuestas).some((k) => ['grupo_sanguineo', 'alergias', 'antecedentes_patologicos', 'medicacion_habitual'].includes(k))
+                            ? '📥 Suministrado por el paciente en la Preconsulta digital'
+                            : '👤 Perfil clínico base registrado del paciente'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCopiarFichaAEnfermedadActual}
+                        disabled={readOnly}
+                        className="h-7 text-[11px] text-primary hover:text-primary hover:bg-primary/10 gap-1 px-2 cursor-pointer"
+                        title="Inserta estos antecedentes formateados en la evolución/anamnesis"
+                      >
+                        <Sparkles className="size-3 text-amber-500" />
+                        <span>Copiar a Evolución</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSaveFichaMedica}
+                        disabled={savingFicha || readOnly}
+                        className="h-7 text-[11px] border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 gap-1 px-2 cursor-pointer"
+                        title="Guarda estos datos clínicos directamente en la ficha del paciente"
+                      >
+                        <Save className="size-3 text-teal-600" />
+                        <span>{savingFicha ? 'Guardando...' : 'Actualizar Paciente'}</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  <CardContent className="p-4 sm:p-5 space-y-4">
+                    {/* 1. Grupo Sanguíneo */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <Heart className="size-3.5 text-rose-600 fill-rose-600/20" />
+                          <span>Grupo Sanguíneo y Factor Rh</span>
+                        </Label>
+                        {fichaGrupoSanguineo && (
+                          <Badge className="text-[10px] bg-rose-600 text-white font-mono font-bold">
+                            {fichaGrupoSanguineo}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                        {['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'].map((gs) => {
+                          const isSelected = fichaGrupoSanguineo === gs;
+                          return (
+                            <button
+                              key={gs}
+                              type="button"
+                              disabled={readOnly}
+                              onClick={() => setFichaGrupoSanguineo(isSelected ? '' : gs)}
+                              className={cn(
+                                'h-7 rounded-lg text-xs font-bold font-mono transition-all border cursor-pointer',
+                                isSelected
+                                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs ring-2 ring-rose-400/30'
+                                  : 'bg-muted/40 hover:bg-muted text-foreground border-border/80'
+                              )}
+                            >
+                              {gs}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 2. Alergias Conocidas */}
+                    <div className="p-3 rounded-xl border border-rose-500/30 bg-rose-500/5 dark:bg-rose-950/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                          <AlertCircle className="size-3.5 text-rose-600" />
+                          <span>Alergias Medicamentosas y Ambientales</span>
+                        </Label>
+                        <span className="text-[10.5px] text-muted-foreground">
+                          {fichaAlergias.length === 0 ? 'Sin alergias reportadas' : `${fichaAlergias.length} registrada(s)`}
+                        </span>
+                      </div>
+
+                      {fichaAlergias.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {fichaAlergias.map((al, idx) => (
+                            <Badge
+                              key={idx}
+                              variant="destructive"
+                              className="text-xs px-2.5 py-0.5 gap-1.5 font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-2xs"
+                            >
+                              <span>⚠️ {al}</span>
+                              {!readOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFichaAlergia(idx)}
+                                  className="cursor-pointer hover:opacity-80"
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              )}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {!readOnly && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={fichaNuevaAlergia}
+                              onChange={(e) => setFichaNuevaAlergia(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddFichaAlergia();
+                                }
+                              }}
+                              placeholder="Escriba alergia y presione Enter o Añadir..."
+                              className="text-xs h-8 bg-background"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleAddFichaAlergia()}
+                              className="h-8 px-2.5 text-xs bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shrink-0"
+                            >
+                              <Plus className="size-3.5 mr-1" />
+                              Añadir
+                            </Button>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1">
+                            {['Penicilina', 'Dipirona', 'Aspirina / AINEs', 'Sulfas', 'Látex', 'Yodo', 'Mariscos'].map((sug) => {
+                              const yaTiene = fichaAlergias.includes(sug);
+                              return (
+                                <button
+                                  key={sug}
+                                  type="button"
+                                  disabled={yaTiene}
+                                  onClick={() => handleAddFichaAlergia(sug)}
+                                  className={cn(
+                                    'text-[10px] px-1.5 py-0.5 rounded border transition-all cursor-pointer',
+                                    yaTiene
+                                      ? 'opacity-40 cursor-not-allowed bg-muted border-border text-muted-foreground'
+                                      : 'bg-background hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                                  )}
+                                >
+                                  + {sug}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* 3. Antecedentes Patológicos y Familiares */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Antecedentes Personales Patológicos
+                        </Label>
+                        <Textarea
+                          value={fichaPatologicos}
+                          onChange={(e) => setFichaPatologicos(e.target.value)}
+                          placeholder="Hipertensión, Diabetes, Asma, Gastritis, etc."
+                          disabled={readOnly}
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Antecedentes Familiares Relevantes
+                        </Label>
+                        <Textarea
+                          value={fichaFamiliares}
+                          onChange={(e) => setFichaFamiliares(e.target.value)}
+                          placeholder="Cardiopatías, Cáncer, Diabetes en padres o abuelos..."
+                          disabled={readOnly}
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 4. Cirugías y Medicación Habitual */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Cirugías e Intervenciones Quirúrgicas
+                        </Label>
+                        <Textarea
+                          value={fichaQuirurgicos}
+                          onChange={(e) => setFichaQuirurgicos(e.target.value)}
+                          placeholder="Apendicectomía, Cesárea, Traumatismos operados..."
+                          disabled={readOnly}
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          Medicación Habitual de Uso Continuo
+                        </Label>
+                        <Textarea
+                          value={fichaMedicacion}
+                          onChange={(e) => setFichaMedicacion(e.target.value)}
+                          placeholder="Fármacos de toma diaria con dosis y horarios..."
+                          disabled={readOnly}
+                          rows={2}
+                          className="text-xs resize-none"
+                        />
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

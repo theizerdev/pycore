@@ -11,6 +11,12 @@ export interface PreconsultaPublicData {
     apellidos: string;
     documento: string;
     telefono: string | null;
+    grupo_sanguineo?: string | null;
+    alergias?: string[];
+    antecedentes_patologicos?: string | null;
+    antecedentes_familiares?: string | null;
+    antecedentes_quirurgicos?: string | null;
+    medicacion_habitual?: string | null;
   };
   medico: {
     id: number | null;

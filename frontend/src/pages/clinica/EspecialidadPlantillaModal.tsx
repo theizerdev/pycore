@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { especialidadesApi } from '../../api/especialidades';
+import { cn } from '../../lib/utils';
 import type {
   Especialidad,
   EspecialidadPlantilla,
@@ -76,6 +77,8 @@ import {
   Scale,
   FlaskConical,
   X,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import OdontogramaWidget from '../../components/clinica/OdontogramaWidget';
 import RefraccionWidget from '../../components/clinica/RefraccionWidget';
@@ -142,6 +145,7 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [savingFlujo, setSavingFlujo] = useState<boolean>(false);
+  const [isFullScreen, setIsFullScreen] = useState<boolean>(true);
 
   // Estado Flujo Wizard
   const [pasosActivos, setPasosActivos] = useState<number[]>([1, 2, 3, 4, 5, 6]);
@@ -940,7 +944,16 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-6xl xl:max-w-7xl w-[96vw] max-h-[96vh] h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogContent
+          fullScreen={isFullScreen}
+          hideCloseButton
+          className={cn(
+            "flex flex-col p-0 gap-0 overflow-hidden",
+            isFullScreen
+              ? "w-full h-full max-w-none max-h-none rounded-none border-0"
+              : "sm:max-w-6xl xl:max-w-7xl w-[96vw] max-h-[96vh] h-[92vh]"
+          )}
+        >
           {/* Cabecera del Modal */}
           <div className="p-5 pb-3 border-b border-border/80 bg-muted/20 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -1014,6 +1027,40 @@ export const EspecialidadPlantillaModal: React.FC<EspecialidadPlantillaModalProp
                   <span>{saving ? 'Guardando...' : (activeTab === 'estudios' ? 'Guardar Estudios & Kits' : 'Guardar Plantilla Base')}</span>
                 </Button>
               ) : null}
+
+              {/* Botón Maximizar / Restaurar Pantalla Completa */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsFullScreen((prev) => !prev)}
+                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer gap-1.5 border-border"
+                title={isFullScreen ? "Restaurar tamaño normal" : "Usar en ventana completa"}
+              >
+                {isFullScreen ? (
+                  <>
+                    <Minimize2 className="size-3.5" />
+                    <span className="hidden sm:inline">Restaurar</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="size-3.5" />
+                    <span className="hidden sm:inline">Ventana Completa</span>
+                  </>
+                )}
+              </Button>
+
+              {/* Botón Cerrar Modal */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                className="size-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer rounded-lg"
+                title="Cerrar modal"
+              >
+                <X className="size-4" />
+              </Button>
             </div>
           </div>
 

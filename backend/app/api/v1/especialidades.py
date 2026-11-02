@@ -70,7 +70,69 @@ async def list_especialidades(
 
     stmt = stmt.order_by(Especialidad.nombre.asc())
     result = await db.execute(stmt)
-    return result.scalars().all()
+    items = result.scalars().all()
+
+    # Si es un médico independiente y aún no tiene especialidad propia en su empresa, auto-inicializarla
+    if not items and current_user.empresa and getattr(current_user.empresa, "tipo_entidad", "") == "medico_independiente":
+        from app.models.medico import Medico
+        from app.models.plantilla_especialidad import EspecialidadPlantilla
+        from app.services.clinical_templates_seed import get_template_for_specialty
+
+        stmt_med = select(Medico).where(Medico.usuario_id == current_user.id)
+        res_med = await db.execute(stmt_med)
+        med_rec = res_med.scalar_one_or_none()
+
+        base_name = "Medicina General"
+        base_color = "#0d9488"
+        base_icono = "Stethoscope"
+        base_desc = "Atención médica especializada para consultorio privado"
+
+        if med_rec and med_rec.especialidad_id:
+            stmt_orig = select(Especialidad).where(Especialidad.id == med_rec.especialidad_id)
+            res_orig = await db.execute(stmt_orig)
+            orig_esp = res_orig.scalar_one_or_none()
+            if orig_esp:
+                base_name = orig_esp.nombre
+                base_color = orig_esp.color or base_color
+                base_icono = orig_esp.icono or base_icono
+                base_desc = orig_esp.descripcion or base_desc
+
+        nueva_esp = Especialidad(
+            empresa_id=current_user.empresa_id,
+            sucursal_id=current_user.sucursal_defecto_id,
+            nombre=base_name,
+            codigo="ESP-01",
+            descripcion=base_desc,
+            color=base_color,
+            icono=base_icono,
+            pasos_activos=[1, 2, 3, 4, 5, 6],
+            paso_inicial=1,
+            activo=True
+        )
+        db.add(nueva_esp)
+        await db.flush()
+
+        sug = get_template_for_specialty(base_name)
+        plantilla = EspecialidadPlantilla(
+            empresa_id=current_user.empresa_id,
+            especialidad_id=nueva_esp.id,
+            esquema_preconsulta=sug.get("esquema_preconsulta", []),
+            esquema_consulta=sug.get("esquema_consulta", []),
+            widgets_activos=sug.get("widgets_activos", []),
+            estudios_sugeridos=sug.get("estudios_sugeridos", {}),
+            version=1,
+            activo=True
+        )
+        db.add(plantilla)
+
+        if med_rec:
+            med_rec.especialidad_id = nueva_esp.id
+
+        await db.commit()
+        await db.refresh(nueva_esp)
+        return [nueva_esp]
+
+    return items
 
 @router.get("/{id}", response_model=EspecialidadResponse)
 async def get_especialidad(

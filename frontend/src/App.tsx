@@ -202,6 +202,14 @@ export const App: React.FC = () => {
                 }
               />
               <Route
+                path="admin/especialidades"
+                element={
+                  <ProtectedRoute requiredPermission="especialidades.ver">
+                    <EspecialidadesPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="clinica/doctores"
                 element={
                   <ProtectedRoute requiredPermission="medicos.ver">

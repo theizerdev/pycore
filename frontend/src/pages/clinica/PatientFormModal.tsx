@@ -42,6 +42,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  Info,
 } from 'lucide-react';
 
 interface PatientFormModalProps {
@@ -370,19 +371,8 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       isComplete: Boolean(nombres.trim() && apellidos.trim() && documentoIdentidad.trim()),
     },
     {
-      id: 'ficha',
-      label: '2. Ficha Médica',
-      shortTitle: 'Ficha Médica',
-      subtitle: 'Alergias y antecedentes',
-      titleDetail: 'Ficha Clínica, Alergias y Antecedentes',
-      descriptionDetail: 'Grupo sanguíneo, alergias conocidas, patologías de base y medicación habitual.',
-      icon: Activity,
-      isComplete: Boolean(grupoSanguineo),
-      badge: alergias.length > 0 ? `${alergias.length} alergias` : undefined,
-    },
-    {
       id: 'emergencia',
-      label: '3. Emergencia y Seguro',
+      label: '2. Emergencia y Seguro',
       shortTitle: 'Emergencia',
       subtitle: 'Contacto de apoyo y póliza',
       titleDetail: 'Contacto de Emergencia y Cobertura Médica',
@@ -390,6 +380,17 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       icon: ShieldCheck,
       isComplete: Boolean(contactoNombre.trim() || seguroMedico.trim()),
       badge: seguroMedico.trim() ? 'Asegurado' : undefined,
+    },
+    {
+      id: 'ficha',
+      label: '3. Ficha Médica',
+      shortTitle: 'Ficha Médica',
+      subtitle: 'Preconsulta / Consulta',
+      titleDetail: 'Ficha Clínica, Alergias y Antecedentes (Opcional en Recepción)',
+      descriptionDetail: 'Por privacidad, estos datos íntimos se solicitan en la Preconsulta digital o con el especialista en consulta.',
+      icon: Activity,
+      isComplete: Boolean(alergias.length > 0 || antecedentesPatologicos || medicacionHabitual),
+      badge: 'En Consulta',
     },
   ];
 
@@ -553,7 +554,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-                      Paso {currentStepIndex + 1} de 3
+                      {currentStep.id === 'ficha' ? 'Paso 3 · Preconsulta / Clínico (Opcional)' : `Paso ${currentStepIndex + 1} de 2`}
                     </span>
                     <h3 className="text-xs sm:text-sm font-bold text-foreground">
                       {currentStep.titleDetail}
@@ -568,11 +569,11 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                   <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden border border-border/50">
                     <div
                       className="h-full bg-teal-500 transition-all duration-300 rounded-full"
-                      style={{ width: `${((currentStepIndex + 1) / 3) * 100}%` }}
+                      style={{ width: `${currentStep.id === 'ficha' ? 100 : Math.round(((currentStepIndex + 1) / 2) * 100)}%` }}
                     />
                   </div>
                   <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 font-mono">
-                    {Math.round(((currentStepIndex + 1) / 3) * 100)}%
+                    {currentStep.id === 'ficha' ? '100%' : `${Math.round(((currentStepIndex + 1) / 2) * 100)}%`}
                   </span>
                 </div>
               </div>
@@ -738,8 +739,19 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                 </div>
               </TabsContent>
 
-              {/* ── TAB 2: FICHA MÉDICA BASE ────────────────────────── */}
+              {/* ── TAB 3: FICHA MÉDICA BASE (CLÍNICO / PRECONSULTA) ────────────────────────── */}
               <TabsContent value="ficha" className="space-y-4 m-0">
+                {/* Banner de Privacidad y Flujo Clínico */}
+                <div className="p-3.5 rounded-xl border border-teal-500/30 bg-teal-500/10 text-teal-800 dark:text-teal-200 text-xs flex items-start gap-2.5">
+                  <Info className="size-4 text-teal-600 dark:text-teal-400 mt-0.5 shrink-0" />
+                  <div>
+                    <span className="font-bold">Privacidad del Paciente en Recepción:</span>
+                    <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-0.5">
+                      No es necesario exigir estos datos íntimos en el mostrador de recepción. El paciente puede completarlos cómodamente y en privado desde su teléfono mediante el enlace de <strong>Preconsulta</strong>, o bien serán registrados por el médico especialista en el <strong>Paso 1 de la Consulta</strong>.
+                    </p>
+                  </div>
+                </div>
+
                 {/* Grupo Sanguíneo */}
                 <div className="p-3.5 rounded-xl border border-border/80 bg-muted/20 space-y-2">
                   <div className="flex items-center justify-between">

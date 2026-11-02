@@ -113,6 +113,12 @@ async def get_preconsulta_publica(
             "apellidos": paciente.apellidos if paciente else "",
             "documento": f"{paciente.tipo_documento}-{paciente.documento_identidad}" if paciente else "",
             "telefono": paciente.telefono if paciente else None,
+            "grupo_sanguineo": paciente.grupo_sanguineo if paciente else None,
+            "alergias": paciente.alergias if paciente else [],
+            "antecedentes_patologicos": paciente.antecedentes_patologicos if paciente else None,
+            "antecedentes_familiares": paciente.antecedentes_familiares if paciente else None,
+            "antecedentes_quirurgicos": paciente.antecedentes_quirurgicos if paciente else None,
+            "medicacion_habitual": paciente.medicacion_habitual if paciente else None,
         },
         "medico": {
             "id": medico.id if medico else None,
@@ -158,7 +164,8 @@ async def responder_preconsulta_publica(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Guarda las respuestas enviadas por el paciente desde su teléfono móvil y marca
+    Guarda las respuestas enviadas por el paciente desde su teléfono móvil,
+    actualiza su Ficha Médica y antecedentes de salud en su historial y marca
     la preconsulta como completada.
     """
     query = select(Preconsulta).where(Preconsulta.token == token)
@@ -175,6 +182,30 @@ async def responder_preconsulta_publica(
     pre.estado = "completada"
     pre.completada_at = datetime.now()
     pre.updated_at = datetime.now()
+
+    # Sincronizar Ficha Médica directamente en la ficha del Paciente
+    if pre.paciente_id:
+        res_pac = await db.execute(select(Paciente).where(Paciente.id == pre.paciente_id))
+        paciente = res_pac.scalar_one_or_none()
+        if paciente:
+            resp = payload.respuestas or {}
+            if resp.get("grupo_sanguineo"):
+                paciente.grupo_sanguineo = str(resp.get("grupo_sanguineo")).strip()
+            if "alergias" in resp:
+                al = resp.get("alergias")
+                if isinstance(al, list):
+                    paciente.alergias = al
+                elif isinstance(al, str):
+                    paciente.alergias = [x.strip() for x in al.split(",") if x.strip()]
+            if resp.get("antecedentes_patologicos"):
+                paciente.antecedentes_patologicos = str(resp.get("antecedentes_patologicos")).strip()
+            if resp.get("antecedentes_familiares"):
+                paciente.antecedentes_familiares = str(resp.get("antecedentes_familiares")).strip()
+            if resp.get("antecedentes_quirurgicos"):
+                paciente.antecedentes_quirurgicos = str(resp.get("antecedentes_quirurgicos")).strip()
+            if resp.get("medicacion_habitual"):
+                paciente.medicacion_habitual = str(resp.get("medicacion_habitual")).strip()
+            paciente.updated_at = datetime.now()
 
     # Si hay una consulta médica vinculada, sincronizar las respuestas de preconsulta
     res_con = await db.execute(
