@@ -50,6 +50,7 @@ from neonize.utils.enum import (
     ChatPresence,
     ChatPresenceMedia,
     ClientName,
+    ClientType,
     Presence,
     ReceiptType,
 )
@@ -672,20 +673,31 @@ class WhatsAppPythonEngine:
                 pass
         rt = self._get_or_create_runtime(instance_name)
 
+        needs_reset = False
         with rt.lock:
-            if rt.connection_state == "CONNECTED" and rt.client and rt.thread and rt.thread.is_alive():
+            ws_open = bool(rt.client and rt.client.is_connected)
+            thread_alive = bool(rt.thread and rt.thread.is_alive())
+
+            if rt.connection_state == "CONNECTED" and ws_open and thread_alive:
                 return self.build_status_payload(rt)
 
-            # Si ya tiene un QR fresco (< 45 s), devolverlo directamente
+            # Si ya tiene un QR fresco (< 45 s) y el websocket sigue vivo, devolverlo
             if (
                 rt.connection_state == "QR_READY"
                 and rt.qr_data_url
                 and rt.qr_generated_at
                 and (datetime.now() - rt.qr_generated_at).total_seconds() < 45
-                and rt.thread
-                and rt.thread.is_alive()
+                and ws_open
+                and thread_alive
             ):
                 return self.build_status_payload(rt)
+
+            # Si había un hilo viejo cuyo websocket cerró, limpiarlo antes de reconectar
+            if thread_alive and not ws_open:
+                needs_reset = True
+
+        if needs_reset:
+            await self.disconnect_instance(instance_name, clear_session=False)
 
         # Iniciar hilo nativo
         self._start_client_thread(rt, proxy_url=proxy_url)
@@ -707,13 +719,19 @@ class WhatsAppPythonEngine:
         proxy_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Vincula la instancia generando un código numérico de 8 dígitos para el teléfono."""
+        if self._event_loop is None:
+            try:
+                self._event_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+
         formatted = format_phone_number(phone, country_code)
         if not formatted or len(formatted) < 10:
             return {"success": False, "error": "Número telefónico inválido para emparejamiento."}
 
         rt = self._get_or_create_runtime(instance_name)
         with rt.lock:
-            if rt.connection_state == "CONNECTED":
+            if rt.connection_state == "CONNECTED" and rt.client and rt.client.is_connected:
                 return {
                     "success": True,
                     "already_connected": True,
@@ -721,35 +739,67 @@ class WhatsAppPythonEngine:
                     "message": "La instancia ya se encuentra conectada.",
                 }
 
-        # Garantizar que el cliente esté iniciado en modo conexión/QR
-        if not (rt.thread and rt.thread.is_alive()):
-            await self.connect_instance(instance_name, proxy_url=proxy_url, wait_seconds=6.0)
+        async def _ensure_open_websocket(force_fresh: bool = False) -> Optional[NewClient]:
+            with rt.lock:
+                already_open = bool(
+                    not force_fresh
+                    and rt.client is not None
+                    and rt.client.is_connected
+                    and rt.thread is not None
+                    and rt.thread.is_alive()
+                    and not rt.client.is_logged_in
+                )
+                c = rt.client if already_open else None
+            if c is not None:
+                return c
 
-        with rt.lock:
-            client = rt.client
+            # Limpiar cualquier sesión/hilo previo colgado o expirado y abrir websocket fresco
+            await self.disconnect_instance(instance_name, clear_session=True)
+            await self.connect_instance(instance_name, proxy_url=proxy_url, wait_seconds=10.0)
 
-        if not client:
-            return {"success": False, "error": "No se pudo inicializar el cliente WhatsApp."}
+            # Esperar brevemente hasta que el websocket quede abierto (is_connected == True)
+            deadline = time.monotonic() + 6.0
+            while time.monotonic() < deadline:
+                with rt.lock:
+                    if rt.client is not None and rt.client.is_connected:
+                        return rt.client
+                await asyncio.sleep(0.25)
 
-        try:
-            loop = asyncio.get_running_loop()
-            code = await loop.run_in_executor(
-                None,
-                lambda: client.PairPhone(
-                    formatted,
-                    show_push_notification=True,
-                    client_name=ClientName.CHROME,
-                ),
-            )
-            return {
-                "success": True,
-                "pairing_code": code,
-                "phone": formatted,
-                "instance_name": rt.instance_name,
-            }
-        except Exception as e:
-            logger.warning(f"[WA {rt.instance_name}] Error en PairPhone({formatted}): {e}")
-            return {"success": False, "error": str(e)}
+            with rt.lock:
+                return rt.client
+
+        loop = asyncio.get_running_loop()
+        last_err = ""
+        for attempt in range(2):
+            client = await _ensure_open_websocket(force_fresh=(attempt > 0))
+            if not client:
+                return {"success": False, "error": "No se pudo abrir la conexión WebSocket con WhatsApp."}
+
+            # Pequeña pausa de estabilidad tras el handshake
+            await asyncio.sleep(0.4)
+            try:
+                code = await loop.run_in_executor(
+                    None,
+                    lambda c=client: c.PairPhone(
+                        formatted,
+                        show_push_notification=True,
+                        client_name=ClientName.WINDOWS,
+                        client_type=ClientType.CHROME,
+                    ),
+                )
+                return {
+                    "success": True,
+                    "pairing_code": code,
+                    "phone": formatted,
+                    "instance_name": rt.instance_name,
+                }
+            except Exception as e:
+                last_err = str(e)
+                logger.warning(f"[WA {rt.instance_name}] Intento {attempt + 1} PairPhone({formatted}) falló: {last_err}")
+                if "websocket" not in last_err.lower() and "not connected" not in last_err.lower():
+                    break
+
+        return {"success": False, "error": last_err or "No se pudo generar el código de emparejamiento."}
 
     async def disconnect_instance(
         self, instance_name: str, clear_session: bool = True
@@ -806,13 +856,18 @@ class WhatsAppPythonEngine:
     def get_status(self, instance_name: str) -> Dict[str, Any]:
         rt = self._get_or_create_runtime(instance_name)
         with rt.lock:
-            # Si el QR expiró (>65s) y el hilo ya no corre, reflejar desconectado
-            if rt.connection_state == "QR_READY" and rt.qr_generated_at:
-                age = (datetime.now() - rt.qr_generated_at).total_seconds()
-                if age > 65 and not (rt.thread and rt.thread.is_alive()):
+            ws_open = bool(rt.client and rt.client.is_connected)
+            thread_alive = bool(rt.thread and rt.thread.is_alive())
+            # Si el QR expiró o el websocket ya cerró, reflejar desconectado
+            if rt.connection_state == "QR_READY":
+                age = (datetime.now() - rt.qr_generated_at).total_seconds() if rt.qr_generated_at else 999
+                if (not thread_alive) or (age > 12 and not ws_open) or age > 70:
                     rt.connection_state = "DISCONNECTED"
                     rt.qr_code = None
                     rt.qr_data_url = None
+                    rt.qr_generated_at = None
+            elif rt.connection_state == "CONNECTED" and not thread_alive:
+                rt.connection_state = "DISCONNECTED"
             return self.build_status_payload(rt)
 
     def build_status_payload(self, rt: WhatsAppInstanceRuntime) -> Dict[str, Any]:
