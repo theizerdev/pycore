@@ -167,3 +167,6 @@ backend/uploads/chat/*
 *.m4a
 *.aac
 
+# Sesiones locales de WhatsApp (Motor Python Neonize)
+backend/whatsapp_sessions/
+

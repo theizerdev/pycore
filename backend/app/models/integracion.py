@@ -23,12 +23,15 @@ class WhatsAppMessage(Base, TimestampMixin):
 
     empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True)
     sucursal_id = Column(Integer, ForeignKey("sucursales.id", ondelete="SET NULL"), nullable=True, index=True)
+    instance_name = Column(String(100), nullable=True, index=True)
+    external_message_id = Column(String(120), nullable=True, index=True)
     recipient_phone = Column(String(30), nullable=False, index=True)
     recipient_name = Column(String(120), nullable=True)
     message_content = Column(Text, nullable=False)
     variables = Column(JSON, nullable=True)
-    status = Column(String(20), default="pending", nullable=False) # pending, sent, delivered, read, failed
+    status = Column(String(20), default="pending", nullable=False) # queued, pending, sending, sent, delivered, read, failed, cancelled
     direction = Column(String(10), default="outbound", nullable=False) # inbound, outbound
+    scheduled_at = Column(DateTime, nullable=True)
     sent_at = Column(DateTime, nullable=True)
     delivered_at = Column(DateTime, nullable=True)
     read_at = Column(DateTime, nullable=True)

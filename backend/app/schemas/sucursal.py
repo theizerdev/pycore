@@ -16,15 +16,15 @@ class SucursalBase(BaseModel):
     longitud: Optional[float] = None
     activo: bool = True
     
-    # WhatsApp
+    # WhatsApp (Motor Nativo Python)
     whatsapp_active: bool = False
-    whatsapp_api_url: Optional[str] = "https://whatsapp.theizerdev.com"
+    whatsapp_api_url: Optional[str] = "python://local"
     whatsapp_api_key: Optional[str] = None
     whatsapp_instance: Optional[str] = None
     whatsapp_connected: bool = False
     whatsapp_status: Optional[str] = "disconnected"
     whatsapp_phone: Optional[str] = None
-    whatsapp_rate_limit: int = 300
+    whatsapp_rate_limit: int = 200
     whatsapp_warmup_mode: bool = True
     whatsapp_working_hours_enabled: bool = True
     whatsapp_working_hours_start: str = "08:00"

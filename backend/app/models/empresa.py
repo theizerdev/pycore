@@ -33,19 +33,30 @@ class Empresa(Base, TimestampMixin):
     google_maps_api_key = Column(String(255), nullable=True)
     google_maps_active = Column(Boolean, default=False, nullable=False)
 
-    # Integraciones: WhatsApp Business & Anti-Ban
+    # Integraciones: WhatsApp Nativo en Python (Neonize) & Escudo Anti-Ban
     whatsapp_active = Column(Boolean, default=False, nullable=False)
-    whatsapp_api_url = Column(String(255), default="http://localhost:3000", nullable=True)
+    whatsapp_api_url = Column(String(255), default="python://local", nullable=True)
     whatsapp_api_key = Column(String(255), nullable=True)
     whatsapp_instance = Column(String(100), nullable=True)
     whatsapp_connected = Column(Boolean, default=False, nullable=False)
     whatsapp_status = Column(String(50), default="disconnected", nullable=True)
     whatsapp_phone = Column(String(50), nullable=True)
-    whatsapp_rate_limit = Column(Integer, default=300, nullable=True)
+    whatsapp_rate_limit = Column(Integer, default=200, nullable=True)
+    whatsapp_hourly_limit = Column(Integer, default=25, nullable=True)
     whatsapp_warmup_mode = Column(Boolean, default=True, nullable=True)
     whatsapp_working_hours_enabled = Column(Boolean, default=True, nullable=True)
     whatsapp_working_hours_start = Column(String(10), default="08:00", nullable=True)
     whatsapp_working_hours_end = Column(String(10), default="20:00", nullable=True)
+    whatsapp_simulate_typing = Column(Boolean, default=True, nullable=True)
+    whatsapp_typing_min_sec = Column(Float, default=2.0, nullable=True)
+    whatsapp_typing_max_sec = Column(Float, default=6.0, nullable=True)
+    whatsapp_delay_min_sec = Column(Integer, default=8, nullable=True)
+    whatsapp_delay_max_sec = Column(Integer, default=20, nullable=True)
+    whatsapp_batch_size = Column(Integer, default=10, nullable=True)
+    whatsapp_batch_pause_sec = Column(Integer, default=60, nullable=True)
+    whatsapp_verify_number = Column(Boolean, default=True, nullable=True)
+    whatsapp_queue_paused = Column(Boolean, default=False, nullable=True)
+    whatsapp_connected_at = Column(DateTime, nullable=True)
     whatsapp_proxy_url = Column(String(255), nullable=True)
 
     # Integraciones: Pasarelas de Pago

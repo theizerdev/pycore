@@ -27,6 +27,13 @@ async def lifespan(app: FastAPI):
         await run_citas_migrations()
     except Exception as e:
         print(f"Aviso migración citas: {e}")
+
+    # 1.2 Ejecutar migraciones automáticas para motor nativo WhatsApp en Python
+    try:
+        from app.core.migrations_whatsapp import run_whatsapp_migrations
+        await run_whatsapp_migrations()
+    except Exception as e:
+        print(f"Aviso migración whatsapp: {e}")
     
     # 2. Ejecutar Seeder de Seguridad y Multi-tenant
     async with AsyncSessionLocal() as session:
@@ -39,8 +46,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Aviso al iniciar background scheduler: {e}")
 
+    # 4. Iniciar Worker de Cola Anti-Baneo y Reconexión WhatsApp (Python Nativo Neonize)
+    try:
+        from app.services.whatsapp_queue_worker import start_whatsapp_queue_worker
+        start_whatsapp_queue_worker()
+    except Exception as e:
+        print(f"Aviso al iniciar motor WhatsApp Python: {e}")
+
     yield
     # Limpieza al apagar el servidor si fuera necesario
+    try:
+        from app.services.whatsapp_queue_worker import stop_whatsapp_queue_worker
+        stop_whatsapp_queue_worker()
+    except Exception:
+        pass
     try:
         from app.services.background_scheduler import stop_background_scheduler
         stop_background_scheduler()

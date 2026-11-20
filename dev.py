@@ -29,7 +29,7 @@ def main():
     # Iniciar Backend
     backend_cmd = [
         python_executable, "-m", "uvicorn", "app.main:app",
-        "--reload", "--port", "8000"
+        "--reload", "--reload-dir", "app", "--port", "8000"
     ]
     backend_proc = subprocess.Popen(backend_cmd, cwd=backend_dir)
 

@@ -1,6 +1,6 @@
 import secrets
 from typing import List, Optional, Dict, Any
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -11,6 +11,8 @@ from app.core.security import get_current_active_user
 from app.models.usuario import Usuario
 from app.models.empresa import Empresa
 from app.models.sucursal import Sucursal
+from app.models.paciente import Paciente
+from app.models.medico import Medico
 from app.models.integracion import WhatsAppTemplate, WhatsAppMessage
 from app.schemas.integracion import (
     IntegracionesConfigResponse,
@@ -18,6 +20,9 @@ from app.schemas.integracion import (
     UpdatePagosRequest,
     UpdateWhatsAppServerRequest,
     AntiBanUpdateRequest,
+    WhatsAppPairPhoneRequest,
+    WhatsAppQueueToggleRequest,
+    WhatsAppInstanceSummary,
     CheckNumberRequest,
     CheckNumberResponse,
     PreviewSpintaxRequest,
@@ -45,7 +50,19 @@ from app.schemas.integracion import (
 )
 from app.services.bcv_service import BcvRateService
 from app.services.whatsapp_service import WhatsAppService
-from app.services.whatsapp_resolver import get_whatsapp_target, resolve_whatsapp_service, get_empresa_codigo_pais_resolver
+from app.services.whatsapp_python_engine import (
+    whatsapp_engine,
+    compute_warmup_limit,
+    is_within_working_hours,
+    calculate_safety_score,
+    format_phone_number,
+)
+from app.services.whatsapp_resolver import (
+    get_whatsapp_target,
+    resolve_whatsapp_service,
+    get_empresa_codigo_pais_resolver,
+    build_service_from_entity,
+)
 from app.services.exchange_rate_service import ExchangeRateService
 from app.services.jitsi_service import JitsiService
 from app.services.plan_quota_service import PlanQuotaService
@@ -78,17 +95,28 @@ async def get_integraciones_config(
             using_fallback = True
 
     wa_active = getattr(target, 'whatsapp_active', False)
-    wa_api_url = getattr(target, 'whatsapp_api_url', None) or getattr(empresa, 'whatsapp_api_url', "https://whatsapp.theizerdev.com")
+    wa_api_url = "python://local"
     wa_api_key = getattr(target, 'whatsapp_api_key', None) or getattr(empresa, 'whatsapp_api_key', None)
     wa_instance = getattr(target, 'whatsapp_instance', None) or (f"sucursal_{empresa.id}_{target.id}" if es_sucursal else f"empresa_{empresa.id}")
-    wa_connected = getattr(target, 'whatsapp_connected', False)
-    wa_status = getattr(target, 'whatsapp_status', 'disconnected') or 'disconnected'
-    wa_phone = getattr(target, 'whatsapp_phone', None)
-    wa_rate_limit = getattr(target, 'whatsapp_rate_limit', 300) or 300
+    live_st = whatsapp_engine.get_status(wa_instance)
+    wa_connected = bool(live_st.get("is_connected"))
+    wa_status = str(live_st.get("connection_state", "DISCONNECTED")).lower()
+    wa_phone = live_st.get("phone_number") or getattr(target, 'whatsapp_phone', None)
+    wa_rate_limit = getattr(target, 'whatsapp_rate_limit', 200) or 200
+    wa_hourly_limit = getattr(target, 'whatsapp_hourly_limit', 25) or 25
     wa_warmup = getattr(target, 'whatsapp_warmup_mode', True)
     wa_wh_enabled = getattr(target, 'whatsapp_working_hours_enabled', True)
     wa_wh_start = getattr(target, 'whatsapp_working_hours_start', "08:00") or "08:00"
     wa_wh_end = getattr(target, 'whatsapp_working_hours_end', "20:00") or "20:00"
+    wa_sim_typing = getattr(target, 'whatsapp_simulate_typing', True)
+    wa_typing_min = getattr(target, 'whatsapp_typing_min_sec', 2.0) or 2.0
+    wa_typing_max = getattr(target, 'whatsapp_typing_max_sec', 6.0) or 6.0
+    wa_delay_min = getattr(target, 'whatsapp_delay_min_sec', 8) or 8
+    wa_delay_max = getattr(target, 'whatsapp_delay_max_sec', 20) or 20
+    wa_batch_size = getattr(target, 'whatsapp_batch_size', 10) or 10
+    wa_batch_pause = getattr(target, 'whatsapp_batch_pause_sec', 60) or 60
+    wa_verify_num = getattr(target, 'whatsapp_verify_number', True)
+    wa_queue_paused = bool(live_st.get("queue_paused")) or bool(getattr(target, 'whatsapp_queue_paused', False))
     wa_proxy = getattr(target, 'whatsapp_proxy_url', None)
 
     return IntegracionesConfigResponse(
@@ -106,10 +134,20 @@ async def get_integraciones_config(
         whatsapp_phone=wa_phone,
         whatsapp_status=wa_status,
         whatsapp_rate_limit=wa_rate_limit,
+        whatsapp_hourly_limit=wa_hourly_limit,
         whatsapp_warmup_mode=wa_warmup if wa_warmup is not None else True,
         whatsapp_working_hours_enabled=wa_wh_enabled if wa_wh_enabled is not None else True,
         whatsapp_working_hours_start=wa_wh_start,
         whatsapp_working_hours_end=wa_wh_end,
+        whatsapp_simulate_typing=wa_sim_typing if wa_sim_typing is not None else True,
+        whatsapp_typing_min_sec=float(wa_typing_min),
+        whatsapp_typing_max_sec=float(wa_typing_max),
+        whatsapp_delay_min_sec=int(wa_delay_min),
+        whatsapp_delay_max_sec=int(wa_delay_max),
+        whatsapp_batch_size=int(wa_batch_size),
+        whatsapp_batch_pause_sec=int(wa_batch_pause),
+        whatsapp_verify_number=wa_verify_num if wa_verify_num is not None else True,
+        whatsapp_queue_paused=wa_queue_paused,
         whatsapp_proxy_url=wa_proxy,
         is_sucursal=es_sucursal,
         sucursal_id=target.id if es_sucursal else None,
@@ -241,47 +279,198 @@ async def get_bcv_rate(
     return await bcv_service.fetch_official_rate(empresa_id=empresa_id)
 
 
-# ── 5. WHATSAPP: ESTADO, CONEXIÓN & DIAGNÓSTICO ────────────────────────
+# ── 5. WHATSAPP NATIVO PYTHON (NEONIZE): INSTANCIAS, QR & ANTI-BANEO ────
+def _extract_antiban_params(target: Any) -> Dict[str, Any]:
+    return {
+        "dailyLimit": int(getattr(target, "whatsapp_rate_limit", None) or 200),
+        "hourlyLimit": int(getattr(target, "whatsapp_hourly_limit", None) or 25),
+        "warmupMode": (
+            bool(getattr(target, "whatsapp_warmup_mode", True))
+            if getattr(target, "whatsapp_warmup_mode", None) is not None
+            else True
+        ),
+        "workingHoursEnabled": (
+            bool(getattr(target, "whatsapp_working_hours_enabled", True))
+            if getattr(target, "whatsapp_working_hours_enabled", None) is not None
+            else True
+        ),
+        "workingHoursStart": getattr(target, "whatsapp_working_hours_start", None) or "08:00",
+        "workingHoursEnd": getattr(target, "whatsapp_working_hours_end", None) or "20:00",
+        "simulateTyping": (
+            bool(getattr(target, "whatsapp_simulate_typing", True))
+            if getattr(target, "whatsapp_simulate_typing", None) is not None
+            else True
+        ),
+        "typingMinSec": float(getattr(target, "whatsapp_typing_min_sec", None) or 2.0),
+        "typingMaxSec": float(getattr(target, "whatsapp_typing_max_sec", None) or 6.0),
+        "delayMinSec": int(getattr(target, "whatsapp_delay_min_sec", None) or 8),
+        "delayMaxSec": int(getattr(target, "whatsapp_delay_max_sec", None) or 20),
+        "batchSize": int(getattr(target, "whatsapp_batch_size", None) or 10),
+        "batchPauseSec": int(getattr(target, "whatsapp_batch_pause_sec", None) or 60),
+        "verifyNumber": (
+            bool(getattr(target, "whatsapp_verify_number", True))
+            if getattr(target, "whatsapp_verify_number", None) is not None
+            else True
+        ),
+        "proxyUrl": getattr(target, "whatsapp_proxy_url", None),
+    }
+
+
+async def _get_instance_counts(
+    db: AsyncSession, empresa_id: int, sucursal_id: Optional[int]
+) -> tuple[int, int, int]:
+    """Retorna (sent_today, sent_last_hour, queued_count) para la instancia."""
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    hour_ago = datetime.now() - timedelta(hours=1)
+
+    def _scope(q):
+        if sucursal_id is not None:
+            return q.where(WhatsAppMessage.sucursal_id == sucursal_id)
+        return q.where(WhatsAppMessage.sucursal_id.is_(None))
+
+    q_today = _scope(
+        select(func.count(WhatsAppMessage.id)).where(
+            WhatsAppMessage.empresa_id == empresa_id,
+            WhatsAppMessage.direction == "outbound",
+            WhatsAppMessage.status.in_(["sent", "delivered", "read"]),
+            WhatsAppMessage.sent_at >= today_start,
+        )
+    )
+    q_hour = _scope(
+        select(func.count(WhatsAppMessage.id)).where(
+            WhatsAppMessage.empresa_id == empresa_id,
+            WhatsAppMessage.direction == "outbound",
+            WhatsAppMessage.status.in_(["sent", "delivered", "read"]),
+            WhatsAppMessage.sent_at >= hour_ago,
+        )
+    )
+    q_queued = _scope(
+        select(func.count(WhatsAppMessage.id)).where(
+            WhatsAppMessage.empresa_id == empresa_id,
+            WhatsAppMessage.direction == "outbound",
+            WhatsAppMessage.status.in_(["pending", "queued", "sending"]),
+        )
+    )
+    sent_today = int((await db.execute(q_today)).scalar() or 0)
+    sent_hour = int((await db.execute(q_hour)).scalar() or 0)
+    queued = int((await db.execute(q_queued)).scalar() or 0)
+    return sent_today, sent_hour, queued
+
+
+@router.get("/whatsapp/instances", response_model=List[WhatsAppInstanceSummary])
+async def list_whatsapp_instances(
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lista todas las instancias de WhatsApp de la empresa (Principal + Sucursales) con telemetría en vivo."""
+    empresa_id = current_user.empresa_id or 1
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    sucursales = (
+        await db.execute(
+            select(Sucursal)
+            .where(Sucursal.empresa_id == empresa_id, Sucursal.activo == True)
+            .order_by(Sucursal.id.asc())
+        )
+    ).scalars().all()
+
+    items: List[WhatsAppInstanceSummary] = []
+
+    async def _build_summary(entity: Any, is_suc: bool) -> WhatsAppInstanceSummary:
+        inst_name = entity.whatsapp_instance or (
+            f"sucursal_{empresa_id}_{entity.id}" if is_suc else f"empresa_{entity.id}"
+        )
+        live = whatsapp_engine.get_status(inst_name)
+        params = _extract_antiban_params(entity)
+        sent_today, sent_hour, queued = await _get_instance_counts(
+            db, empresa_id, entity.id if is_suc else None
+        )
+        sent_hour = max(sent_hour, whatsapp_engine.get_hourly_count(inst_name))
+        connected_at = getattr(entity, "whatsapp_connected_at", None)
+        eff_daily, warmup_day = compute_warmup_limit(
+            connected_at, params["dailyLimit"], params["warmupMode"]
+        )
+        score, _ = calculate_safety_score(
+            simulate_typing=params["simulateTyping"],
+            warmup_mode=params["warmupMode"],
+            working_hours_enabled=params["workingHoursEnabled"],
+            verify_number=params["verifyNumber"],
+            delay_min_sec=params["delayMinSec"],
+            delay_max_sec=params["delayMaxSec"],
+            daily_limit=params["dailyLimit"],
+            hourly_limit=params["hourlyLimit"],
+            batch_size=params["batchSize"],
+            batch_pause_sec=params["batchPauseSec"],
+        )
+        paused = bool(live.get("queue_paused")) or bool(getattr(entity, "whatsapp_queue_paused", False))
+        return WhatsAppInstanceSummary(
+            instance_name=inst_name,
+            label=entity.nombre if is_suc else f"{entity.nombre} (Principal)",
+            is_sucursal=is_suc,
+            sucursal_id=entity.id if is_suc else None,
+            connection_state=live.get("connection_state", "DISCONNECTED"),
+            is_connected=bool(live.get("is_connected")),
+            phone_number=live.get("phone_number") or getattr(entity, "whatsapp_phone", None),
+            push_name=live.get("push_name"),
+            sent_today=sent_today,
+            effective_daily_limit=eff_daily,
+            daily_limit=params["dailyLimit"],
+            sent_this_hour=sent_hour,
+            hourly_limit=params["hourlyLimit"],
+            queued=queued,
+            warmup_mode=params["warmupMode"],
+            warmup_day=warmup_day,
+            queue_paused=paused,
+            pause_reason=live.get("pause_reason"),
+            currently_typing_to=live.get("currently_typing_to"),
+            safety_score=score,
+            has_saved_session=bool(live.get("has_saved_session")),
+        )
+
+    items.append(await _build_summary(empresa, False))
+    for suc in sucursales:
+        items.append(await _build_summary(suc, True))
+
+    return items
+
+
 @router.get("/whatsapp/status", response_model=WhatsAppStatusResponse)
 async def get_whatsapp_status(
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
     if not target:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
-
-    instance_name = target.whatsapp_instance or (f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}")
-    api_url = getattr(target, 'whatsapp_api_url', None) or (empresa.whatsapp_api_url if empresa else None) or "https://whatsapp.theizerdev.com"
-    api_key = getattr(target, 'whatsapp_api_key', None) or (empresa.whatsapp_api_key if empresa else None)
-
-    wa_service = WhatsAppService(
-        api_url=api_url,
-        api_key=api_key,
-        instance_name=instance_name,
-        company_id=empresa_id
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais_resolver(empresa)
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
     )
+
+    wa_service = build_service_from_entity(target, instance_name, empresa_id, cod_pais)
     status_data = await wa_service.get_status(
         db_status=target.whatsapp_status,
         db_phone=target.whatsapp_phone,
-        db_connected=target.whatsapp_connected
+        db_connected=target.whatsapp_connected,
     )
 
-    # Sincronizar en BD según lo que reporte el servidor Baileys
+    # Sincronizar estado real del motor Python en BD
     if status_data.get("is_connected"):
         if not target.whatsapp_connected or target.whatsapp_status != "connected":
             target.whatsapp_connected = True
             target.whatsapp_status = "connected"
             if status_data.get("phone_number"):
                 target.whatsapp_phone = status_data.get("phone_number")
+            if not getattr(target, "whatsapp_connected_at", None):
+                target.whatsapp_connected_at = datetime.now()
             await db.commit()
-    elif status_data.get("connection_state") == "QR_READY" and status_data.get("qr_data_url"):
+    elif status_data.get("connection_state") == "QR_READY":
         if target.whatsapp_status != "qr_ready":
             target.whatsapp_status = "qr_ready"
             target.whatsapp_connected = False
@@ -290,19 +479,21 @@ async def get_whatsapp_status(
         if target.whatsapp_connected:
             target.whatsapp_connected = False
             target.whatsapp_status = "disconnected"
-            target.whatsapp_phone = None
             await db.commit()
 
-    using_fallback = False
-    if es_sucursal and not target.whatsapp_connected and (empresa and empresa.whatsapp_connected):
-        using_fallback = True
+    emp_live = whatsapp_engine.get_status(
+        (empresa.whatsapp_instance or f"empresa_{empresa.id}") if empresa else f"empresa_{empresa_id}"
+    )
+    using_fallback = bool(
+        es_sucursal and not status_data.get("is_connected") and emp_live.get("is_connected")
+    )
 
     return WhatsAppStatusResponse(
         **status_data,
         is_sucursal=es_sucursal,
         sucursal_id=target.id if es_sucursal else None,
         sucursal_nombre=target.nombre if es_sucursal else None,
-        using_fallback=using_fallback
+        using_fallback=using_fallback,
     )
 
 
@@ -311,45 +502,45 @@ async def connect_whatsapp(
     request: Request,
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
     if not target:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
-
-    instance_name = target.whatsapp_instance or (f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}")
-    target.whatsapp_instance = instance_name
-    api_url = getattr(target, 'whatsapp_api_url', None) or (empresa.whatsapp_api_url if empresa else None) or "https://whatsapp.theizerdev.com"
-    api_key = getattr(target, 'whatsapp_api_key', None) or (empresa.whatsapp_api_key if empresa else None)
-
-    wa_service = WhatsAppService(
-        api_url=api_url,
-        api_key=api_key,
-        instance_name=instance_name,
-        company_id=empresa_id
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais_resolver(empresa)
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
     )
+    target.whatsapp_instance = instance_name
+    target.whatsapp_api_url = "python://local"
+
+    wa_service = build_service_from_entity(target, instance_name, empresa_id, cod_pais)
     res = await wa_service.connect_instance()
 
     target.whatsapp_active = True
     target.whatsapp_status = res.get("connection_state", "QR_READY").lower()
-    target.whatsapp_connected = res.get("is_connected", False)
+    target.whatsapp_connected = bool(res.get("is_connected", False))
     if res.get("phone_number"):
         target.whatsapp_phone = res.get("phone_number")
+    if target.whatsapp_connected and not getattr(target, "whatsapp_connected_at", None):
+        target.whatsapp_connected_at = datetime.now()
     await db.commit()
 
     await registrar_auditoria(
         db=db,
         usuario_id=current_user.id,
         empresa_id=empresa_id,
-        accion="CONECTAR_WHATSAPP",
+        accion="CONECTAR_WHATSAPP_PYTHON",
         modulo="integraciones",
         request=request,
-        detalles={"sucursal_id": target.id if es_sucursal else None, "es_sucursal": es_sucursal}
+        detalles={
+            "instance_name": instance_name,
+            "sucursal_id": target.id if es_sucursal else None,
+            "connection_state": res.get("connection_state"),
+        },
     )
 
     return WhatsAppStatusResponse(
@@ -357,8 +548,38 @@ async def connect_whatsapp(
         is_sucursal=es_sucursal,
         sucursal_id=target.id if es_sucursal else None,
         sucursal_nombre=target.nombre if es_sucursal else None,
-        using_fallback=False
+        using_fallback=False,
     )
+
+
+@router.post("/whatsapp/pair-phone")
+async def pair_whatsapp_by_phone(
+    req: WhatsAppPairPhoneRequest,
+    request: Request,
+    sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Genera un código numérico de 8 dígitos para vincular WhatsApp sin usar cámara."""
+    empresa_id = current_user.empresa_id or 1
+    target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
+
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais_resolver(empresa)
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
+    )
+    target.whatsapp_instance = instance_name
+    target.whatsapp_active = True
+    await db.commit()
+
+    wa_service = build_service_from_entity(target, instance_name, empresa_id, cod_pais)
+    res = await wa_service.pair_phone(req.phone)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error") or "No se pudo generar el código de emparejamiento")
+    return res
 
 
 @router.post("/whatsapp/reconnect", response_model=WhatsAppStatusResponse)
@@ -366,32 +587,25 @@ async def reconnect_whatsapp(
     request: Request,
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
     if not target:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
-
-    instance_name = target.whatsapp_instance or (f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}")
-    api_url = getattr(target, 'whatsapp_api_url', None) or (empresa.whatsapp_api_url if empresa else None) or "https://whatsapp.theizerdev.com"
-    api_key = getattr(target, 'whatsapp_api_key', None) or (empresa.whatsapp_api_key if empresa else None)
-
-    wa_service = WhatsAppService(
-        api_url=api_url,
-        api_key=api_key,
-        instance_name=instance_name,
-        company_id=empresa_id
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais_resolver(empresa)
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
     )
-    await wa_service.disconnect_instance()
+
+    wa_service = build_service_from_entity(target, instance_name, empresa_id, cod_pais)
+    await wa_service.disconnect_instance(clear_session=True)
     res = await wa_service.connect_instance()
 
-    target.whatsapp_status = "qr_ready"
-    target.whatsapp_connected = False
+    target.whatsapp_status = res.get("connection_state", "QR_READY").lower()
+    target.whatsapp_connected = bool(res.get("is_connected", False))
     await db.commit()
 
     return WhatsAppStatusResponse(
@@ -399,7 +613,7 @@ async def reconnect_whatsapp(
         is_sucursal=es_sucursal,
         sucursal_id=target.id if es_sucursal else None,
         sucursal_nombre=target.nombre if es_sucursal else None,
-        using_fallback=False
+        using_fallback=False,
     )
 
 
@@ -408,42 +622,36 @@ async def disconnect_whatsapp(
     request: Request,
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
     if not target:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
-
-    instance_name = target.whatsapp_instance or (f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}")
-    api_url = getattr(target, 'whatsapp_api_url', None) or (empresa.whatsapp_api_url if empresa else None) or "https://whatsapp.theizerdev.com"
-    api_key = getattr(target, 'whatsapp_api_key', None) or (empresa.whatsapp_api_key if empresa else None)
-
-    wa_service = WhatsAppService(
-        api_url=api_url,
-        api_key=api_key,
-        instance_name=instance_name,
-        company_id=empresa_id
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais_resolver(empresa)
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
     )
-    res = await wa_service.disconnect_instance()
+
+    wa_service = build_service_from_entity(target, instance_name, empresa_id, cod_pais)
+    res = await wa_service.disconnect_instance(clear_session=True)
 
     target.whatsapp_connected = False
     target.whatsapp_status = "disconnected"
     target.whatsapp_phone = None
+    target.whatsapp_connected_at = None
     await db.commit()
 
     await registrar_auditoria(
         db=db,
         usuario_id=current_user.id,
         empresa_id=empresa_id,
-        accion="DESCONECTAR_WHATSAPP",
+        accion="DESCONECTAR_WHATSAPP_PYTHON",
         modulo="integraciones",
         request=request,
-        detalles={"sucursal_id": target.id if es_sucursal else None, "es_sucursal": es_sucursal}
+        detalles={"instance_name": instance_name, "sucursal_id": target.id if es_sucursal else None},
     )
 
     return WhatsAppStatusResponse(
@@ -451,43 +659,7 @@ async def disconnect_whatsapp(
         is_sucursal=es_sucursal,
         sucursal_id=target.id if es_sucursal else None,
         sucursal_nombre=target.nombre if es_sucursal else None,
-        using_fallback=False
-    )
-
-
-@router.post("/whatsapp/simulate-scan", response_model=WhatsAppStatusResponse)
-async def simulate_whatsapp_scan(
-    request: Request,
-    sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
-    current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Simula el escaneo del código QR y vincula una línea de prueba activa.
-    """
-    empresa_id = current_user.empresa_id or 1
-    target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="Entidad no encontrada")
-
-    target.whatsapp_connected = True
-    target.whatsapp_status = "connected"
-    target.whatsapp_phone = "584121234567"
-    target.whatsapp_active = True
-    await db.commit()
-
-    return WhatsAppStatusResponse(
-        is_connected=True,
-        connection_state="CONNECTED",
-        qr_code=None,
-        qr_data_url=None,
-        instance_name=target.whatsapp_instance or (f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"),
-        phone_number="584121234567",
-        last_sync=datetime.now(),
-        is_sucursal=es_sucursal,
-        sucursal_id=target.id if es_sucursal else None,
-        sucursal_nombre=target.nombre if es_sucursal else None,
-        using_fallback=False
+        using_fallback=False,
     )
 
 
@@ -495,28 +667,17 @@ async def simulate_whatsapp_scan(
 async def run_whatsapp_diagnostic(
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
     if not target:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
-
-    instance_name = target.whatsapp_instance or (f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}")
-    api_url = getattr(target, 'whatsapp_api_url', None) or (empresa.whatsapp_api_url if empresa else None) or "https://whatsapp.theizerdev.com"
-    api_key = getattr(target, 'whatsapp_api_key', None) or (empresa.whatsapp_api_key if empresa else None)
-
-    wa_service = WhatsAppService(
-        api_url=api_url,
-        api_key=api_key,
-        instance_name=instance_name,
-        company_id=empresa_id
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
     )
-    diag = await wa_service.diagnostic()
+    diag = await whatsapp_engine.diagnostic(instance_name)
     return WhatsAppDiagnosticResponse(**diag)
 
 
@@ -524,67 +685,74 @@ async def run_whatsapp_diagnostic(
 async def get_queue_stats(
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
-    stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    # Contar mensajes locales enviados hoy (filtrando por sucursal si aplica)
-    today_start = datetime.combine(date.today(), datetime.min.time())
-    query_sent = select(func.count(WhatsAppMessage.id)).where(
-        WhatsAppMessage.empresa_id == empresa_id,
-        WhatsAppMessage.direction == "outbound",
-        WhatsAppMessage.status == "sent",
-        WhatsAppMessage.created_at >= today_start
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
     )
-    if es_sucursal:
-        query_sent = query_sent.where(WhatsAppMessage.sucursal_id == target.id)
-    res_count = await db.execute(query_sent)
-    sent_today = res_count.scalar() or 0
-
-    query_queued = select(func.count(WhatsAppMessage.id)).where(
-        WhatsAppMessage.empresa_id == empresa_id,
-        WhatsAppMessage.direction == "outbound",
-        WhatsAppMessage.status.in_(["pending", "queued"])
+    params = _extract_antiban_params(target)
+    sent_today, sent_hour, queued_count = await _get_instance_counts(
+        db, empresa_id, target.id if es_sucursal else None
     )
-    if es_sucursal:
-        query_queued = query_queued.where(WhatsAppMessage.sucursal_id == target.id)
-    res_queued = await db.execute(query_queued)
-    queued_count = res_queued.scalar() or 0
+    sent_hour = max(sent_hour, whatsapp_engine.get_hourly_count(instance_name))
+    live = whatsapp_engine.get_status(instance_name)
 
-    # Consultar telemetría remota de Baileys
-    instance_name = target.whatsapp_instance or (f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}")
-    api_url = getattr(target, 'whatsapp_api_url', None) or (empresa.whatsapp_api_url if empresa else None) or "https://whatsapp.theizerdev.com"
-    api_key = getattr(target, 'whatsapp_api_key', None) or (empresa.whatsapp_api_key if empresa else None)
-
-    wa_service = WhatsAppService(
-        api_url=api_url,
-        api_key=api_key,
-        instance_name=instance_name,
-        company_id=empresa_id
+    connected_at = getattr(target, "whatsapp_connected_at", None)
+    effective_daily, warmup_day = compute_warmup_limit(
+        connected_at, params["dailyLimit"], params["warmupMode"]
     )
-    remote_info = await wa_service.get_remote_instance_info()
-    if remote_info:
-        remote_sent = int(remote_info.get("dailySentCount") or 0)
-        sent_today = max(sent_today, remote_sent)
-
-    daily_limit = getattr(target, 'whatsapp_rate_limit', 300) or 300
-    if remote_info and remote_info.get("dailyLimit"):
-        daily_limit = int(remote_info.get("dailyLimit"))
+    in_hours, _ = is_within_working_hours(
+        params["workingHoursEnabled"],
+        params["workingHoursStart"],
+        params["workingHoursEnd"],
+    )
+    score, tips = calculate_safety_score(
+        simulate_typing=params["simulateTyping"],
+        warmup_mode=params["warmupMode"],
+        working_hours_enabled=params["workingHoursEnabled"],
+        verify_number=params["verifyNumber"],
+        delay_min_sec=params["delayMinSec"],
+        delay_max_sec=params["delayMaxSec"],
+        daily_limit=params["dailyLimit"],
+        hourly_limit=params["hourlyLimit"],
+        batch_size=params["batchSize"],
+        batch_pause_sec=params["batchPauseSec"],
+    )
+    paused = bool(live.get("queue_paused")) or bool(getattr(target, "whatsapp_queue_paused", False))
 
     return WhatsAppQueueStatsResponse(
         sentToday=sent_today,
-        dailyLimit=daily_limit,
+        dailyLimit=params["dailyLimit"],
+        effectiveDailyLimit=effective_daily,
+        sentThisHour=sent_hour,
+        hourlyLimit=params["hourlyLimit"],
         queued=queued_count,
         totalQueued=queued_count,
-        warmupMode=target.whatsapp_warmup_mode if getattr(target, 'whatsapp_warmup_mode', None) is not None else True,
-        workingHoursEnabled=target.whatsapp_working_hours_enabled if getattr(target, 'whatsapp_working_hours_enabled', None) is not None else True,
-        workingHoursStart=target.whatsapp_working_hours_start or "08:00",
-        workingHoursEnd=target.whatsapp_working_hours_end or "20:00",
-        proxyUrl=target.whatsapp_proxy_url
+        warmupMode=params["warmupMode"],
+        warmupDay=warmup_day,
+        workingHoursEnabled=params["workingHoursEnabled"],
+        workingHoursStart=params["workingHoursStart"],
+        workingHoursEnd=params["workingHoursEnd"],
+        withinWorkingHours=in_hours,
+        simulateTyping=params["simulateTyping"],
+        typingMinSec=params["typingMinSec"],
+        typingMaxSec=params["typingMaxSec"],
+        delayMinSec=params["delayMinSec"],
+        delayMaxSec=params["delayMaxSec"],
+        batchSize=params["batchSize"],
+        batchPauseSec=params["batchPauseSec"],
+        verifyNumber=params["verifyNumber"],
+        queuePaused=paused,
+        pauseReason=live.get("pause_reason"),
+        currentlyTypingTo=live.get("currently_typing_to"),
+        safetyScore=score,
+        safetyTips=tips,
+        proxyUrl=params["proxyUrl"],
     )
 
 
@@ -594,19 +762,34 @@ async def update_antiban_settings(
     request: Request,
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
     if not target:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
+    # Normalizar rangos min <= max
+    t_min = min(req.typingMinSec, req.typingMaxSec)
+    t_max = max(req.typingMinSec, req.typingMaxSec)
+    d_min = min(req.delayMinSec, req.delayMaxSec)
+    d_max = max(req.delayMinSec, req.delayMaxSec)
+
     target.whatsapp_rate_limit = req.dailyLimit
+    target.whatsapp_hourly_limit = req.hourlyLimit
     target.whatsapp_warmup_mode = req.warmupMode
     target.whatsapp_working_hours_enabled = req.workingHoursEnabled
     target.whatsapp_working_hours_start = req.workingHoursStart
     target.whatsapp_working_hours_end = req.workingHoursEnd
-    target.whatsapp_proxy_url = req.proxyUrl
+    target.whatsapp_simulate_typing = req.simulateTyping
+    target.whatsapp_typing_min_sec = t_min
+    target.whatsapp_typing_max_sec = t_max
+    target.whatsapp_delay_min_sec = d_min
+    target.whatsapp_delay_max_sec = d_max
+    target.whatsapp_batch_size = req.batchSize
+    target.whatsapp_batch_pause_sec = req.batchPauseSec
+    target.whatsapp_verify_number = req.verifyNumber
+    target.whatsapp_proxy_url = (req.proxyUrl or "").strip() or None
 
     await db.commit()
     await db.refresh(target)
@@ -618,10 +801,76 @@ async def update_antiban_settings(
         accion="ACTUALIZAR_ANTIBAN_WHATSAPP",
         modulo="integraciones",
         request=request,
-        detalles={"sucursal_id": target.id if es_sucursal else None, "es_sucursal": es_sucursal, **req.dict()}
+        detalles={"sucursal_id": target.id if es_sucursal else None, **req.model_dump()},
     )
 
-    return {"success": True, "mensaje": "Políticas Anti-Baneo actualizadas correctamente"}
+    return {"success": True, "mensaje": "Políticas Anti-Baneo y control de envíos actualizadas."}
+
+
+@router.post("/whatsapp/queue/toggle-pause")
+async def toggle_whatsapp_queue_pause(
+    req: WhatsAppQueueToggleRequest,
+    sucursal_id: Optional[int] = Query(None),
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pausa o reanuda el motor de cola de una instancia (también reinicia el Circuit Breaker)."""
+    empresa_id = current_user.empresa_id or 1
+    target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
+
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
+    )
+    target.whatsapp_queue_paused = req.paused
+    await db.commit()
+
+    whatsapp_engine.set_queue_paused(
+        instance_name,
+        req.paused,
+        reason=req.reason or ("Pausado manualmente por el operador." if req.paused else None),
+    )
+
+    return {
+        "success": True,
+        "paused": req.paused,
+        "mensaje": "Cola de envíos pausada." if req.paused else "Cola de envíos reanudada.",
+    }
+
+
+@router.post("/whatsapp/queue/clear")
+async def clear_whatsapp_queue(
+    sucursal_id: Optional[int] = Query(None),
+    current_user: Usuario = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancela todos los mensajes pendientes/en cola para esta instancia."""
+    empresa_id = current_user.empresa_id or 1
+    target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
+
+    q = select(WhatsAppMessage).where(
+        WhatsAppMessage.empresa_id == empresa_id,
+        WhatsAppMessage.status.in_(["queued", "pending"]),
+    )
+    if es_sucursal:
+        q = q.where(WhatsAppMessage.sucursal_id == target.id)
+    else:
+        q = q.where(WhatsAppMessage.sucursal_id.is_(None))
+
+    msgs = (await db.execute(q)).scalars().all()
+    for m in msgs:
+        m.status = "cancelled"
+        m.error_message = "Cancelado manualmente desde la cola."
+    await db.commit()
+
+    return {
+        "success": True,
+        "cancelled_count": len(msgs),
+        "mensaje": f"{len(msgs)} mensaje(s) retirado(s) de la cola.",
+    }
 
 
 # ── 7. VERIFICADOR DE NÚMEROS & SPINTAX ────────────────────────────────
@@ -630,23 +879,19 @@ async def check_whatsapp_number(
     req: CheckNumberRequest,
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
-    stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    instance_name = target.whatsapp_instance or (f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}")
-    api_url = getattr(target, 'whatsapp_api_url', None) or (empresa.whatsapp_api_url if empresa else None) or "https://whatsapp.theizerdev.com"
-    api_key = getattr(target, 'whatsapp_api_key', None) or (empresa.whatsapp_api_key if empresa else None)
-
-    wa_service = WhatsAppService(
-        api_url=api_url,
-        api_key=api_key,
-        instance_name=instance_name
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais_resolver(empresa)
+    instance_name = target.whatsapp_instance or (
+        f"sucursal_{empresa_id}_{target.id}" if es_sucursal else f"empresa_{target.id}"
     )
+    wa_service = build_service_from_entity(target, instance_name, empresa_id, cod_pais)
     res = await wa_service.check_number(req.phone)
     return CheckNumberResponse(success=True, result=res)
 
@@ -654,13 +899,14 @@ async def check_whatsapp_number(
 @router.post("/whatsapp/preview-spintax", response_model=PreviewSpintaxResponse)
 async def preview_spintax(
     req: PreviewSpintaxRequest,
-    current_user: Usuario = Depends(get_current_active_user)
+    current_user: Usuario = Depends(get_current_active_user),
 ):
     wa_service = WhatsAppService()
     variations = wa_service.preview_spintax(
         text=req.text,
         count=req.count,
-        variables=req.variables or {"paciente": "Carlos Rodríguez", "medico": "Dra. Elena Silva", "sede": "Clínica Central"}
+        variables=req.variables
+        or {"paciente": "Carlos Rodríguez", "medico": "Dra. Elena Silva", "sede": "Sede Central", "empresa": "Clínica Central"},
     )
     return PreviewSpintaxResponse(success=True, variations=variations)
 
@@ -669,7 +915,7 @@ async def preview_spintax(
 async def generate_whatsapp_token(
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
@@ -690,21 +936,15 @@ async def update_whatsapp_server(
     request: Request,
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    if not current_user.es_superadmin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo el Superadministrador del SaaS puede modificar los parámetros de infraestructura y credenciales del servidor WhatsApp."
-        )
-
     empresa_id = current_user.empresa_id or 1
     target, es_sucursal = await get_whatsapp_target(db, empresa_id, sucursal_id)
     if not target:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    target.whatsapp_api_url = req.whatsapp_api_url
-    target.whatsapp_instance = req.whatsapp_instance
+    target.whatsapp_api_url = "python://local"
+    target.whatsapp_instance = req.whatsapp_instance.strip()
     target.whatsapp_active = req.whatsapp_active
     if req.whatsapp_api_key:
         target.whatsapp_api_key = req.whatsapp_api_key
@@ -716,13 +956,13 @@ async def update_whatsapp_server(
         db=db,
         usuario_id=current_user.id,
         empresa_id=empresa_id,
-        accion="CONFIGURAR_SERVIDOR_WHATSAPP",
+        accion="CONFIGURAR_INSTANCIA_WHATSAPP_PYTHON",
         modulo="integraciones",
         request=request,
-        detalles={"sucursal_id": target.id if es_sucursal else None, "es_sucursal": es_sucursal}
+        detalles={"instance": target.whatsapp_instance, "sucursal_id": target.id if es_sucursal else None},
     )
 
-    return {"success": True, "mensaje": "Configuración de servidor WhatsApp guardada"}
+    return {"success": True, "mensaje": "Identificador de instancia WhatsApp actualizado."}
 
 
 # ── 8. WHATSAPP: PROBADOR DE ENVÍOS & BITÁCORA ─────────────────────────
@@ -732,30 +972,61 @@ async def send_whatsapp_test(
     request: Request,
     sucursal_id: Optional[int] = Query(None, description="ID de sucursal específica (opcional)"),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
-    from app.services.plan_quota_service import PlanQuotaService
     await PlanQuotaService.check_whatsapp_limit(db, empresa_id, count=1)
 
-    wa_service, target_used, es_suc, using_fallback = await resolve_whatsapp_service(db, empresa_id, sucursal_id)
+    wa_service, target_used, es_suc, using_fallback = await resolve_whatsapp_service(
+        db, empresa_id, sucursal_id
+    )
     if not wa_service:
-        raise HTTPException(status_code=400, detail="No hay una instancia de WhatsApp activa ni configurada")
+        raise HTTPException(status_code=400, detail="No hay una instancia de WhatsApp configurada")
 
-    res = await wa_service.send_message(req.phone, req.message, req.variables)
+    if not req.sync:
+        # Encolar en el motor Python Anti-Ban
+        msg_log = WhatsAppMessage(
+            empresa_id=empresa_id,
+            sucursal_id=target_used.id if es_suc else None,
+            instance_name=wa_service.instance_name,
+            recipient_phone=req.phone,
+            recipient_name="Prueba Encolada",
+            message_content=req.message,
+            variables=req.variables,
+            status="queued",
+            direction="outbound",
+        )
+        db.add(msg_log)
+        await db.commit()
+        return {
+            "success": True,
+            "queued": True,
+            "mensaje": "Mensaje agregado a la cola segura Anti-Baneo.",
+            "resultado": {"message_id": msg_log.id, "status": "queued"},
+        }
 
-    # Registrar en bitácora con sucursal_id
+    res = await wa_service.send_message(
+        to=req.phone,
+        message=req.message,
+        variables=req.variables,
+        sync=True,
+        simulate_typing=req.simulate_typing,
+        verify_number=req.verify_number,
+    )
+
     msg_log = WhatsAppMessage(
         empresa_id=empresa_id,
         sucursal_id=target_used.id if es_suc else None,
-        recipient_phone=req.phone,
+        instance_name=wa_service.instance_name,
+        external_message_id=res.get("message_id"),
+        recipient_phone=res.get("formatted_phone", req.phone),
         recipient_name="Prueba Manual",
         message_content=res.get("final_message", req.message),
         variables=req.variables,
         status="sent" if res.get("success") else "failed",
         error_message=res.get("error") if not res.get("success") else None,
         direction="outbound",
-        sent_at=datetime.now()
+        sent_at=datetime.now() if res.get("success") else None,
     )
     db.add(msg_log)
     await db.commit()
@@ -763,13 +1034,19 @@ async def send_whatsapp_test(
     if not res.get("success"):
         raise HTTPException(
             status_code=400,
-            detail=res.get("error") or "Fallo al enviar mensaje en el servidor de WhatsApp. Revisa el número y la conexión de la línea."
+            detail=res.get("error")
+            or "Fallo al enviar mensaje. Verifica que la instancia esté conectada escaneando el QR.",
         )
 
+    typing_info = (
+        f" (simuló 'escribiendo...' {res.get('typing_seconds')}s)"
+        if res.get("typing_seconds")
+        else ""
+    )
     return {
         "success": True,
-        "mensaje": f"Mensaje despachado con éxito a través de {'la sucursal ' + target_used.nombre if es_suc else 'la Empresa (línea central)'}.",
-        "resultado": res
+        "mensaje": f"Mensaje enviado directamente por Python{typing_info}.",
+        "resultado": res,
     }
 
 
@@ -777,40 +1054,42 @@ async def send_whatsapp_test(
 async def retry_whatsapp_message(
     msg_id: int,
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(WhatsAppMessage).where(WhatsAppMessage.id == msg_id)
-    res = await db.execute(stmt)
-    msg = res.scalar_one_or_none()
+    empresa_id = current_user.empresa_id or 1
+    stmt = select(WhatsAppMessage).where(
+        WhatsAppMessage.id == msg_id, WhatsAppMessage.empresa_id == empresa_id
+    )
+    msg = (await db.execute(stmt)).scalar_one_or_none()
 
     if not msg:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")
 
-    empresa_id = current_user.empresa_id or 1
-    stmt_emp = select(Empresa).where(Empresa.id == empresa_id)
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
+    wa_service, _, _, _ = await resolve_whatsapp_service(db, empresa_id, msg.sucursal_id)
+    if not wa_service:
+        raise HTTPException(status_code=400, detail="Instancia de WhatsApp no disponible")
 
-    wa_service = WhatsAppService(
-        api_url=empresa.whatsapp_api_url or "http://localhost:3000",
-        api_key=empresa.whatsapp_api_key,
-        instance_name=empresa.whatsapp_instance or f"empresa_{empresa.id}",
-        company_id=empresa.id
+    dispatch_res = await wa_service.send_message(
+        to=msg.recipient_phone,
+        message=msg.message_content,
+        variables=msg.variables,
+        sync=True,
+        simulate_typing=True,
     )
-
-    dispatch_res = await wa_service.send_message(msg.recipient_phone, msg.message_content, msg.variables)
     if dispatch_res.get("success"):
         msg.status = "sent"
         msg.sent_at = datetime.now()
+        msg.external_message_id = dispatch_res.get("message_id")
         msg.error_message = None
         await db.commit()
-        return {"success": True, "mensaje": "Mensaje reenviado con éxito"}
+        return {"success": True, "mensaje": "Mensaje reenviado con éxito (motor Python)"}
     else:
+        msg.retry_count = (msg.retry_count or 0) + 1
         msg.error_message = dispatch_res.get("error")
         await db.commit()
         raise HTTPException(
             status_code=400,
-            detail=dispatch_res.get("error") or "Fallo al reenviar mensaje"
+            detail=dispatch_res.get("error") or "Fallo al reenviar mensaje",
         )
 
 
@@ -896,32 +1175,72 @@ async def delete_whatsapp_template(
     return {"success": True, "mensaje": "Plantilla eliminada exitosamente"}
 
 
-# ── 10. DIFUSIÓN MASIVA (BROADCAST) ────────────────────────────────────
+# ── 10. DIFUSIÓN MASIVA SEGURA (COLA ANTI-BANEO PYTHON) ────────────────
 @router.get("/whatsapp/broadcast/recipients", response_model=List[BroadcastRecipientItem])
 async def get_broadcast_recipients(
-    target: str = "usuarios",
+    target: str = "pacientes",
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
-    recipients = []
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais_resolver(empresa)
+    recipients: List[BroadcastRecipientItem] = []
 
-    stmt = select(Usuario).where(Usuario.empresa_id == empresa_id, Usuario.activo == True)
-    res = await db.execute(stmt)
-    usuarios = res.scalars().all()
-
-    for u in usuarios:
-        phone = u.telefono or "+584120000000"
-        has_phone = bool(u.telefono and len(u.telefono) >= 8)
-        recipients.append(BroadcastRecipientItem(
-            id=u.id,
-            name=f"{u.nombre} {u.apellido}",
-            phone=phone,
-            formatted_phone=f"+{phone.replace('+', '')}",
-            is_valid_phone=has_phone,
-            role="Personal Clínico",
-            type="usuario"
-        ))
+    if target == "pacientes":
+        stmt = select(Paciente).where(Paciente.empresa_id == empresa_id, Paciente.activo == True).order_by(Paciente.id.desc())
+        rows = (await db.execute(stmt)).scalars().all()
+        for p in rows:
+            raw_phone = (p.telefono or "").strip()
+            formatted = format_phone_number(raw_phone, cod_pais) if raw_phone else ""
+            valid = 10 <= len(formatted) <= 15
+            recipients.append(
+                BroadcastRecipientItem(
+                    id=p.id,
+                    name=f"{p.nombres} {p.apellidos}".strip(),
+                    phone=raw_phone or "Sin teléfono",
+                    formatted_phone=f"+{formatted}" if formatted else "",
+                    is_valid_phone=valid,
+                    role="Paciente",
+                    type="paciente",
+                )
+            )
+    elif target == "medicos":
+        stmt = select(Medico).where(Medico.empresa_id == empresa_id, Medico.activo == True).order_by(Medico.id.desc())
+        rows = (await db.execute(stmt)).scalars().all()
+        for m in rows:
+            raw_phone = (m.telefono or "").strip()
+            formatted = format_phone_number(raw_phone, cod_pais) if raw_phone else ""
+            valid = 10 <= len(formatted) <= 15
+            recipients.append(
+                BroadcastRecipientItem(
+                    id=m.id,
+                    name=f"Dr(a). {m.nombres} {m.apellidos}".strip(),
+                    phone=raw_phone or "Sin teléfono",
+                    formatted_phone=f"+{formatted}" if formatted else "",
+                    is_valid_phone=valid,
+                    role="Médico Especialista",
+                    type="medico",
+                )
+            )
+    else:
+        stmt = select(Usuario).where(Usuario.empresa_id == empresa_id, Usuario.activo == True).order_by(Usuario.id.desc())
+        rows = (await db.execute(stmt)).scalars().all()
+        for u in rows:
+            raw_phone = (u.telefono or "").strip()
+            formatted = format_phone_number(raw_phone, cod_pais) if raw_phone else ""
+            valid = 10 <= len(formatted) <= 15
+            recipients.append(
+                BroadcastRecipientItem(
+                    id=u.id,
+                    name=f"{u.nombre} {u.apellido}".strip(),
+                    phone=raw_phone or "Sin teléfono",
+                    formatted_phone=f"+{formatted}" if formatted else "",
+                    is_valid_phone=valid,
+                    role="Personal Clínico",
+                    type="usuario",
+                )
+            )
 
     return recipients
 
@@ -932,51 +1251,104 @@ async def dispatch_broadcast(
     request: Request,
     sucursal_id: Optional[int] = Query(None),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
+    """
+    Encola los destinatarios en el Worker Anti-Baneo de Python (con Spintax,
+    simulación de escritura, retardo humano gaussiano y pausas por lote).
+    """
+    if not req.recipient_ids:
+        raise HTTPException(status_code=400, detail="Selecciona al menos un destinatario")
+
     empresa_id = current_user.empresa_id or 1
-    wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(db, empresa_id, sucursal_id)
+    wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(
+        db, empresa_id, sucursal_id
+    )
+    if not wa_service:
+        raise HTTPException(status_code=400, detail="No hay instancia de WhatsApp configurada")
 
-    # Obtener usuarios destinatarios
-    stmt_users = select(Usuario).where(Usuario.id.in_(req.recipient_ids))
-    res_users = await db.execute(stmt_users)
-    users = res_users.scalars().all()
+    empresa = (await db.execute(select(Empresa).where(Empresa.id == empresa_id))).scalar_one_or_none()
+    cod_pais = get_empresa_codigo_pais_resolver(empresa)
+    target_empresa_nombre = resolved_target.nombre if resolved_target else "Clínica"
 
-    from app.services.plan_quota_service import PlanQuotaService
-    await PlanQuotaService.check_whatsapp_limit(db, empresa_id, count=len(users))
+    # Cargar contactos según target_type
+    contacts: List[tuple[str, str]] = []
+    if req.target_type == "pacientes":
+        rows = (
+            await db.execute(
+                select(Paciente).where(Paciente.empresa_id == empresa_id, Paciente.id.in_(req.recipient_ids))
+            )
+        ).scalars().all()
+        for p in rows:
+            if p.telefono:
+                contacts.append((f"{p.nombres} {p.apellidos}".strip(), p.telefono))
+    elif req.target_type == "medicos":
+        rows = (
+            await db.execute(
+                select(Medico).where(Medico.empresa_id == empresa_id, Medico.id.in_(req.recipient_ids))
+            )
+        ).scalars().all()
+        for m in rows:
+            if m.telefono:
+                contacts.append((f"Dr(a). {m.nombres} {m.apellidos}".strip(), m.telefono))
+    else:
+        rows = (
+            await db.execute(
+                select(Usuario).where(Usuario.empresa_id == empresa_id, Usuario.id.in_(req.recipient_ids))
+            )
+        ).scalars().all()
+        for u in rows:
+            if u.telefono:
+                contacts.append((f"{u.nombre} {u.apellido}".strip(), u.telefono))
 
-    target_empresa_nombre = resolved_target.nombre if not is_sucursal else (getattr(resolved_target, "nombre", "Sucursal"))
+    if not contacts:
+        raise HTTPException(status_code=400, detail="Ninguno de los destinatarios seleccionados tiene teléfono válido")
 
-    count_dispatched = 0
-    for u in users:
-        phone = u.telefono or "+584120000000"
+    await PlanQuotaService.check_whatsapp_limit(db, empresa_id, count=len(contacts))
+
+    count_queued = 0
+    for full_name, raw_phone in contacts:
+        formatted = format_phone_number(raw_phone, cod_pais)
+        if not formatted or len(formatted) < 10:
+            continue
         vars_dict = {
-            "nombre": f"{u.nombre} {u.apellido}",
-            "paciente": f"{u.nombre} {u.apellido}",
-            "empresa": target_empresa_nombre
+            **(req.variables or {}),
+            "nombre": full_name,
+            "paciente": full_name,
+            "empresa": target_empresa_nombre,
+            "sede": target_empresa_nombre,
         }
-        res = await wa_service.send_message(phone, req.message, vars_dict)
-
         msg_log = WhatsAppMessage(
             empresa_id=empresa_id,
             sucursal_id=resolved_target.id if is_sucursal else None,
-            recipient_phone=phone,
-            recipient_name=f"{u.nombre} {u.apellido}",
-            message_content=res.get("final_message", req.message),
+            instance_name=wa_service.instance_name,
+            recipient_phone=formatted,
+            recipient_name=full_name,
+            message_content=req.message,
             variables=vars_dict,
-            status="sent" if res.get("success") else "failed",
+            status="queued",
             direction="outbound",
-            sent_at=datetime.now()
+            scheduled_at=datetime.now(),
         )
         db.add(msg_log)
-        count_dispatched += 1
+        count_queued += 1
 
     await db.commit()
 
+    await registrar_auditoria(
+        db=db,
+        usuario_id=current_user.id,
+        empresa_id=empresa_id,
+        accion="ENCOLAR_DIFUSION_WHATSAPP",
+        modulo="integraciones",
+        request=request,
+        detalles={"instance": wa_service.instance_name, "queued": count_queued, "target_type": req.target_type},
+    )
+
     return {
         "success": True,
-        "dispatched_count": count_dispatched,
-        "message": f"Difusión masiva completada: {count_dispatched} mensajes procesados."
+        "dispatched_count": count_queued,
+        "message": f"{count_queued} mensaje(s) encolados en el motor Anti-Baneo de Python. Se enviarán progresivamente con simulación de escritura y retardos humanos.",
     }
 
 
@@ -989,72 +1361,66 @@ async def get_whatsapp_messages(
     limit: int = Query(default=15, ge=1, le=100),
     sucursal_id: Optional[int] = Query(None),
     current_user: Usuario = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     empresa_id = current_user.empresa_id or 1
     query = select(WhatsAppMessage).where(WhatsAppMessage.empresa_id == empresa_id)
 
-    if sucursal_id:
+    if sucursal_id is not None:
         query = query.where(WhatsAppMessage.sucursal_id == sucursal_id)
 
     if search:
         query = query.where(
-            (WhatsAppMessage.recipient_phone.ilike(f"%{search}%")) |
-            (WhatsAppMessage.recipient_name.ilike(f"%{search}%")) |
-            (WhatsAppMessage.message_content.ilike(f"%{search}%"))
+            (WhatsAppMessage.recipient_phone.ilike(f"%{search}%"))
+            | (WhatsAppMessage.recipient_name.ilike(f"%{search}%"))
+            | (WhatsAppMessage.message_content.ilike(f"%{search}%"))
         )
 
     if status and status != "all":
-        query = query.where(WhatsAppMessage.status == status)
+        if status == "queued":
+            query = query.where(WhatsAppMessage.status.in_(["queued", "pending", "sending"]))
+        else:
+            query = query.where(WhatsAppMessage.status == status)
 
-    # Conteo total
     count_stmt = select(func.count()).select_from(query.subquery())
-    total_res = await db.execute(count_stmt)
-    total = total_res.scalar() or 0
+    total = (await db.execute(count_stmt)).scalar() or 0
 
-    # Paginación
     offset = (page - 1) * limit
     paginated_query = query.order_by(WhatsAppMessage.id.desc()).offset(offset).limit(limit)
-    res = await db.execute(paginated_query)
-    messages = res.scalars().all()
+    messages = (await db.execute(paginated_query)).scalars().all()
 
-    # Métricas estadísticas
-    stmt_sent = select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id)
-    stmt_deliv = select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id, WhatsAppMessage.status.in_(["delivered", "read"]))
-    stmt_read = select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id, WhatsAppMessage.status == "read")
-    stmt_fail = select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id, WhatsAppMessage.status == "failed")
+    def _scope(q):
+        if sucursal_id is not None:
+            return q.where(WhatsAppMessage.sucursal_id == sucursal_id)
+        return q
 
-    if sucursal_id:
-        stmt_sent = stmt_sent.where(WhatsAppMessage.sucursal_id == sucursal_id)
-        stmt_deliv = stmt_deliv.where(WhatsAppMessage.sucursal_id == sucursal_id)
-        stmt_read = stmt_read.where(WhatsAppMessage.sucursal_id == sucursal_id)
-        stmt_fail = stmt_fail.where(WhatsAppMessage.sucursal_id == sucursal_id)
+    total_sent = (await db.execute(_scope(select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id, WhatsAppMessage.status.in_(["sent", "delivered", "read"]))))).scalar() or 0
+    total_deliv = (await db.execute(_scope(select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id, WhatsAppMessage.status.in_(["delivered", "read"]))))).scalar() or 0
+    total_read = (await db.execute(_scope(select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id, WhatsAppMessage.status == "read")))).scalar() or 0
+    total_fail = (await db.execute(_scope(select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id, WhatsAppMessage.status == "failed")))).scalar() or 0
+    total_queued = (await db.execute(_scope(select(func.count(WhatsAppMessage.id)).where(WhatsAppMessage.empresa_id == empresa_id, WhatsAppMessage.status.in_(["queued", "pending", "sending"]))))).scalar() or 0
 
-    total_sent = (await db.execute(stmt_sent)).scalar() or 0
-    total_deliv = (await db.execute(stmt_deliv)).scalar() or 0
-    total_read = (await db.execute(stmt_read)).scalar() or 0
-    total_fail = (await db.execute(stmt_fail)).scalar() or 0
-
-    delivery_rate = round((total_deliv / max(total_sent, 1)) * 100, 1) if total_sent else 100.0
+    delivery_rate = round((total_deliv / max(total_sent, 1)) * 100, 1) if total_sent else 0.0
     read_rate = round((total_read / max(total_sent, 1)) * 100, 1) if total_sent else 0.0
 
     return {
         "success": True,
         "messages": {
-            "data": [WhatsAppMessageResponse.from_orm(m) for m in messages],
+            "data": [WhatsAppMessageResponse.model_validate(m) for m in messages],
             "current_page": page,
             "last_page": max(1, (total + limit - 1) // limit),
             "total": total,
-            "per_page": limit
+            "per_page": limit,
         },
         "stats": {
             "totalSent": total_sent,
             "totalDelivered": total_deliv,
             "totalRead": total_read,
             "totalFailed": total_fail,
+            "totalQueued": total_queued,
             "deliveryRate": delivery_rate,
-            "readRate": read_rate
-        }
+            "readRate": read_rate,
+        },
     }
 
 

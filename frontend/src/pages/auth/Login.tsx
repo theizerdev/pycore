@@ -33,6 +33,14 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Checkbox } from '../../components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 import { cn } from '../../lib/utils';
 
 type AuthView = 'login' | 'register' | 'forgot' | 'verify-whatsapp';
@@ -513,15 +521,16 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
-                      <input
-                        type="checkbox"
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="remember-me"
                         checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        className="rounded border-input text-primary focus:ring-primary size-4"
+                        onCheckedChange={(checked) => setRememberMe(checked === true)}
                       />
-                      <span>Recordar sesión en este equipo</span>
-                    </label>
+                      <Label htmlFor="remember-me" className="text-xs font-medium cursor-pointer select-none">
+                        Recordar sesión en este equipo
+                      </Label>
+                    </div>
                   </div>
 
                   <Button
@@ -686,18 +695,21 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="grid gap-1.5">
                           <Label htmlFor="reg-especialidad" className="text-xs font-semibold">Especialidad Principal *</Label>
-                          <select
-                            id="reg-especialidad"
-                            value={regEspecialidadId || ''}
-                            onChange={(e) => setRegEspecialidadId(Number(e.target.value))}
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background focus:outline-hidden focus:ring-1 focus:ring-primary"
+                          <Select
+                            value={regEspecialidadId ? String(regEspecialidadId) : ''}
+                            onValueChange={(val) => setRegEspecialidadId(Number(val))}
                           >
-                            {especialidadesList.map((esp) => (
-                              <option key={esp.id} value={esp.id}>
-                                {esp.nombre}
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger id="reg-especialidad" className="h-10 text-xs bg-background">
+                              <SelectValue placeholder="Seleccione especialidad" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60">
+                              {especialidadesList.map((esp) => (
+                                <SelectItem key={esp.id} value={String(esp.id)} className="text-xs">
+                                  {esp.nombre}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
 
                         <div className="grid gap-1.5">
@@ -804,19 +816,22 @@ export const Login: React.FC<LoginProps> = ({ initialView }) => {
 
                     <div className="grid gap-1.5">
                       <Label htmlFor="reg-pais" className="text-xs font-semibold">País *</Label>
-                      <select
-                        id="reg-pais"
-                        value={regPaisId}
-                        onChange={(e) => setRegPaisId(Number(e.target.value))}
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background focus:outline-hidden focus:ring-1 focus:ring-primary"
+                      <Select
+                        value={String(regPaisId)}
+                        onValueChange={(val) => setRegPaisId(Number(val))}
                       >
-                        <option value={2}>🇻🇪 Venezuela (+58)</option>
-                        <option value={1}>🇲🇽 México (+52)</option>
-                        <option value={3}>🇨🇴 Colombia (+57)</option>
-                        <option value={4}>🇺🇸 Estados Unidos (+1)</option>
-                        <option value={6}>🇦🇷 Argentina (+54)</option>
-                        <option value={5}>🇪🇸 España (+34)</option>
-                      </select>
+                        <SelectTrigger id="reg-pais" className="h-10 text-xs bg-background">
+                          <SelectValue placeholder="Seleccione país" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value="2" className="text-xs">🇻🇪 Venezuela (+58)</SelectItem>
+                          <SelectItem value="1" className="text-xs">🇲🇽 México (+52)</SelectItem>
+                          <SelectItem value="3" className="text-xs">🇨🇴 Colombia (+57)</SelectItem>
+                          <SelectItem value="4" className="text-xs">🇺🇸 Estados Unidos (+1)</SelectItem>
+                          <SelectItem value="6" className="text-xs">🇦🇷 Argentina (+54)</SelectItem>
+                          <SelectItem value="5" className="text-xs">🇪🇸 España (+34)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 

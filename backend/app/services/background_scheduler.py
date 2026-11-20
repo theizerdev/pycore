@@ -88,21 +88,20 @@ async def send_daily_appointment_reminders() -> Dict[str, Any]:
                 f"¡Le deseamos un excelente día! ✨"
             )
 
-            # Instanciar WhatsAppService
-            wa_service = WhatsAppService(
-                api_url=empresa_obj.whatsapp_api_url or "https://whatsapp.theizerdev.com" if empresa_obj else "https://whatsapp.theizerdev.com",
-                api_key=empresa_obj.whatsapp_api_key if empresa_obj else None,
-                instance_name=empresa_obj.whatsapp_instance or f"empresa_{cita.empresa_id}" if empresa_obj else "default",
-                company_id=cita.empresa_id,
-                country_code=cod_pais
+            # Resolver instancia de WhatsApp nativa en Python (sucursal o empresa)
+            from app.services.whatsapp_resolver import resolve_whatsapp_service
+            wa_service, _, _, _ = await resolve_whatsapp_service(
+                db, cita.empresa_id, cita.sucursal_id
             )
+            if not wa_service:
+                continue
 
             try:
                 send_res = await wa_service.send_message(
                     to=clean_phone,
                     message=mensaje,
                     sync=False,
-                    simulate_typing=False,
+                    simulate_typing=True,
                 )
                 
                 cita.recordatorio_enviado = True
@@ -111,12 +110,16 @@ async def send_daily_appointment_reminders() -> Dict[str, Any]:
 
                 db.add(WhatsAppMessage(
                     empresa_id=cita.empresa_id,
+                    sucursal_id=cita.sucursal_id,
+                    instance_name=wa_service.instance_name,
+                    external_message_id=send_res.get("message_id"),
                     recipient_phone=clean_phone,
                     recipient_name=f"{cita.paciente.nombres} {cita.paciente.apellidos}",
-                    message_content=mensaje,
-                    status="sent" if send_res.get("success") else "pending",
+                    message_content=send_res.get("final_message", mensaje),
+                    status="sent" if send_res.get("success") else "queued",
+                    error_message=None if send_res.get("success") else send_res.get("error"),
                     direction="outbound",
-                    sent_at=datetime.now()
+                    sent_at=datetime.now() if send_res.get("success") else None
                 ))
             except Exception as e:
                 total_fallidos += 1

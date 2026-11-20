@@ -249,10 +249,20 @@ export interface IntegracionesConfig {
   whatsapp_phone?: string | null;
   whatsapp_status?: string | null;
   whatsapp_rate_limit?: number | null;
+  whatsapp_hourly_limit?: number | null;
   whatsapp_warmup_mode?: boolean | null;
   whatsapp_working_hours_enabled?: boolean | null;
   whatsapp_working_hours_start?: string | null;
   whatsapp_working_hours_end?: string | null;
+  whatsapp_simulate_typing?: boolean | null;
+  whatsapp_typing_min_sec?: number | null;
+  whatsapp_typing_max_sec?: number | null;
+  whatsapp_delay_min_sec?: number | null;
+  whatsapp_delay_max_sec?: number | null;
+  whatsapp_batch_size?: number | null;
+  whatsapp_batch_pause_sec?: number | null;
+  whatsapp_verify_number?: boolean | null;
+  whatsapp_queue_paused?: boolean | null;
   whatsapp_proxy_url?: string | null;
 
   paypal_active: boolean;
@@ -368,13 +378,45 @@ export interface BcvRateData {
   exitoso: boolean;
 }
 
+export interface WhatsAppInstanceSummary {
+  instance_name: string;
+  label: string;
+  is_sucursal: boolean;
+  sucursal_id?: number | null;
+  connection_state: 'CONNECTED' | 'QR_READY' | 'CONNECTING' | 'DISCONNECTED' | 'BANNED_COOLDOWN';
+  is_connected: boolean;
+  phone_number?: string | null;
+  push_name?: string | null;
+  sent_today: number;
+  effective_daily_limit: number;
+  daily_limit: number;
+  sent_this_hour: number;
+  hourly_limit: number;
+  queued: number;
+  warmup_mode: boolean;
+  warmup_day: number;
+  queue_paused: boolean;
+  pause_reason?: string | null;
+  currently_typing_to?: string | null;
+  safety_score: number;
+  has_saved_session: boolean;
+}
+
 export interface WhatsAppStatus {
   is_connected: boolean;
-  connection_state: 'CONNECTED' | 'QR_READY' | 'CONNECTING' | 'DISCONNECTED';
+  connection_state: 'CONNECTED' | 'QR_READY' | 'CONNECTING' | 'DISCONNECTED' | 'BANNED_COOLDOWN';
   qr_code?: string | null;
   qr_data_url?: string | null;
+  qr_expires_in?: number | null;
   instance_name: string;
   phone_number?: string | null;
+  push_name?: string | null;
+  currently_typing_to?: string | null;
+  queue_paused?: boolean;
+  pause_reason?: string | null;
+  last_error?: string | null;
+  engine?: string;
+  has_saved_session?: boolean;
   last_sync?: string | null;
   sucursal_id?: number | null;
   is_sucursal?: boolean;
@@ -398,16 +440,20 @@ export interface WhatsAppMessage {
   id: number;
   empresa_id: number;
   sucursal_id?: number | null;
+  instance_name?: string | null;
+  external_message_id?: string | null;
   recipient_phone: string;
   recipient_name?: string | null;
   message_content: string;
   variables?: Record<string, any> | null;
-  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+  status: 'queued' | 'pending' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'cancelled';
   direction: 'inbound' | 'outbound';
+  scheduled_at?: string | null;
   sent_at?: string | null;
   delivered_at?: string | null;
   read_at?: string | null;
   error_message?: string | null;
+  retry_count?: number;
   created_at: string;
 }
 
