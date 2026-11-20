@@ -283,9 +283,25 @@ export const consultasApi = {
       telefono_personalizado?: string;
       incluir_indicaciones?: boolean;
       texto_personalizado?: string;
+      acompanante?: any;
+      enviar_como_pdf?: boolean;
+      documentos_seleccionados?: string[];
     }
-  ): Promise<{ success: boolean; message: string; destinatario?: string; preview_mensaje?: string }> => {
+  ): Promise<{
+    success: boolean;
+    message: string;
+    destinatario?: string;
+    total_documentos?: number;
+    documentos_enviados?: string[];
+    enviados_detalle?: any[];
+    preview_mensaje?: string;
+    errores?: string[];
+  }> => {
     const response = await api.post(`/consultas/${id}/enviar-documento-whatsapp`, payload);
     return response.data;
+  },
+
+  obtenerUrlDocumentoPdf: (id: number, tipo: string): string => {
+    return `${api.defaults.baseURL || '/api/v1'}/consultas/${id}/documento-pdf?tipo=${tipo}`;
   },
 };

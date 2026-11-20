@@ -42,9 +42,16 @@ import {
   AlertCircle,
   Check,
   HeartHandshake,
+  Files,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import type { ConsultaMedica, MedicamentoPrescrito, EstudioSolicitado } from '../../api/consultas';
 import { useAuth } from '../../context/AuthContext';
+import { useRegional } from '../../context/RegionalContext';
+import { PhoneCountryInput } from '../common/PhoneCountryInput';
+import { paisesApi } from '../../api/paises';
+import type { Pais } from '../../types';
 import { cn } from '../../lib/utils';
 import { consultasApi } from '../../api/consultas';
 import { toast } from 'sonner';
@@ -79,19 +86,35 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
   initialDocumento = 'informe',
 }) => {
   const { user, sucursalActiva } = useAuth();
+  const regional = useRegional();
   const [documentoActivo, setDocumentoActivo] = useState<TipoDocumentoClinico>(initialDocumento);
 
-  // Estados para Acompañante en Constancia de Asistencia
-  // Estados para Despacho por WhatsApp
+  // Estados para Despacho por WhatsApp en Formato PDF
   const [modalWhatsAppOpen, setModalWhatsAppOpen] = useState(false);
+  const [modoEnvioWhatsApp, setModoEnvioWhatsApp] = useState<'todos' | 'seleccionado'>('todos');
+  const [documentosSeleccionadosWhatsApp, setDocumentosSeleccionadosWhatsApp] = useState<string[]>([
+    'informe',
+    'receta',
+    'estudios',
+    'reposo',
+    'constancia',
+  ]);
   const [enviandoWhatsApp, setEnviandoWhatsApp] = useState(false);
+
+  // Gestión de País y Teléfono para WhatsApp
+  const [paisesList, setPaisesList] = useState<Pais[]>([]);
+  const [paisIdWhatsApp, setPaisIdWhatsApp] = useState<number | null>(null);
   const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('');
   const [textoWhatsAppPersonalizado, setTextoWhatsAppPersonalizado] = useState('');
   const [ultimoResultadoWhatsApp, setUltimoResultadoWhatsApp] = useState<{
     success: boolean;
     message: string;
     destinatario?: string;
+    total_documentos?: number;
+    documentos_enviados?: string[];
+    enviados_detalle?: any[];
     preview_mensaje?: string;
+    errores?: string[];
   } | null>(null);
 
   const [modalAcompananteOpen, setModalAcompananteOpen] = useState(false);
@@ -114,7 +137,21 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
     otroParentesco: '',
   });
 
-  // Sincronizar documento inicial cuando se abre el modal
+  // Cargar lista de países activos para resolver prefijos
+  React.useEffect(() => {
+    let mounted = true;
+    paisesApi
+      .list({ activo: true })
+      .then((data) => {
+        if (mounted) setPaisesList(data);
+      })
+      .catch((e) => console.error('Error cargando países:', e));
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Sincronizar documento inicial, prefijo de país y teléfono cuando se abre el modal
   React.useEffect(() => {
     if (open) {
       setDocumentoActivo(initialDocumento);
@@ -124,12 +161,58 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
         setModalAcompananteOpen(true);
       }
       if (consulta) {
-        const tel = consulta.paciente?.telefono || consulta.paciente?.telefono || '';
-        setTelefonoWhatsApp(tel);
+        // Resolver país por defecto (paciente > empresa > regional > fallback VE)
+        const defaultPais =
+          paisesList.find((p) => p.id === (consulta.paciente as any)?.pais_telefono_id) ||
+          paisesList.find((p) => p.id === user?.empresa?.pais_id) ||
+          regional.pais ||
+          paisesList.find((p) => p.codigo_iso2 === 'VE') ||
+          paisesList[0];
+
+        let resolvedPaisId = defaultPais?.id || null;
+        let clean = String(consulta.paciente?.telefono || '').trim().replace(/[^0-9+]/g, '');
+
+        // Si el número ya viene con prefijo internacional (+58, +52, +57, etc.), detectar el país correspondiente
+        if (clean.startsWith('+')) {
+          const match = paisesList.find((p) => p.codigo_telefonico && clean.startsWith(p.codigo_telefonico));
+          if (match && match.codigo_telefonico) {
+            resolvedPaisId = match.id;
+            clean = clean.slice(match.codigo_telefonico.length);
+          } else {
+            clean = clean.replace(/^\+/, '');
+          }
+        } else if (clean.startsWith('58') && clean.length >= 12) {
+          // Si trae prefijo 58 directo (ej. 584241703465)
+          const ve = paisesList.find((p) => p.codigo_iso2 === 'VE');
+          if (ve) resolvedPaisId = ve.id;
+          clean = clean.slice(2);
+        }
+
+        // Si empieza con 0 local (ej. 0424...), remover el cero para dejar los dígitos limpios
+        if (clean.startsWith('0')) {
+          clean = clean.slice(1);
+        }
+
+        setPaisIdWhatsApp(resolvedPaisId);
+        setTelefonoWhatsApp(clean);
         setUltimoResultadoWhatsApp(null);
+
+        // Preseleccionar los documentos aplicables de esta consulta
+        const docList: string[] = ['informe'];
+        if (consulta.receta_medica && consulta.receta_medica.length > 0) {
+          docList.push('receta');
+        }
+        if (consulta.estudios_solicitados && consulta.estudios_solicitados.length > 0) {
+          docList.push('estudios');
+        }
+        if (consulta.reposo_medico?.requiere_reposo || (consulta.reposo_medico?.dias_reposo && consulta.reposo_medico.dias_reposo > 0)) {
+          docList.push('reposo');
+        }
+        docList.push('constancia');
+        setDocumentosSeleccionadosWhatsApp(docList);
       }
     }
-  }, [open, initialDocumento, consulta]);
+  }, [open, initialDocumento, consulta, paisesList, user?.empresa?.pais_id, regional.pais]);
 
   const handleSelectDocumento = (docId: TipoDocumentoClinico) => {
     setDocumentoActivo(docId);
@@ -140,20 +223,53 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
     }
   };
 
+  const toggleDocumentoEnvio = (docId: string) => {
+    setDocumentosSeleccionadosWhatsApp((prev) =>
+      prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]
+    );
+  };
+
+  const handleDescargarPdf = () => {
+    if (!consulta) return;
+    const url = consultasApi.obtenerUrlDocumentoPdf(consulta.id, documentoActivo);
+    window.open(url, '_blank');
+  };
+
+  // Reconstituye el número de teléfono con el código de país exacto predeterminado
+  const getTelefonoCompletoWhatsApp = (): string => {
+    const selPais = paisesList.find((p) => p.id === paisIdWhatsApp) || regional.pais;
+    const rawPrefijo = (selPais?.codigo_telefonico || regional.codigoTelefonico || '+58').trim();
+    const cleanPrefijoDigits = rawPrefijo.replace(/[^0-9]/g, '');
+    let digits = telefonoWhatsApp.replace(/[^0-9]/g, '');
+    if (digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    if (cleanPrefijoDigits && digits.startsWith(cleanPrefijoDigits)) {
+      return `+${digits}`;
+    }
+    const cleanPrefijo = rawPrefijo.startsWith('+') ? rawPrefijo : `+${rawPrefijo}`;
+    return `${cleanPrefijo}${digits}`;
+  };
+
   const handleEnviarWhatsApp = async () => {
     if (!consulta) return;
     setEnviandoWhatsApp(true);
     try {
+      const fullPhone = getTelefonoCompletoWhatsApp();
       const res = await consultasApi.enviarDocumentoWhatsApp(consulta.id, {
-        tipo_documento: documentoActivo,
-        telefono_personalizado: telefonoWhatsApp.trim() || undefined,
+        tipo_documento: modoEnvioWhatsApp === 'todos' ? 'todos' : documentoActivo,
+        telefono_personalizado: fullPhone,
         texto_personalizado: textoWhatsAppPersonalizado.trim() || undefined,
         incluir_indicaciones: true,
+        enviar_como_pdf: true,
+        documentos_seleccionados:
+          modoEnvioWhatsApp === 'todos' ? documentosSeleccionadosWhatsApp : [documentoActivo],
+        acompanante: tieneAcompanante ? datosAcompanante : undefined,
       });
       setUltimoResultadoWhatsApp(res);
-      toast.success(res.message || 'Documento despachado vía WhatsApp con éxito');
+      toast.success(res.message || 'Documentos PDF despachados vía WhatsApp con éxito');
     } catch (error: any) {
-      const msg = error?.response?.data?.detail || 'No se pudo enviar el documento por WhatsApp';
+      const msg = error?.response?.data?.detail || 'No se pudo enviar los documentos por WhatsApp';
       toast.error(msg);
     } finally {
       setEnviandoWhatsApp(false);
@@ -161,8 +277,8 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
   };
 
   const handleAbrirWhatsAppWeb = () => {
-    const rawTel = (telefonoWhatsApp || consulta?.paciente?.telefono || '').replace(/[^0-9]/g, '');
-    const defaultText = `Estimado(a) paciente ${nombrePaciente}, le hacemos entrega de su documento médico emitido en ${empresaNombre}.`;
+    const rawTel = getTelefonoCompletoWhatsApp().replace(/[^0-9]/g, '');
+    const defaultText = `Estimado(a) paciente ${nombrePaciente}, le hacemos entrega de sus documentos médicos emitidos en ${empresaNombre}.`;
     const texto = encodeURIComponent(ultimoResultadoWhatsApp?.preview_mensaje || defaultText);
     const url = rawTel ? `https://api.whatsapp.com/send?phone=${rawTel}&text=${texto}` : `https://api.whatsapp.com/send?text=${texto}`;
     window.open(url, '_blank');
@@ -425,7 +541,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[92vh] flex flex-col p-0 overflow-hidden bg-background border-border shadow-2xl">
+      <DialogContent className="max-w-[97vw] w-[97vw] h-[95vh] max-h-[95vh] flex flex-col p-0 overflow-hidden bg-background border-border shadow-2xl rounded-2xl">
         {/* Cabecera del Modal (No visible en impresión) */}
         <div className="p-4 sm:p-5 border-b border-border/80 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 print:hidden">
           <div className="space-y-1">
@@ -433,36 +549,45 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
               <div className="p-2 rounded-xl bg-primary/10 text-primary">
                 <Printer className="h-5 w-5" />
               </div>
-              <DialogTitle className="text-lg font-bold text-foreground">
-                Impresión de Documentos Clínicos
+              <DialogTitle className="text-xl font-bold text-foreground">
+                Impresión y Despacho de Documentos Clínicos
               </DialogTitle>
             </div>
             <DialogDescription className="text-xs text-muted-foreground">
               Paciente: <strong className="text-foreground font-semibold">{nombrePaciente}</strong> | Cédula: {tipoDoc} {documentoPaciente} | Código:{' '}
-              <span className="font-mono text-primary">{consulta.codigo || `CON-${consulta.id}`}</span>
+              <span className="font-mono text-primary font-bold">{consulta.codigo || `CON-${consulta.id}`}</span>
             </DialogDescription>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
             <Button
               type="button"
-              onClick={() => {
-                const tel = consulta?.paciente?.telefono || consulta?.paciente?.telefono || '';
-                setTelefonoWhatsApp(tel);
-                setModalWhatsAppOpen(true);
-              }}
-              variant="outline"
-              className="gap-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 font-semibold h-10 px-4 cursor-pointer"
+              onClick={() => setModalWhatsAppOpen(true)}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-4 shadow-sm cursor-pointer"
             >
-              <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <MessageCircle className="h-4 w-4" />
               <span>Enviar por WhatsApp</span>
+              <span className="bg-emerald-800/80 text-emerald-100 text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                PDF
+              </span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDescargarPdf}
+              className="gap-1.5 font-semibold h-10 px-3.5 cursor-pointer hover:bg-accent"
+              title="Descargar este documento en formato PDF oficial"
+            >
+              <Download className="h-4 w-4 text-primary" />
+              <span className="hidden sm:inline">Descargar PDF</span>
             </Button>
             <Button
               onClick={handlePrint}
-              className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md h-10 px-5 cursor-pointer"
+              variant="outline"
+              className="gap-2 bg-card hover:bg-muted font-bold shadow-xs h-10 px-4 cursor-pointer"
             >
-              <Printer className="h-4 w-4" />
-              <span>Imprimir Documento</span>
+              <Printer className="h-4 w-4 text-foreground" />
+              <span>Imprimir</span>
             </Button>
           </div>
         </div>
@@ -508,7 +633,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-zinc-100 dark:bg-zinc-950 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible">
           {/* Banner informativo de acompañante para constancia (No imprimible) */}
           {documentoActivo === 'constancia' && (
-            <div className="w-full max-w-[780px] mb-3 p-3.5 rounded-xl border bg-card shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs print:hidden animate-in fade-in-50 duration-200">
+            <div className="w-full max-w-[880px] mb-3 p-3.5 rounded-xl border bg-card shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs print:hidden animate-in fade-in-50 duration-200">
               <div className="flex items-center gap-3">
                 <div
                   className={cn(
@@ -574,7 +699,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
           {/* ── HOJA IMPRIMIBLE (ESTILO HOJA MEMBRETADA COMPACTA 1 PÁGINA) ── */}
           <div
             id="area-imprimible-clinica"
-            className="w-full max-w-[780px] bg-white text-zinc-900 dark:bg-white dark:text-zinc-900 p-6 sm:p-8 rounded-xl shadow-xl print:shadow-none print:p-4 print:max-w-none print:w-full border border-zinc-200 print:border-none space-y-3.5 flex flex-col justify-between text-[11px]"
+            className="w-full max-w-[880px] bg-white text-zinc-900 dark:bg-white dark:text-zinc-900 p-8 sm:p-10 rounded-2xl shadow-xl print:shadow-none print:p-4 print:max-w-none print:w-full border border-zinc-200/90 print:border-none space-y-4 flex flex-col justify-between text-[11.5px]"
           >
             {/* ── CABECERA / MEMBRETE CLÍNICO ── */}
             <div>
@@ -1554,80 +1679,207 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
       </Dialog>
     
 
-      {/* MODAL DE DESPACHO DIRECTO DE WHATSAPP */}
+      {/* MODAL DE DESPACHO DIRECTO DE WHATSAPP EN FORMATO PDF */}
       <Dialog open={modalWhatsAppOpen} onOpenChange={setModalWhatsAppOpen}>
-        <DialogContent className="max-w-lg p-0 overflow-hidden bg-background border-border shadow-2xl">
+        <DialogContent className="max-w-2xl p-0 overflow-hidden bg-background border-border shadow-2xl rounded-2xl">
           <DialogHeader className="p-5 pb-4 border-b border-border/70 bg-emerald-500/10">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
-                <MessageCircle className="h-5 w-5" />
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-emerald-600 text-white shadow-xs">
+                <MessageCircle className="h-6 w-6" />
               </div>
               <div>
-                <DialogTitle className="text-base font-bold text-foreground">
-                  Despachar Documento por WhatsApp
+                <DialogTitle className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
+                  <span>Despacho de Documentos por WhatsApp</span>
+                  <Badge className="bg-emerald-600 text-white text-[10px] uppercase font-bold tracking-wider">
+                    Formato PDF
+                  </Badge>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                  Envío formal al paciente con formato institucional y validación facultativa
+                  Generación y envío nativo de documentos médicos oficiales con membrete institucional al paciente
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
-          <div className="p-5 space-y-4">
-            <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-xs text-muted-foreground space-y-1">
-              <p className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4" />
-                Documento a enviar: <span className="font-bold">{documentosList.find(d => d.id === documentoActivo)?.label}</span>
-              </p>
-              <p>
-                Paciente: <strong className="text-foreground">{nombrePaciente}</strong> | Cédula: {tipoDoc} {documentoPaciente}
-              </p>
+          <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            {/* Selector de Modo: Todos los Documentos vs Solo este Documento */}
+            <div className="grid grid-cols-2 p-1 bg-muted/70 rounded-xl gap-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setModoEnvioWhatsApp('todos')}
+                className={cn(
+                  'flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-bold transition-all cursor-pointer',
+                  modoEnvioWhatsApp === 'todos'
+                    ? 'bg-background text-foreground shadow-xs border border-border/80'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Files className="h-4 w-4 text-emerald-600" />
+                <span>Todos los Documentos (PDFs)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoEnvioWhatsApp('seleccionado')}
+                className={cn(
+                  'flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-bold transition-all cursor-pointer',
+                  modoEnvioWhatsApp === 'seleccionado'
+                    ? 'bg-background text-foreground shadow-xs border border-border/80'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <FileText className="h-4 w-4 text-emerald-600" />
+                <span>Solo {documentosList.find((d) => d.id === documentoActivo)?.shortLabel} (PDF)</span>
+              </button>
             </div>
 
+            {/* Panel de Selección de Documentos si está en modo "Todos" */}
+            {modoEnvioWhatsApp === 'todos' ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-foreground flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    Documentos a compilar y despachar en PDF:
+                  </span>
+                  <span className="text-[11px] text-muted-foreground font-medium">
+                    {documentosSeleccionadosWhatsApp.length} seleccionados
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {documentosList.map((doc) => {
+                    const isSelected = documentosSeleccionadosWhatsApp.includes(doc.id);
+                    const Icon = doc.icon;
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={() => toggleDocumentoEnvio(doc.id)}
+                        className={cn(
+                          'flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer select-none text-xs',
+                          isSelected
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-foreground shadow-xs'
+                            : 'bg-muted/30 border-border/70 text-muted-foreground opacity-60 hover:opacity-100'
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={cn(
+                              'p-1.5 rounded-lg shrink-0',
+                              isSelected ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'
+                            )}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold truncate">{doc.label}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">
+                              {doc.badge || 'Documento oficial'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-1.5 pl-2">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground">
+                            .PDF
+                          </span>
+                          {isSelected ? (
+                            <CheckSquare className="h-4 w-4 text-emerald-600" />
+                          ) : (
+                            <Square className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 text-xs text-muted-foreground space-y-1">
+                <p className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Documento individual a enviar: <strong className="text-foreground">{documentosList.find((d) => d.id === documentoActivo)?.label}</strong>
+                </p>
+                <p>
+                  Paciente: <strong className="text-foreground">{nombrePaciente}</strong> | Cédula: {tipoDoc} {documentoPaciente}
+                </p>
+              </div>
+            )}
+
+            {/* Aviso informativo de generación nativa PDF */}
+            <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-[11px] text-emerald-900 dark:text-emerald-300 flex items-start gap-2.5 leading-relaxed">
+              <Sparkles className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-semibold block">Envío Certificado en Formato PDF:</strong>
+                Cada documento se genera en alta resolución con membrete oficial, cédula colegiada del especialista, folio clínico y firma digital para que el paciente pueda presentarlo en farmacias, laboratorios o instituciones de reposo.
+              </div>
+            </div>
+
+            {/* Teléfono de Destino con Selector de País y Prefijo Automático */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
-                Número de WhatsApp de Destino (con código de país)
-              </label>
-              <input
-                type="text"
-                placeholder="Ej. +58 412 1234567 o 0414..."
-                value={telefonoWhatsApp}
-                onChange={(e) => setTelefonoWhatsApp(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground">
+                  Número de WhatsApp del Paciente
+                </label>
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Prefijo internacional automático ({paisesList.find((p) => p.id === paisIdWhatsApp)?.codigo_telefonico || regional.codigoTelefonico || '+58'})
+                </span>
+              </div>
+
+              <PhoneCountryInput
+                paisId={paisIdWhatsApp}
+                telefono={telefonoWhatsApp}
+                onPaisChange={(newPaisId) => setPaisIdWhatsApp(newPaisId)}
+                onTelefonoChange={(newTel) => setTelefonoWhatsApp(newTel)}
+                placeholder="412 1234567"
+                className="border border-border/80 rounded-xl overflow-hidden bg-background shadow-2xs"
               />
+
               <p className="text-[11px] text-muted-foreground">
-                Si el número es nacional (ej. 0412...), el sistema aplicará automáticamente el código país por defecto (+58).
+                El prefijo del país se aplica de forma predeterminada para evitar errores de marcación. El médico no necesita escribirlo.
               </p>
             </div>
 
+            {/* Nota o Mensaje Adicional */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">
-                Nota o Mensaje Adicional (Opcional)
+                Nota o Indicación Especial del Médico (Opcional)
               </label>
               <Textarea
                 rows={2}
-                placeholder="Ej. Recuerde tomar abundante agua y guardar reposo estricto..."
+                placeholder="Ej. Estimado paciente, recuerde acudir a su control en 15 días y guardar reposo estricto..."
                 value={textoWhatsAppPersonalizado}
                 onChange={(e) => setTextoWhatsAppPersonalizado(e.target.value)}
                 className="w-full text-xs rounded-lg min-h-[58px]"
               />
             </div>
 
+            {/* Resultado de Envío */}
             {ultimoResultadoWhatsApp && (
-              <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs space-y-2 animate-in fade-in-50">
+              <div className="p-3.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-xs space-y-2.5 animate-in fade-in-50">
                 <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                   <span>{ultimoResultadoWhatsApp.message}</span>
                 </div>
+
+                {ultimoResultadoWhatsApp.documentos_enviados && ultimoResultadoWhatsApp.documentos_enviados.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-muted-foreground font-semibold">PDFs Despachados:</span>
+                    {ultimoResultadoWhatsApp.documentos_enviados.map((docNom, i) => (
+                      <Badge
+                        key={i}
+                        variant="outline"
+                        className="bg-emerald-500/15 border-emerald-500/40 text-emerald-800 dark:text-emerald-300 text-[10px]"
+                      >
+                        📄 {docNom}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
                 {ultimoResultadoWhatsApp.destinatario && (
                   <p className="text-[11px] text-muted-foreground font-mono">
-                    Enviado a: +{ultimoResultadoWhatsApp.destinatario}
+                    Destinatario verificado: +{ultimoResultadoWhatsApp.destinatario}
                   </p>
-                )}
-                {ultimoResultadoWhatsApp.preview_mensaje && (
-                  <div className="p-2 rounded bg-background/80 border text-[10.5px] font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">
-                    {ultimoResultadoWhatsApp.preview_mensaje}
-                  </div>
                 )}
               </div>
             )}
@@ -1642,7 +1894,7 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
               className="gap-1.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 cursor-pointer w-full sm:w-auto"
             >
               <ExternalLink className="h-3.5 w-3.5" />
-              <span>Abrir WhatsApp Web</span>
+              <span>Abrir en WhatsApp Web</span>
             </Button>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -1659,18 +1911,26 @@ export const DocumentosImpresionModal: React.FC<DocumentosImpresionModalProps> =
                 type="button"
                 size="sm"
                 onClick={handleEnviarWhatsApp}
-                disabled={enviandoWhatsApp || !telefonoWhatsApp.trim()}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                disabled={
+                  enviandoWhatsApp ||
+                  !telefonoWhatsApp.trim() ||
+                  (modoEnvioWhatsApp === 'todos' && documentosSeleccionadosWhatsApp.length === 0)
+                }
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 shadow-sm cursor-pointer disabled:opacity-50 px-4"
               >
                 {enviandoWhatsApp ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Despachando...</span>
+                    <span>Despachando PDFs por WhatsApp...</span>
                   </>
                 ) : (
                   <>
                     <Send className="h-4 w-4" />
-                    <span>Enviar Directo</span>
+                    <span>
+                      {modoEnvioWhatsApp === 'todos'
+                        ? `Enviar Todos (${documentosSeleccionadosWhatsApp.length}) en PDF`
+                        : 'Enviar PDF por WhatsApp'}
+                    </span>
                   </>
                 )}
               </Button>

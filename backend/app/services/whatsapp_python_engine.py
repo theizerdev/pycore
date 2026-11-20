@@ -25,7 +25,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple, Union
 
 import segno
 
@@ -1375,6 +1375,130 @@ class WhatsAppPythonEngine:
                 "success": False,
                 "error": err_str,
                 "final_message": processed_msg,
+                "formatted_phone": formatted,
+            }
+
+    async def send_document_humanized(
+        self,
+        instance_name: str,
+        to: str,
+        file_bytes: Union[bytes, str],
+        filename: str,
+        caption: Optional[str] = None,
+        country_code: str = "+58",
+        mimetype: str = "application/pdf",
+        simulate_typing: bool = True,
+        typing_sec: float = 1.8,
+        verify_number: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Despacha un documento (ej. PDF clínico) directamente vía Neonize al WhatsApp de destino:
+        1. Normaliza número telefónico y valida estado de conexión de la instancia.
+        2. Simulación humana opcional 'Escribiendo...' antes del despacho de archivo.
+        3. Envío nativo de documento adjunto con nombre de archivo y caption opcional.
+        """
+        rt = self._get_or_create_runtime(instance_name)
+        formatted = format_phone_number(to, country_code)
+
+        if not formatted or len(formatted) < 10:
+            return {"success": False, "error": f"Número telefónico inválido: {to}"}
+
+        with rt.lock:
+            if rt.connection_state == "BANNED_COOLDOWN":
+                return {
+                    "success": False,
+                    "error": "Circuit Breaker Anti-Ban activo: instancia en pausa preventiva.",
+                }
+            if rt.connection_state != "CONNECTED" or rt.client is None:
+                return {
+                    "success": False,
+                    "error": f"La instancia '{rt.instance_name}' no está conectada a WhatsApp. Escanea el QR primero.",
+                }
+            client = rt.client
+
+        if verify_number:
+            chk = await self.check_number(instance_name, formatted, country_code=country_code)
+            if chk.get("verified_live") and not chk.get("exists"):
+                return {
+                    "success": False,
+                    "error": f"El número +{formatted} no tiene cuenta activa en WhatsApp.",
+                }
+
+        jid = build_jid(formatted)
+        loop = asyncio.get_running_loop()
+
+        try:
+            # 1. Presencia disponible
+            try:
+                await loop.run_in_executor(None, lambda: client.send_presence(Presence.AVAILABLE))
+            except Exception:
+                pass
+
+            # 2. Simulación sutil de 'escribiendo...'
+            if simulate_typing:
+                with rt.lock:
+                    rt.currently_typing_to = formatted
+                try:
+                    await loop.run_in_executor(
+                        None,
+                        lambda: client.send_chat_presence(
+                            jid,
+                            ChatPresence.CHAT_PRESENCE_COMPOSING,
+                            ChatPresenceMedia.CHAT_PRESENCE_MEDIA_TEXT,
+                        ),
+                    )
+                    await asyncio.sleep(max(0.6, min(typing_sec, 2.5)))
+                    await loop.run_in_executor(
+                        None,
+                        lambda: client.send_chat_presence(
+                            jid,
+                            ChatPresence.CHAT_PRESENCE_PAUSED,
+                            ChatPresenceMedia.CHAT_PRESENCE_MEDIA_TEXT,
+                        ),
+                    )
+                except Exception as presence_err:
+                    logger.debug(f"[WA {rt.instance_name}] Aviso simulando typing documento: {presence_err}")
+                finally:
+                    with rt.lock:
+                        rt.currently_typing_to = None
+
+            # 3. Envío nativo de documento
+            resp = await loop.run_in_executor(
+                None,
+                lambda: client.send_document(
+                    to=jid,
+                    file=file_bytes,
+                    filename=filename,
+                    caption=caption or None,
+                    mimetype=mimetype,
+                ),
+            )
+            ext_id = str(getattr(resp, "ID", "") or f"py_doc_{int(time.time() * 1000)}")
+
+            with rt.lock:
+                rt.consecutive_failures = 0
+                rt.last_sent_at = time.time()
+                rt.sent_timestamps_hour.append(rt.last_sent_at)
+                rt.last_sync = datetime.now()
+
+            return {
+                "success": True,
+                "message_id": ext_id,
+                "filename": filename,
+                "formatted_phone": formatted,
+                "engine": "python-neonize",
+            }
+        except Exception as e:
+            err_str = str(e)
+            logger.error(f"[WA {rt.instance_name}] Error enviando documento {filename} a +{formatted}: {err_str}")
+            with rt.lock:
+                rt.currently_typing_to = None
+                rt.consecutive_failures += 1
+                rt.last_error = err_str
+            return {
+                "success": False,
+                "error": err_str,
+                "filename": filename,
                 "formatted_phone": formatted,
             }
 

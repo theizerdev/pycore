@@ -1,13 +1,19 @@
+import asyncio
 import logging
 import time
 from datetime import datetime, date, time as dtime
-from typing import List, Optional, Dict, Tuple
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import List, Optional, Dict, Tuple, Any
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload, joinedload
+
+from app.services.clinical_pdf_generator import (
+    generate_clinical_document_pdf,
+    get_available_documents_for_consulta,
+)
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user, require_permission, registrar_auditoria
@@ -754,10 +760,13 @@ async def crear_sesion_teleconsulta_consulta(
 
 
 class EnviarDocumentoWhatsAppRequest(BaseModel):
-    tipo_documento: str = "receta"  # "receta", "estudios", "reposo", "constancia", "informe"
+    tipo_documento: str = "todos"  # "todos", "receta", "estudios", "reposo", "constancia", "informe"
     telefono_personalizado: Optional[str] = None
     incluir_indicaciones: Optional[bool] = True
     texto_personalizado: Optional[str] = None
+    acompanante: Optional[Dict[str, Any]] = None
+    enviar_como_pdf: Optional[bool] = True
+    documentos_seleccionados: Optional[List[str]] = None
 
 
 @router.post("/{id}/enviar-documento-whatsapp")
@@ -768,8 +777,9 @@ async def enviar_documento_consulta_whatsapp(
     current_user: Usuario = Depends(require_permission("consultas.ver")),
 ):
     """
-    Despacha el récipe médico digital, orden de exámenes, reposo o constancia médica
-    directamente al WhatsApp verificado del paciente con membrete institucional.
+    Despacha los documentos clínicos oficiales de la consulta (receta médica,
+    orden de estudios, informe médico, reposo o constancia) directamente en
+    formato PDF al WhatsApp verificado del paciente.
     """
     query = (
         select(ConsultaMedica)
@@ -795,7 +805,7 @@ async def enviar_documento_consulta_whatsapp(
         raise HTTPException(status_code=400, detail="La consulta no tiene un paciente vinculado")
 
     raw_phone = payload.telefono_personalizado or paciente.telefono
-    if not raw_phone or not raw_phone.strip():
+    if not raw_phone or not str(raw_phone).strip():
         raise HTTPException(
             status_code=400,
             detail="El paciente no tiene un número telefónico registrado para despacho de WhatsApp",
@@ -824,116 +834,208 @@ async def enviar_documento_consulta_whatsapp(
     esp_nombre = consulta.especialidad.nombre if consulta.especialidad else "Medicina General"
     pac_nombre = f"{paciente.nombres} {paciente.apellidos}".strip()
     pac_doc = f"{getattr(paciente, 'tipo_documento', 'V')}-{getattr(paciente, 'documento_identidad', '')}"
-    fecha_str = consulta.fecha.strftime("%d/%m/%Y") if hasattr(consulta, 'fecha') and consulta.fecha else datetime.now().strftime("%d/%m/%Y")
+    folio = getattr(consulta, "codigo", None) or f"CON-{consulta.id}"
 
-    tipo = (payload.tipo_documento or "receta").lower()
-    cuerpo_documento = ""
-
-    nl = "\n"
-    if tipo == "receta":
-        titulo_doc = "💊 *RÉCIPE Y PRESCRIPCIÓN MÉDICA OFICIAL*"
-        meds = consulta.medicamentos_prescritos or []
-        if meds:
-            items_txt = []
-            for idx, m in enumerate(meds, 1):
-                nom = m.get("medicamento") or m.get("nombre") or "Fármaco"
-                pres = f" ({m.get('presentacion')})" if m.get("presentacion") else ""
-                dos = f"{nl}   • Dosis/Vía: {m.get('dosis')}" if m.get("dosis") else ""
-                dur = f"{nl}   • Duración: {m.get('duracion')}" if m.get("duracion") else ""
-                ind = f"{nl}   • Indicaciones: {m.get('indicaciones')}" if m.get("indicaciones") else ""
-                items_txt.append(f"*{idx}. {nom}*{pres}{dos}{dur}{ind}")
-            cuerpo_documento = f"{nl}{nl}".join(items_txt)
-        else:
-            cuerpo_documento = "_(Sin medicamentos farmacológicos prescritos en esta consulta)_"
-
-        if payload.incluir_indicaciones and consulta.plan_tratamiento:
-            cuerpo_documento += f"{nl}{nl}📝 *Indicaciones Generales & Cuidados:*{nl}{consulta.plan_tratamiento}"
-
-    elif tipo == "estudios":
-        titulo_doc = "🔬 *ORDEN DE ESTUDIOS Y EXÁMENES COMPLEMENTARIOS*"
-        estudios_req = consulta.estudios_solicitados or []
-        if estudios_req:
-            items_txt = []
-            for idx, est in enumerate(estudios_req, 1):
-                nom = est.get("estudio") or est.get("nombre") or "Examen Paraclínico"
-                ind = f" - _{est.get('indicaciones')}_" if est.get("indicaciones") else ""
-                items_txt.append(f"*{idx}. {nom}*{ind}")
-            cuerpo_documento = nl.join(items_txt)
-        else:
-            cuerpo_documento = "_(Sin órdenes de estudios adicionales en esta consulta)_"
-
-    elif tipo == "reposo":
-        titulo_doc = "🛌 *CERTIFICADO DE REPOSO MÉDICO*"
-        motivo_txt = consulta.diagnostico_principal or consulta.motivo_consulta or "Evaluación clínica"
-        cuerpo_documento = (
-            f"Se hace constar que el paciente *{pac_nombre}* fue atendido en consulta y amerita reposo médico "
-            f"para su adecuada recuperación por motivo de: *{motivo_txt}*."
-        )
-
-    elif tipo == "constancia":
-        titulo_doc = "📋 *CONSTANCIA DE ATENCIÓN MÉDICA*"
-        hora_str = consulta.hora_inicio.strftime("%I:%M %p") if getattr(consulta, 'hora_inicio', None) else "turno correspondiente"
-        cuerpo_documento = (
-            f"Se certifica que el ciudadano(a) *{pac_nombre}*, titular de la cédula *{pac_doc}*, "
-            f"asistió y fue atendido(a) en nuestras instalaciones el día *{fecha_str}* a las *{hora_str}*."
-        )
-
-    else:
-        titulo_doc = "📄 *INFORME MÉDICO RESUMIDO*"
-        diag = consulta.diagnostico_principal or "En observación"
-        cuerpo_documento = (
-            f"📌 *Motivo:* {consulta.motivo_consulta or 'Consulta regular'}{nl}"
-            f"📌 *Diagnóstico:* {diag}{nl}"
-            f"📌 *Evolución / Plan:* {consulta.plan_tratamiento or 'Seguimiento clínico ambulatorio'}"
-        )
-
-    if payload.texto_personalizado:
-        cuerpo_documento += f"{nl}{nl}💬 *Nota del Especialista:*{nl}{payload.texto_personalizado}"
-
-    # Plantilla final WhatsApp institucional
-    sep = "━━━━━━━━━━━━━━━━━━━━━━"
-    mensaje_ws = (
-        f"👋 Estimado(a) *{pac_nombre}*,{nl}{nl}"
-        f"Desde *{nombre_clinica}* ({sucursal_nombre}) le hacemos entrega de su documento clínico digital:{nl}{nl}"
-        f"{sep}{nl}"
-        f"{titulo_doc}{nl}"
-        f"{sep}{nl}"
-        f"👨‍⚕️ *Especialista:* Dr(a). {nombre_doc}{nl}"
-        f"🩺 *Especialidad:* {esp_nombre}{nl}"
-        f"📅 *Fecha:* {fecha_str}{nl}"
-        f"🆔 *Doc. Paciente:* {pac_doc}{nl}{nl}"
-        f"{cuerpo_documento}{nl}{nl}"
-        f"{sep}{nl}"
-        f"🔒 _Documento digital emitido y autenticado en MediSoft Suite._{nl}"
-        f"📞 Ante cualquier inquietud o duda con su tratamiento, puede contactarnos a través de este canal."
-    )
+    fecha_dt = getattr(consulta, "fecha_consulta", None) or getattr(consulta, "fecha", None)
+    fecha_str = fecha_dt.strftime("%d/%m/%Y") if isinstance(fecha_dt, (datetime, date)) else datetime.now().strftime("%d/%m/%Y")
 
     wa_service, resolved_target, is_sucursal, using_fallback = await resolve_whatsapp_service(
         db, consulta.empresa_id, consulta.sucursal_id
     )
 
-    send_res = await wa_service.send_message(to=clean_phone, message=mensaje_ws)
+    # Determinar qué documentos deben enviarse
+    tipo_solicitado = (payload.tipo_documento or "todos").lower().strip()
+    doc_types: List[str] = []
 
+    if tipo_solicitado == "todos":
+        if payload.documentos_seleccionados and len(payload.documentos_seleccionados) > 0:
+            doc_types = [d.lower().strip() for d in payload.documentos_seleccionados]
+        else:
+            # Documentos aplicables automáticos
+            doc_types.append("informe")
+            meds = getattr(consulta, "receta_medica", None) or getattr(consulta, "medicamentos_prescritos", None) or []
+            if meds and len(meds) > 0:
+                doc_types.append("receta")
+            est = getattr(consulta, "estudios_solicitados", None) or []
+            if est and len(est) > 0:
+                doc_types.append("estudios")
+            rep = getattr(consulta, "reposo_medico", {}) or {}
+            if rep and (rep.get("requiere_reposo") or rep.get("dias_reposo")):
+                doc_types.append("reposo")
+            if payload.acompanante:
+                doc_types.append("constancia")
+    else:
+        doc_types = [tipo_solicitado]
+
+    # Metadatos para nombres de archivo y captions
+    info_map = {
+        "informe": ("Informe Médico Clínico", f"Informe_Medico_{folio}.pdf"),
+        "receta": ("Receta Médica y Prescripción", f"Receta_Medica_{folio}.pdf"),
+        "estudios": ("Orden de Estudios Médicos", f"Orden_Estudios_{folio}.pdf"),
+        "reposo": ("Certificado de Reposo Médico", f"Reposo_Medico_{folio}.pdf"),
+        "constancia": ("Constancia de Asistencia", f"Constancia_Asistencia_{folio}.pdf"),
+    }
+
+    doc_items = []
+    for dt in doc_types:
+        meta = info_map.get(dt, ("Documento Clínico", f"Documento_{folio}.pdf"))
+        pdf_bytes = generate_clinical_document_pdf(
+            tipo_documento=dt,
+            consulta=consulta,
+            empresa=empresa,
+            sucursal=consulta.sucursal,
+            acompanante=payload.acompanante,
+        )
+        doc_items.append({
+            "tipo": dt,
+            "titulo": meta[0],
+            "filename": meta[1],
+            "pdf_bytes": pdf_bytes,
+        })
+
+    # 1. Mensaje de cortesía e introducción formal en WhatsApp
+    bullet_list = "\n".join([f"• 📄 *{d['titulo']}*" for d in doc_items])
+    sep = "━━━━━━━━━━━━━━━━━━━━━━"
+    mensaje_intro = (
+        f"👋 Estimado(a) *{pac_nombre}*,\n\n"
+        f"Desde *{nombre_clinica}* ({sucursal_nombre}) le hacemos entrega de sus documentos clínicos en formato PDF oficial emitidos por el(la) Dr(a). *{nombre_doc}*:\n\n"
+        f"{sep}\n"
+        f"📁 *DOCUMENTOS ADJUNTOS EN PDF:*\n"
+        f"{bullet_list}\n"
+        f"{sep}\n"
+        f"🩺 *Especialidad:* {esp_nombre}\n"
+        f"📅 *Fecha:* {fecha_str}\n"
+        f"🆔 *Doc. Paciente:* {pac_doc}\n"
+        f"📋 *Folio:* {folio}\n"
+    )
+
+    if payload.texto_personalizado and payload.texto_personalizado.strip():
+        mensaje_intro += f"\n💬 *Nota del Especialista:*\n{payload.texto_personalizado.strip()}\n"
+
+    mensaje_intro += (
+        f"\n🔒 _Documentos oficiales digitales generados y autenticados en MediSoft Suite._\n"
+        f"📞 Ante cualquier consulta sobre su tratamiento, no dude en contactarnos."
+    )
+
+    # Despachar mensaje de saludo inicial
+    await wa_service.send_message(to=clean_phone, message=mensaje_intro)
+
+    # 2. Despachar cada documento PDF de forma nativa por WhatsApp
+    enviados = []
+    errores = []
+    for doc in doc_items:
+        try:
+            res_doc = await wa_service.send_document(
+                to=clean_phone,
+                file_bytes=doc["pdf_bytes"],
+                filename=doc["filename"],
+                caption=f"📄 {doc['titulo']} • Folio {folio}",
+                mimetype="application/pdf",
+                simulate_typing=True,
+            )
+            success = bool(res_doc.get("success", True))
+            enviados.append({
+                "tipo": doc["tipo"],
+                "titulo": doc["titulo"],
+                "filename": doc["filename"],
+                "message_id": res_doc.get("message_id"),
+                "success": success,
+            })
+            if not success:
+                errores.append(f"{doc['titulo']}: {res_doc.get('error', 'Error en despacho')}")
+        except Exception as doc_err:
+            logger.error(f"Error enviando PDF {doc['filename']} a {clean_phone}: {doc_err}")
+            errores.append(f"{doc['titulo']}: {str(doc_err)}")
+        await asyncio.sleep(0.6)
+
+    # Registro de Auditoría
     db.add(
         AuditoriaLog(
             empresa_id=consulta.empresa_id,
             usuario_id=current_user.id,
-            accion="ENVIAR_DOCUMENTO_WHATSAPP",
+            accion="ENVIAR_DOCUMENTOS_PDF_WHATSAPP",
             modulo="consultas",
             detalles={
                 "consulta_id": consulta.id,
                 "paciente_id": paciente.id,
-                "tipo_documento": tipo,
                 "destinatario": clean_phone,
-                "success": bool(send_res.get("success", True)),
+                "documentos": [d["tipo"] for d in doc_items],
+                "total_enviados": len(enviados),
+                "errores": errores,
             },
         )
     )
     await db.commit()
 
+    total_exitos = sum(1 for d in enviados if d.get("success"))
+    res_msg = (
+        f"{total_exitos} documento(s) en formato PDF despachados exitosamente por WhatsApp."
+        if total_exitos > 1
+        else f"Documento PDF ({doc_items[0]['titulo']}) despachado exitosamente por WhatsApp."
+    )
+
     return {
-        "success": bool(send_res.get("success", True)),
-        "message": f"Documento ({tipo.upper()}) despachado exitosamente por WhatsApp al paciente.",
+        "success": total_exitos > 0,
+        "message": res_msg,
         "destinatario": clean_phone,
-        "preview_mensaje": mensaje_ws,
+        "total_documentos": len(doc_items),
+        "documentos_enviados": [d["titulo"] for d in enviados if d.get("success")],
+        "enviados_detalle": enviados,
+        "preview_mensaje": mensaje_intro,
+        "errores": errores if errores else None,
     }
+
+
+@router.get("/{id}/documento-pdf")
+async def descargar_documento_consulta_pdf(
+    id: int,
+    tipo: str = Query("informe", description="Tipo de documento: informe, receta, estudios, reposo, constancia"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_permission("consultas.ver")),
+):
+    """
+    Descarga o previsualiza en el navegador el PDF clínico oficial del documento
+    especificado con membrete institucional, datos del médico y paciente.
+    """
+    query = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.paciente),
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.especialidad),
+            selectinload(ConsultaMedica.sucursal),
+            selectinload(ConsultaMedica.empresa),
+        )
+        .where(ConsultaMedica.id == id)
+    )
+    if not current_user.es_superadmin:
+        query = query.where(ConsultaMedica.empresa_id == current_user.empresa_id)
+
+    res = await db.execute(query)
+    consulta = res.scalar_one_or_none()
+    if not consulta:
+        raise HTTPException(status_code=404, detail="Consulta médica no encontrada")
+
+    empresa = consulta.empresa
+    if not empresa:
+        res_emp = await db.execute(select(Empresa).where(Empresa.id == consulta.empresa_id))
+        empresa = res_emp.scalar_one_or_none()
+
+    clean_tipo = (tipo or "informe").lower().strip()
+    folio = getattr(consulta, "codigo", None) or f"CON-{consulta.id}"
+    pdf_bytes = generate_clinical_document_pdf(
+        tipo_documento=clean_tipo,
+        consulta=consulta,
+        empresa=empresa,
+        sucursal=consulta.sucursal,
+    )
+    filename = f"{clean_tipo.capitalize()}_{folio}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )

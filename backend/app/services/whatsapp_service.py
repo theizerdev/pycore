@@ -126,6 +126,27 @@ class WhatsAppService:
             enforce_cooldown=not sync,
         )
 
+    async def send_document(
+        self,
+        to: str,
+        file_bytes: Any,
+        filename: str,
+        caption: Optional[str] = None,
+        mimetype: str = "application/pdf",
+        simulate_typing: bool = True,
+    ) -> Dict[str, Any]:
+        """Despacha un documento binario (PDF/imagen) vía el motor nativo de WhatsApp."""
+        return await whatsapp_engine.send_document_humanized(
+            instance_name=self.instance_name,
+            to=to,
+            file_bytes=file_bytes,
+            filename=filename,
+            caption=caption,
+            country_code=self.country_code,
+            mimetype=mimetype,
+            simulate_typing=simulate_typing,
+        )
+
     async def diagnostic(self) -> Dict[str, Any]:
         return await whatsapp_engine.diagnostic(self.instance_name)
 
