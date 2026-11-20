@@ -17,11 +17,22 @@ async def ensure_database_exists():
                 port = parsed.port or 3306
                 user = parsed.username or 'root'
                 password = parsed.password or ''
-                conn = pymysql.connect(host=host, port=port, user=user, password=password)
+                try:
+                    conn = pymysql.connect(host=host, port=port, user=user, password=password)
+                except Exception as conn_err:
+                    alt_port = 3306 if port == 3307 else (3307 if port == 3306 else None)
+                    if alt_port:
+                        conn = pymysql.connect(host=host, port=alt_port, user=user, password=password)
+                        port = alt_port
+                        print(f"[*] Base de datos: MySQL detectado en puerto alternativo {alt_port}")
+                    else:
+                        raise conn_err
+
                 with conn.cursor() as cursor:
                     cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
                 conn.commit()
                 conn.close()
+                print(f"[*] Base de datos '{db_name}' verificada/creada exitosamente en MySQL ({host}:{port}).")
         except Exception as e:
             print(f"Advertencia al verificar base de datos: {e}")
 

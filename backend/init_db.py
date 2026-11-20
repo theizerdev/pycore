@@ -1,10 +1,12 @@
 import asyncio
 from sqlalchemy import text
-from app.core.database import engine, Base, AsyncSessionLocal
+from app.core.database import engine, Base, AsyncSessionLocal, ensure_database_exists
 import app.models
 from app.services.seeder import seed_initial_data
 
 async def main():
+    print("Asegurando existencia de la base de datos...")
+    await ensure_database_exists()
     print("Iniciando creación de tablas...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

@@ -17,6 +17,12 @@ def main():
     print("=" * 65)
     print(" -> Backend:  http://127.0.0.1:8000 (Swagger: /docs)")
     print(" -> Frontend: http://localhost:5173")
+    print("=" * 65)
+    print(" CREDENCIALES DE ACCESO:")
+    print(" -> Superadministrador: admin@pycore.com    | Password: Admin1234*")
+    print(" -> Admin Clinico:      admin@plataforma.com| Password: Admin1234*")
+    print(" -> Medico:             admin@medflow.com   | Password: Admin1234*")
+    print("=" * 65)
     print(" Presiona Ctrl+C para detener ambos servidores.")
     print("=" * 65)
 
