@@ -67,7 +67,7 @@ export interface CobroDetalleItem {
 export interface CobroPagoItem {
   id?: number;
   metodo: string; // 'efectivo_usd' | 'efectivo_ves' | 'efectivo_eur' | 'pago_movil' | 'punto_venta' | 'transferencia' | 'zelle' | 'pasarela'
-  moneda: 'USD' | 'VES' | 'EUR';
+  moneda: 'USD' | 'VES' | 'EUR' | string;
   monto_moneda_origen: number;
   tasa_cambio?: number;
   monto_equivalente_divisa?: number;

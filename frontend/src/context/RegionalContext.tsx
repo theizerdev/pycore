@@ -49,6 +49,9 @@ export interface RegionalContextType {
   decimalesMoneda: number;
   bandera: string;
 
+  // Régimen Bimonetario (Exclusivo Venezuela: USD + VES BCV)
+  esBimonetario: boolean;
+
   // Tasa Oficial BCV & Moneda de Empresa
   tasaBcv: number;
   tasaBcvFecha: string | null;
@@ -115,9 +118,32 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const codigoIso3 = paisActivo.codigo_iso3 || 'VEN';
   const codigoTelefonico = paisActivo.codigo_telefonico || '+58';
 
-  // Si la empresa tiene 'USD' o 'VES', se adopta directamente esa moneda
-  const moneda = monedaEmpresa || paisActivo.moneda_principal || 'USD';
-  const simboloMoneda = moneda === 'VES' ? 'Bs.' : '$';
+  // Régimen bimonetario (Divisa USD + Bolívares VES a tasa BCV) exclusivo para Venezuela
+  const esBimonetario = useMemo(() => {
+    return Boolean(
+      codigoIso2 === 'VE' ||
+      user?.empresa?.pais?.codigo_iso2 === 'VE' ||
+      user?.empresa?.pais_id === 2 ||
+      (user?.empresa?.pais?.nombre && user.empresa.pais.nombre.toLowerCase().includes('venezuela'))
+    );
+  }, [codigoIso2, user?.empresa?.pais?.codigo_iso2, user?.empresa?.pais_id, user?.empresa?.pais?.nombre]);
+
+  // Si no es Venezuela, la moneda es estrictamente la del país activo (ej. COP, MXN, EUR, USD, PEN, etc.)
+  // Si es Venezuela, se adopta la divisa configurada en la empresa (USD/VES)
+  const moneda = useMemo(() => {
+    if (!esBimonetario) {
+      return paisActivo.moneda_principal || monedaEmpresa || 'USD';
+    }
+    return monedaEmpresa || paisActivo.moneda_principal || 'USD';
+  }, [esBimonetario, paisActivo.moneda_principal, monedaEmpresa]);
+
+  const simboloMoneda = useMemo(() => {
+    if (moneda === 'VES') return 'Bs.';
+    if (moneda === 'EUR') return '€';
+    if (moneda === 'PEN') return 'S/';
+    if (moneda === 'BRL') return 'R$';
+    return paisActivo.simbolo_moneda || '$';
+  }, [moneda, paisActivo.simbolo_moneda]);
 
   const idioma = paisActivo.idioma_principal || 'es';
   const zonaHoraria = paisActivo.zona_horaria || 'America/Caracas';
@@ -134,6 +160,14 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [tasaBcvFuente, setTasaBcvFuente] = useState<string>('BCV Oficial');
 
   const refreshBcvRate = useCallback(async () => {
+    // Si la empresa no está en Venezuela, opera exclusivamente en moneda local con tasa 1.0 fija
+    if (!esBimonetario) {
+      setTasaBcv(1.0);
+      setTasaBcvFecha(null);
+      setTasaBcvFuente('Moneda Nacional');
+      return;
+    }
+
     const activeToken = token || localStorage.getItem('pycore_token');
     if (!activeToken) return;
     try {
@@ -148,7 +182,7 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err) {
       console.warn('No se pudo sincronizar la tasa BCV:', err);
     }
-  }, [token]);
+  }, [token, esBimonetario]);
 
   useEffect(() => {
     if (token) {
@@ -181,7 +215,10 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (moneda === 'EUR') {
       return `${formattedAmount} €`;
     }
-    // Dólar por defecto: "$ 100.00"
+    if (moneda === 'PEN') {
+      return `S/ ${formattedAmount}`;
+    }
+    // Dólar / Monedas estándar por defecto
     return `${symbol} ${formattedAmount}`;
   };
 
@@ -285,10 +322,21 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return `${codigoTelefonico} ${clean}`;
   };
 
-  // 6. Formateo Dual (Moneda Principal con Equivalencia en Moneda Secundaria a Tasa BCV)
+  // 6. Formateo Dual (En Venezuela: Moneda Principal con Equivalencia a Tasa BCV; en otros países: Moneda Única Nacional)
   const formatMoneyDual = (amount: number | string | null | undefined) => {
     const num = typeof amount === 'string' ? parseFloat(amount.replace(/[^0-9.-]+/g, '')) : (amount || 0);
     const validNum = isNaN(num) ? 0 : num;
+
+    // Fuera de Venezuela el país es estrictamente monomonetario: sin tasa, sin segunda moneda
+    if (!esBimonetario) {
+      const primary = formatMoney(validNum);
+      return {
+        primary,
+        secondary: '',
+        fullText: primary,
+        rate: 1.0,
+      };
+    }
 
     if (moneda === 'USD') {
       const primary = formatMoney(validNum);
@@ -331,6 +379,7 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         separadorDecimales,
         decimalesMoneda,
         bandera,
+        esBimonetario,
         tasaBcv,
         tasaBcvFecha,
         tasaBcvFuente,

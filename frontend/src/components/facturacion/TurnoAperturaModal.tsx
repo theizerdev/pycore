@@ -32,6 +32,7 @@ import {
 } from '../ui/select';
 import { cajasApi, type Caja, type TurnoCaja } from '../../api/cajas';
 import { tasasApi } from '../../api/tasas';
+import { useRegional } from '../../context/RegionalContext';
 import { cn } from '../../lib/utils';
 
 interface TurnoAperturaModalProps {
@@ -49,6 +50,9 @@ export const TurnoAperturaModal: React.FC<TurnoAperturaModalProps> = ({
   sucursalId,
   onTurnoOpened,
 }) => {
+  const regional = useRegional();
+  const isBimo = regional.esBimonetario;
+
   const [selectedCajaId, setSelectedCajaId] = useState<string>(
     cajas.length > 0 ? String(cajas[0].id) : ''
   );
@@ -80,7 +84,7 @@ export const TurnoAperturaModal: React.FC<TurnoAperturaModalProps> = ({
       try {
         setLoadingRate(true);
         const [ratesRes, openShifts] = await Promise.all([
-          tasasApi.getCurrentRates().catch(() => null),
+          isBimo ? tasasApi.getCurrentRates().catch(() => null) : Promise.resolve(null),
           cajasApi
             .listTurnos({ sucursal_id: sucursalId, estado: 'abierta', limit: 50 })
             .catch(() => []),
@@ -224,49 +228,74 @@ export const TurnoAperturaModal: React.FC<TurnoAperturaModalProps> = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Tarjeta Tasa Oficial BCV en vivo + Botón Sincronizar (Réplica FixSale POS) */}
-          <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-primary">
-                  Tasa Oficial BCV Activa
-                </span>
-                <Badge
-                  variant="outline"
-                  className="text-[9.5px] h-4 px-1.5 border-primary/30 text-primary font-mono"
-                >
-                  {monedaCobro}
-                </Badge>
+          {/* Tarjeta Tasa Oficial BCV en vivo (Venezuela) o Información de Moneda Nacional */}
+          {isBimo ? (
+            <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-primary">
+                    Tasa Oficial BCV Activa
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="text-[9.5px] h-4 px-1.5 border-primary/30 text-primary font-mono"
+                  >
+                    {monedaCobro}
+                  </Badge>
+                </div>
+                <div className="text-base font-black font-mono text-foreground">
+                  {loadingRate ? (
+                    <span className="text-xs text-muted-foreground">Consultando tasa...</span>
+                  ) : tasaBcv > 0 ? (
+                    <>
+                      1 {monedaCobro} = Bs.{' '}
+                      {tasaBcv.toLocaleString('es-VE', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 4,
+                      })}
+                    </>
+                  ) : (
+                    <span className="text-xs text-amber-600">Sin tasa registrada hoy</span>
+                  )}
+                </div>
               </div>
-              <div className="text-base font-black font-mono text-foreground">
-                {loadingRate ? (
-                  <span className="text-xs text-muted-foreground">Consultando tasa...</span>
-                ) : tasaBcv > 0 ? (
-                  <>
-                    1 {monedaCobro} = Bs.{' '}
-                    {tasaBcv.toLocaleString('es-VE', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 4,
-                    })}
-                  </>
-                ) : (
-                  <span className="text-xs text-amber-600">Sin tasa registrada hoy</span>
-                )}
-              </div>
-            </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleSyncBcv}
-              disabled={syncingBcv}
-              className="h-8 text-xs font-bold gap-1.5 border-primary/30 text-primary hover:bg-primary/10 cursor-pointer shrink-0"
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5', syncingBcv && 'animate-spin')} />
-              {syncingBcv ? 'Sincronizando...' : 'Sincronizar BCV'}
-            </Button>
-          </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSyncBcv}
+                disabled={syncingBcv}
+                className="h-8 text-xs font-bold gap-1.5 border-primary/30 text-primary hover:bg-primary/10 cursor-pointer shrink-0"
+              >
+                <RefreshCw className={cn('w-3.5 h-3.5', syncingBcv && 'animate-spin')} />
+                {syncingBcv ? 'Sincronizando...' : 'Sincronizar BCV'}
+              </Button>
+            </div>
+          ) : (
+            <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-primary">
+                    Moneda de Cobro en Caja
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="text-[9.5px] h-4 px-1.5 border-primary/30 text-primary font-mono"
+                  >
+                    {regional.moneda}
+                  </Badge>
+                </div>
+                <div className="text-base font-black font-mono text-foreground flex items-center gap-2">
+                  <span>{regional.bandera}</span>
+                  <span>{regional.moneda} ({regional.simboloMoneda}) - {regional.paisNombre}</span>
+                </div>
+              </div>
+              <Badge className="bg-primary/10 text-primary border border-primary/30 text-[10.5px] font-bold">
+                Moneda Nacional Única
+              </Badge>
+            </div>
+          )}
 
           {/* Selector de Caja Física con estado Libre / Ocupada */}
           <div className="space-y-1.5">
@@ -314,82 +343,109 @@ export const TurnoAperturaModal: React.FC<TurnoAperturaModalProps> = ({
           </div>
 
           {/* Fondos Iniciales en Gaveta */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            {/* Fondo en Bolívares */}
+          {isBimo ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* Fondo en Bolívares */}
+              <div className="p-3 rounded-xl border border-border bg-muted/20 space-y-2">
+                <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                  <Coins className="w-3.5 h-3.5 text-blue-600" />
+                  Fondo Inicial en Bolívares (Bs.)
+                </Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={fondoVes}
+                  onChange={(e) => setFondoVes(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0.00"
+                  className="font-black font-mono text-sm h-9 bg-background"
+                  required
+                />
+                <div className="flex items-center gap-1 flex-wrap">
+                  {[0, 500, 1000, 2000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setFondoVes(preset.toFixed(2))}
+                      className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-background hover:bg-blue-50 dark:hover:bg-slate-800 border border-border text-muted-foreground hover:text-blue-600 cursor-pointer transition-colors"
+                    >
+                      Bs.{preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fondo en Divisa */}
+              <div className="p-3 rounded-xl border border-border bg-muted/20 space-y-2">
+                <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                  Fondo Inicial Divisa ({monedaCobro})
+                </Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={fondoUsd}
+                  onChange={(e) => setFondoUsd(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0.00"
+                  className="font-black font-mono text-sm h-9 bg-background"
+                  required
+                />
+                <div className="flex items-center gap-1 flex-wrap">
+                  {[0, 20, 50, 100].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setFondoUsd(preset.toFixed(2))}
+                      className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-background hover:bg-emerald-50 dark:hover:bg-slate-800 border border-border text-muted-foreground hover:text-emerald-600 cursor-pointer transition-colors"
+                    >
+                      +{preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
             <div className="p-3 rounded-xl border border-border bg-muted/20 space-y-2">
               <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
-                <Coins className="w-3.5 h-3.5 text-blue-600" />
-                Fondo Inicial en Bolívares (Bs.)
+                <Coins className="w-4 h-4 text-primary" />
+                Fondo Inicial en Gaveta ({regional.moneda} {regional.simboloMoneda})
               </Label>
               <Input
                 type="number"
                 step="0.01"
                 min="0"
                 value={fondoVes}
-                onChange={(e) => setFondoVes(e.target.value)}
+                onChange={(e) => {
+                  setFondoVes(e.target.value);
+                  setFondoUsd(e.target.value);
+                }}
                 onFocus={(e) => e.target.select()}
                 placeholder="0.00"
-                className="font-black font-mono text-sm h-9 bg-background"
+                className="font-black font-mono text-base h-10 bg-background"
                 required
               />
-              <div className="flex items-center gap-1 flex-wrap">
-                {[0, 500, 1000, 2000].map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setFondoVes(preset.toFixed(2))}
-                    className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-background hover:bg-blue-50 dark:hover:bg-slate-800 border border-border text-muted-foreground hover:text-blue-600 cursor-pointer transition-colors"
-                  >
-                    Bs.{preset}
-                  </button>
-                ))}
-              </div>
+              <p className="text-[10.5px] text-muted-foreground">
+                Declare el monto inicial disponible en gaveta para entrega de cambio en {regional.moneda}.
+              </p>
             </div>
-
-            {/* Fondo en Divisa */}
-            <div className="p-3 rounded-xl border border-border bg-muted/20 space-y-2">
-              <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
-                <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                Fondo Inicial Divisa ({monedaCobro})
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={fondoUsd}
-                onChange={(e) => setFondoUsd(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                placeholder="0.00"
-                className="font-black font-mono text-sm h-9 bg-background"
-                required
-              />
-              <div className="flex items-center gap-1 flex-wrap">
-                {[0, 20, 50, 100].map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setFondoUsd(preset.toFixed(2))}
-                    className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-background hover:bg-emerald-50 dark:hover:bg-slate-800 border border-border text-muted-foreground hover:text-emerald-600 cursor-pointer transition-colors"
-                  >
-                    +{preset}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* Equivalente Consolidado del Fondo de Apertura */}
           <div className="px-3.5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between text-xs">
             <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              Fondo Inicial Consolidado (Ref. Bs.):
+              {isBimo ? 'Fondo Inicial Consolidado (Ref. Bs.):' : `Fondo Inicial Declarado (${regional.moneda}):`}
             </span>
             <span className="font-black font-mono text-sm text-emerald-700 dark:text-emerald-300">
-              Bs.{' '}
-              {totalFondoConsolidadoBs.toLocaleString('es-VE', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {isBimo
+                ? `Bs. ${totalFondoConsolidadoBs.toLocaleString('es-VE', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`
+                : regional.formatMoney(parseFloat(fondoVes) || 0)}
             </span>
           </div>
 

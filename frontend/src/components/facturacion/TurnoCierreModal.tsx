@@ -35,6 +35,7 @@ import {
   type TurnoDetalleResumen,
 } from '../../api/cajas';
 import { cn } from '../../lib/utils';
+import { useRegional } from '../../context/RegionalContext';
 import { CorteCajaTicketModal } from './CorteCajaTicketModal';
 
 interface TurnoCierreModalProps {
@@ -52,6 +53,9 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
   onTurnoClosed,
   onRequestPrintCorte,
 }) => {
+  const { esBimonetario, moneda, simboloMoneda } = useRegional();
+  const isBimo = esBimonetario;
+
   const [detalle, setDetalle] = useState<TurnoDetalleResumen | null>(null);
   const [loadingDetalle, setLoadingDetalle] = useState<boolean>(false);
 
@@ -96,7 +100,7 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
     };
   }, [open, turno?.id]);
 
-  const tasa = detalle && detalle.tasa_bcv_actual > 0 ? detalle.tasa_bcv_actual : 1;
+  const tasa = isBimo && detalle && detalle.tasa_bcv_actual > 0 ? detalle.tasa_bcv_actual : 1;
 
   // Saldo físico esperado en gaveta (conciliado por el backend o fallback inmediato)
   const esperadoUsd = useMemo(() => {
@@ -130,25 +134,34 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
     if (arqueoVes.trim() === '') return null;
     const val = parseFloat(arqueoVes);
     if (isNaN(val)) return null;
-    return Math.round((val - esperadoVes) * 100) / 100;
-  }, [arqueoVes, esperadoVes]);
+    const target = isBimo ? esperadoVes : (esperadoVes || esperadoUsd);
+    return Math.round((val - target) * 100) / 100;
+  }, [arqueoVes, esperadoVes, esperadoUsd, isBimo]);
 
   const diferenciaUsd = useMemo(() => {
+    if (!isBimo) return 0;
     if (arqueoUsd.trim() === '') return null;
     const val = parseFloat(arqueoUsd);
     if (isNaN(val)) return null;
     return Math.round((val - esperadoUsd) * 100) / 100;
-  }, [arqueoUsd, esperadoUsd]);
+  }, [arqueoUsd, esperadoUsd, isBimo]);
 
-  // Diferencia consolidada equivalente en Bolívares
+  // Diferencia consolidada equivalente en moneda local
   const diferenciaConsolidadaBs = useMemo(() => {
+    if (!isBimo) return diferenciaVes;
     if (diferenciaVes === null && diferenciaUsd === null) return null;
     const dVes = diferenciaVes ?? 0;
     const dUsd = diferenciaUsd ?? 0;
     return Math.round((dVes + dUsd * tasa) * 100) / 100;
-  }, [diferenciaVes, diferenciaUsd, tasa]);
+  }, [diferenciaVes, diferenciaUsd, tasa, isBimo]);
 
   const handleUsarSaldoEsperado = () => {
+    if (!isBimo) {
+      const saldo = Math.max(0, esperadoVes || esperadoUsd);
+      setArqueoVes(saldo.toFixed(2));
+      setArqueoUsd('0');
+      return;
+    }
     setArqueoVes(Math.max(0, esperadoVes).toFixed(2));
     setArqueoUsd(Math.max(0, esperadoUsd).toFixed(2));
   };
@@ -168,11 +181,13 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
     if (!turno) return;
 
     const vesVal = arqueoVes.trim() === '' ? NaN : parseFloat(arqueoVes);
-    const usdVal = arqueoUsd.trim() === '' ? NaN : parseFloat(arqueoUsd);
+    const usdVal = isBimo ? (arqueoUsd.trim() === '' ? NaN : parseFloat(arqueoUsd)) : 0;
 
-    if (isNaN(vesVal) || vesVal < 0 || isNaN(usdVal) || usdVal < 0) {
+    if (isNaN(vesVal) || vesVal < 0 || (isBimo && (isNaN(usdVal) || usdVal < 0))) {
       toast.error(
-        'Ingrese el conteo físico en Bolívares y Divisas (o pulse "Usar Saldo Esperado")'
+        isBimo
+          ? 'Ingrese el conteo físico en Bolívares y Divisas (o pulse "Usar Saldo Esperado")'
+          : `Ingrese el conteo físico en efectivo (${moneda}) o pulse "Usar Saldo Esperado"`
       );
       return;
     }
@@ -201,40 +216,53 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
 
   if (!turno) return null;
 
-  const fondoInicialTotalBs =
-    Math.round(
-      ((Number(turno.fondo_inicial_ves) || 0) +
-        (Number(turno.fondo_inicial_usd) || 0) * tasa) *
-        100
-    ) / 100;
-
-  const ventasNetasBs = detalle
-    ? Number(detalle.ventas_netas_ves || 0)
-    : Math.round(
-        ((Number(turno.total_ingresos_ves) || 0) +
-          (Number(turno.total_ingresos_usd) || 0) * tasa) *
-          100
-      ) / 100;
-
-  const salidasTotalBs = detalle
+  const fondoInicialTotalBs = isBimo
     ? Math.round(
-        ((Number(detalle.efectivo_egresos_ves) || 0) +
-          (Number(detalle.efectivo_egresos_usd) || 0) * tasa) *
+        ((Number(turno.fondo_inicial_ves) || 0) +
+          (Number(turno.fondo_inicial_usd) || 0) * tasa) *
           100
       ) / 100
-    : Math.round(
-        ((Number(turno.total_egresos_ves) || 0) +
-          (Number(turno.total_egresos_usd) || 0) * tasa) *
-          100
-      ) / 100;
+    : Number(turno.fondo_inicial_ves) || Number(turno.fondo_inicial_usd) || 0;
 
-  const entradasExtraTotalBs = detalle
-    ? Math.round(
-        ((Number(detalle.efectivo_ingresos_extra_ves) || 0) +
-          (Number(detalle.efectivo_ingresos_extra_usd) || 0) * tasa) *
-          100
-      ) / 100
-    : 0;
+  const ventasNetasBs = isBimo
+    ? detalle
+      ? Number(detalle.ventas_netas_ves || 0)
+      : Math.round(
+          ((Number(turno.total_ingresos_ves) || 0) +
+            (Number(turno.total_ingresos_usd) || 0) * tasa) *
+            100
+        ) / 100
+    : detalle
+      ? Number(detalle.ventas_netas_ves) || Number(detalle.ventas_netas_divisa) || 0
+      : (Number(turno.total_ingresos_ves) || 0) + (Number(turno.total_ingresos_usd) || 0);
+
+  const salidasTotalBs = isBimo
+    ? detalle
+      ? Math.round(
+          ((Number(detalle.efectivo_egresos_ves) || 0) +
+            (Number(detalle.efectivo_egresos_usd) || 0) * tasa) *
+            100
+        ) / 100
+      : Math.round(
+          ((Number(turno.total_egresos_ves) || 0) +
+            (Number(turno.total_egresos_usd) || 0) * tasa) *
+            100
+        ) / 100
+    : detalle
+      ? Math.round(((Number(detalle.efectivo_egresos_ves) || 0) + (Number(detalle.efectivo_egresos_usd) || 0)) * 100) / 100
+      : Math.round(((Number(turno.total_egresos_ves) || 0) + (Number(turno.total_egresos_usd) || 0)) * 100) / 100;
+
+  const entradasExtraTotalBs = isBimo
+    ? detalle
+      ? Math.round(
+          ((Number(detalle.efectivo_ingresos_extra_ves) || 0) +
+            (Number(detalle.efectivo_ingresos_extra_usd) || 0) * tasa) *
+            100
+        ) / 100
+      : 0
+    : detalle
+      ? Math.round(((Number(detalle.efectivo_ingresos_extra_ves) || 0) + (Number(detalle.efectivo_ingresos_extra_usd) || 0)) * 100) / 100
+      : 0;
 
   return (
     <>
@@ -276,7 +304,7 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                 className="h-8 text-xs font-bold gap-1.5 cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5 text-primary" />
-                Imprimir Corte X (Bs.)
+                Imprimir Corte X {isBimo ? '(Bs.)' : ''}
               </Button>
             </div>
           </DialogHeader>
@@ -293,15 +321,21 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                   Fondo Inicial
                 </span>
                 <span className="text-sm font-black font-mono text-foreground block mt-0.5">
-                  Bs.{' '}
-                  {fondoInicialTotalBs.toLocaleString('es-VE', {
+                  {isBimo ? 'Bs. ' : `${simboloMoneda} `}
+                  {fondoInicialTotalBs.toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
                 </span>
                 <span className="text-[10px] text-muted-foreground font-mono">
-                  Bs.{Number(turno.fondo_inicial_ves || 0).toFixed(2)} + Ref.{' '}
-                  {Number(turno.fondo_inicial_usd || 0).toFixed(2)}
+                  {isBimo ? (
+                    <>
+                      Bs.{Number(turno.fondo_inicial_ves || 0).toFixed(2)} + Ref.{' '}
+                      {Number(turno.fondo_inicial_usd || 0).toFixed(2)}
+                    </>
+                  ) : (
+                    `Fondo en ${moneda}`
+                  )}
                 </span>
               </div>
 
@@ -311,8 +345,8 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                   Ventas Netas (+)
                 </span>
                 <span className="text-sm font-black font-mono text-emerald-700 dark:text-emerald-300 block mt-0.5">
-                  +Bs.{' '}
-                  {ventasNetasBs.toLocaleString('es-VE', {
+                  +{isBimo ? 'Bs. ' : `${simboloMoneda} `}
+                  {ventasNetasBs.toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
@@ -330,8 +364,8 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                     Anuladas ({detalle.cantidad_anuladas})
                   </span>
                   <span className="text-sm font-black font-mono text-rose-700 dark:text-rose-300 block mt-0.5">
-                    -Bs.{' '}
-                    {detalle.total_anuladas_ves.toLocaleString('es-VE', {
+                    -{isBimo ? 'Bs. ' : `${simboloMoneda} `}
+                    {detalle.total_anuladas_ves.toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
@@ -346,8 +380,8 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                     Entradas Caja Chica (+)
                   </span>
                   <span className="text-sm font-black font-mono text-sky-700 dark:text-sky-300 block mt-0.5">
-                    +Bs.{' '}
-                    {entradasExtraTotalBs.toLocaleString('es-VE', {
+                    +{isBimo ? 'Bs. ' : `${simboloMoneda} `}
+                    {entradasExtraTotalBs.toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
@@ -364,8 +398,8 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                   Salidas / Gastos (-)
                 </span>
                 <span className="text-sm font-black font-mono text-rose-600 dark:text-rose-400 block mt-0.5">
-                  -Bs.{' '}
-                  {salidasTotalBs.toLocaleString('es-VE', {
+                  -{isBimo ? 'Bs. ' : `${simboloMoneda} `}
+                  {salidasTotalBs.toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
@@ -391,35 +425,55 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/25">
-                      <span className="text-[10.5px] font-bold text-blue-700 dark:text-blue-300 block">
-                        Gaveta Bolívares (Bs.)
-                      </span>
-                      <span className="text-lg font-black font-mono text-blue-800 dark:text-blue-200">
-                        Bs.{' '}
-                        {esperadoVes.toLocaleString('es-VE', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
-                      <span className="text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300 block">
-                        Gaveta Divisas ({detalle?.moneda_referencia || 'USD'})
-                      </span>
-                      <span className="text-lg font-black font-mono text-emerald-800 dark:text-emerald-200">
-                        {esperadoUsd.toLocaleString('es-VE', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}{' '}
-                        <span className="text-xs font-bold">
-                          {detalle?.moneda_referencia || 'USD'}
+                  {isBimo ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/25">
+                        <span className="text-[10.5px] font-bold text-blue-700 dark:text-blue-300 block">
+                          Gaveta Bolívares (Bs.)
                         </span>
-                      </span>
+                        <span className="text-lg font-black font-mono text-blue-800 dark:text-blue-200">
+                          Bs.{' '}
+                          {esperadoVes.toLocaleString('es-VE', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                        <span className="text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300 block">
+                          Gaveta Divisas ({detalle?.moneda_referencia || 'USD'})
+                        </span>
+                        <span className="text-lg font-black font-mono text-emerald-800 dark:text-emerald-200">
+                          {esperadoUsd.toLocaleString('es-VE', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{' '}
+                          <span className="text-xs font-bold">
+                            {detalle?.moneda_referencia || 'USD'}
+                          </span>
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="p-3.5 rounded-xl bg-primary/10 border border-primary/25 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10.5px] font-bold text-primary block">
+                          Efectivo Esperado en Gaveta ({moneda})
+                        </span>
+                        <span className="text-xl font-black font-mono text-foreground mt-0.5 block">
+                          {simboloMoneda}{' '}
+                          {(esperadoVes || esperadoUsd).toLocaleString('es-ES', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="border-primary/40 text-primary font-mono text-xs">
+                        {moneda}
+                      </Badge>
+                    </div>
+                  )}
 
                   {/* Aviso FixSale POS sobre pagos electrónicos acreditados en banco */}
                   {detalle && detalle.ingresos_electronicos_ves > 0 && (
@@ -427,14 +481,14 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                       <CreditCard className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
                       <div>
                         <span className="font-bold">
-                          Medios Bancarios / Digitales (+Bs.{' '}
-                          {detalle.ingresos_electronicos_ves.toLocaleString('es-VE', {
+                          Medios Bancarios / Digitales (+{isBimo ? 'Bs. ' : `${simboloMoneda} `}
+                          {detalle.ingresos_electronicos_ves.toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
                           ):
                         </span>{' '}
-                        Punto de Venta, Pago Móvil, Transferencias y Seguros se acreditan directamente en banco, no en el cajón físico.
+                        Punto de Venta, Transferencias y Seguros se acreditan directamente en banco, no en el cajón físico.
                       </div>
                     </div>
                   )}
@@ -454,10 +508,11 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                   {detalle && detalle.por_metodo_pago.length > 0 ? (
                     <div className="space-y-1.5 max-h-[195px] overflow-y-auto pr-1">
                       {detalle.por_metodo_pago.map((m, idx) => {
-                        const equivBs =
-                          m.moneda.toUpperCase() === 'VES'
+                        const equivBs = isBimo
+                          ? m.moneda.toUpperCase() === 'VES'
                             ? m.total_monto_origen
-                            : Math.round(m.total_equivalente_divisa * tasa * 100) / 100;
+                            : Math.round(m.total_equivalente_divisa * tasa * 100) / 100
+                          : m.total_monto_origen;
                         return (
                           <div
                             key={idx}
@@ -476,13 +531,13 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                             </div>
                             <div className="text-right font-mono">
                               <span className="font-black text-foreground block">
-                                Bs.{' '}
-                                {equivBs.toLocaleString('es-VE', {
+                                {isBimo ? 'Bs. ' : `${simboloMoneda} `}
+                                {equivBs.toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 })}
                               </span>
-                              {m.moneda.toUpperCase() !== 'VES' && (
+                              {isBimo && m.moneda.toUpperCase() !== 'VES' && (
                                 <span className="text-[10px] text-muted-foreground">
                                   ({m.moneda} {m.total_monto_origen.toFixed(2)})
                                 </span>
@@ -517,11 +572,20 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Input Conteo Físico Bs. */}
+                  {/* Input Conteo Físico Local */}
                   <div className="space-y-1">
                     <Label className="text-xs font-bold flex items-center gap-1.5">
-                      <Coins className="w-3.5 h-3.5 text-blue-600" />
-                      Efectivo Físico Bolívares (Bs.) *
+                      {isBimo ? (
+                        <>
+                          <Coins className="w-3.5 h-3.5 text-blue-600" />
+                          Efectivo Físico Bolívares (Bs.) *
+                        </>
+                      ) : (
+                        <>
+                          <Banknote className="w-3.5 h-3.5 text-primary" />
+                          Efectivo Físico en Gaveta ({moneda} {simboloMoneda}) *
+                        </>
+                      )}
                     </Label>
                     <Input
                       type="number"
@@ -529,7 +593,7 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                       min="0"
                       value={arqueoVes}
                       onChange={(e) => setArqueoVes(e.target.value)}
-                      placeholder={`Esperado: ${esperadoVes.toFixed(2)}`}
+                      placeholder={`Esperado: ${(isBimo ? esperadoVes : (esperadoVes || esperadoUsd)).toFixed(2)}`}
                       className="font-black font-mono text-sm h-10"
                       required
                     />
@@ -544,16 +608,16 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                       >
                         {Math.abs(diferenciaVes) < 0.01 ? (
                           <>
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Cuadre exacto en Bs.
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Cuadre exacto en {isBimo ? 'Bs.' : moneda}
                           </>
                         ) : diferenciaVes > 0 ? (
                           <>
-                            <AlertCircle className="w-3.5 h-3.5" /> Sobrante: +Bs.{' '}
+                            <AlertCircle className="w-3.5 h-3.5" /> Sobrante: +{isBimo ? 'Bs. ' : `${simboloMoneda} `}
                             {diferenciaVes.toFixed(2)}
                           </>
                         ) : (
                           <>
-                            <AlertTriangle className="w-3.5 h-3.5" /> Faltante: -Bs.{' '}
+                            <AlertTriangle className="w-3.5 h-3.5" /> Faltante: -{isBimo ? 'Bs. ' : `${simboloMoneda} `}
                             {Math.abs(diferenciaVes).toFixed(2)}
                           </>
                         )}
@@ -561,50 +625,52 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                     )}
                   </div>
 
-                  {/* Input Conteo Físico Divisa */}
-                  <div className="space-y-1">
-                    <Label className="text-xs font-bold flex items-center gap-1.5">
-                      <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                      Efectivo Físico Divisas ({detalle?.moneda_referencia || 'USD'}) *
-                    </Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={arqueoUsd}
-                      onChange={(e) => setArqueoUsd(e.target.value)}
-                      placeholder={`Esperado: ${esperadoUsd.toFixed(2)}`}
-                      className="font-black font-mono text-sm h-10"
-                      required
-                    />
-                    {diferenciaUsd !== null && (
-                      <div
-                        className={cn(
-                          'text-[11px] font-bold flex items-center gap-1 font-mono',
-                          Math.abs(diferenciaUsd) < 0.01 && 'text-emerald-600',
-                          diferenciaUsd >= 0.01 && 'text-blue-600',
-                          diferenciaUsd <= -0.01 && 'text-rose-600'
-                        )}
-                      >
-                        {Math.abs(diferenciaUsd) < 0.01 ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Cuadre exacto en divisa
-                          </>
-                        ) : diferenciaUsd > 0 ? (
-                          <>
-                            <AlertCircle className="w-3.5 h-3.5" /> Sobrante: +
-                            {diferenciaUsd.toFixed(2)} {detalle?.moneda_referencia || 'USD'}
-                          </>
-                        ) : (
-                          <>
-                            <AlertTriangle className="w-3.5 h-3.5" /> Faltante: -
-                            {Math.abs(diferenciaUsd).toFixed(2)}{' '}
-                            {detalle?.moneda_referencia || 'USD'}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  {/* Input Conteo Físico Divisa (Solo si es bimonetario) */}
+                  {isBimo && (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-bold flex items-center gap-1.5">
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                        Efectivo Físico Divisas ({detalle?.moneda_referencia || 'USD'}) *
+                      </Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={arqueoUsd}
+                        onChange={(e) => setArqueoUsd(e.target.value)}
+                        placeholder={`Esperado: ${esperadoUsd.toFixed(2)}`}
+                        className="font-black font-mono text-sm h-10"
+                        required
+                      />
+                      {diferenciaUsd !== null && (
+                        <div
+                          className={cn(
+                            'text-[11px] font-bold flex items-center gap-1 font-mono',
+                            Math.abs(diferenciaUsd) < 0.01 && 'text-emerald-600',
+                            diferenciaUsd >= 0.01 && 'text-blue-600',
+                            diferenciaUsd <= -0.01 && 'text-rose-600'
+                          )}
+                        >
+                          {Math.abs(diferenciaUsd) < 0.01 ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Cuadre exacto en divisa
+                            </>
+                          ) : diferenciaUsd > 0 ? (
+                            <>
+                              <AlertCircle className="w-3.5 h-3.5" /> Sobrante: +
+                              {diferenciaUsd.toFixed(2)} {detalle?.moneda_referencia || 'USD'}
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5" /> Faltante: -
+                              {Math.abs(diferenciaUsd).toFixed(2)}{' '}
+                              {detalle?.moneda_referencia || 'USD'}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Semáforo Consolidado de Cuadre (Réplica FixSale POS) */}
                   {diferenciaConsolidadaBs !== null && (
@@ -626,8 +692,8 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                             : 'Faltante Consolidado'}
                       </span>
                       <span className="font-black font-mono">
-                        {diferenciaConsolidadaBs > 0 ? '+' : ''}Bs.{' '}
-                        {diferenciaConsolidadaBs.toLocaleString('es-VE', {
+                        {diferenciaConsolidadaBs > 0 ? '+' : ''}{isBimo ? 'Bs. ' : `${simboloMoneda} `}
+                        {diferenciaConsolidadaBs.toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
@@ -657,7 +723,7 @@ export const TurnoCierreModal: React.FC<TurnoCierreModalProps> = ({
                         onChange={(e) => setAutoPrintCorteZ(e.target.checked)}
                         className="rounded border-border text-primary focus:ring-primary"
                       />
-                      <span>Imprimir Comprobante Térmico de Corte Z (Bs.) al cerrar</span>
+                      <span>Imprimir Comprobante Térmico de Corte Z {isBimo ? '(Bs.) ' : ''}al cerrar</span>
                     </label>
                   )}
                 </div>

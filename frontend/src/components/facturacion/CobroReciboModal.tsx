@@ -18,6 +18,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import type { Cobro, CobroDetalleItem, CobroPagoItem } from '../../api/cajas';
 import { useAuth } from '../../context/AuthContext';
+import { useRegional } from '../../context/RegionalContext';
 import { cn } from '../../lib/utils';
 import {
   type PosPrinterConfig,
@@ -56,13 +57,16 @@ function getLegalPaymentMethodLabel(metodo?: string | null): string {
 /**
  * Limpia referencias o notas libres por si contienen menciones accidentales a divisas.
  */
-function sanitizeLegalNote(text?: string | null): string {
+function sanitizeLegalNote(text?: string | null, isBimoMode: boolean = true): string {
   if (!text) return '';
-  return text
-    .replace(/\b(USD|EUR|USDT|ZELLE)\b/gi, '')
-    .replace(/[$€]/g, 'Bs. ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  if (isBimoMode) {
+    return text
+      .replace(/\b(USD|EUR|USDT|ZELLE)\b/gi, '')
+      .replace(/[$€]/g, 'Bs. ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+  return text.trim();
 }
 
 interface CobroReciboModalProps {
@@ -81,10 +85,26 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
   onAutoPrintHandled,
 }) => {
   const { user, sucursalActiva } = useAuth();
+  const regional = useRegional();
+  const isBimo = regional.esBimonetario;
+  const currencyCode = isBimo ? 'VES' : regional.moneda;
+  const symbol = isBimo ? 'Bs.' : regional.simboloMoneda;
+
   const ticketRef = useRef<HTMLDivElement>(null);
   const [printerConfig, setPrinterConfig] = useState<PosPrinterConfig>(() =>
     loadPosPrinterConfig()
   );
+
+  const formatTicketMoney = useCallback((val: number) => {
+    const num = Number.isFinite(val) ? val : 0;
+    if (isBimo) {
+      return formatTicketBs(num);
+    }
+    return `${symbol} ${num.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }, [isBimo, symbol]);
 
   // Recargar configuración de ticketera cada vez que se abre el modal
   useEffect(() => {
@@ -99,10 +119,15 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
     savePosPrinterConfig(updated);
   };
 
-  // Cálculo 100% en Bolívares usando la tasa aplicada internamente a la operación
-  const tasa = cobro && Number(cobro.tasa_bcv_aplicada) > 0 ? Number(cobro.tasa_bcv_aplicada) : 1;
+  // Cálculo en Bolívares usando la tasa aplicada internamente a la operación, o 1.0 para moneda local
+  const tasa = isBimo && cobro && Number(cobro.tasa_bcv_aplicada) > 0 ? Number(cobro.tasa_bcv_aplicada) : 1;
 
   const getDetalleSubtotalBs = (d: CobroDetalleItem): number => {
+    if (!isBimo) {
+      if (Number(d.subtotal_divisa) > 0) return Number(d.subtotal_divisa);
+      if (Number(d.subtotal_ves) > 0) return Number(d.subtotal_ves);
+      return (Number(d.precio_unitario_divisa) || 0) * (Number(d.cantidad) || 1);
+    }
     if (Number(d.subtotal_ves) > 0) return Number(d.subtotal_ves);
     const subtDiv =
       Number(d.subtotal_divisa) > 0
@@ -118,6 +143,9 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
   };
 
   const getPagoMontoBs = (p: CobroPagoItem): number => {
+    if (!isBimo) {
+      return Math.round((Number(p.monto_moneda_origen) || 0) * 100) / 100;
+    }
     const moneda = (p.moneda || '').toUpperCase();
     if (moneda === 'VES') {
       return Math.round((Number(p.monto_moneda_origen) || 0) * 100) / 100;
@@ -306,25 +334,35 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
     }
   })();
 
-  // Totales estrictamente en Bolívares (Bs.)
+  // Totales (Bolívares o Moneda Local)
   const subtotalItemsBs = cobro.detalles.reduce((acc, d) => acc + getDetalleSubtotalBs(d), 0);
-  const descuentoBs = Math.round((Number(cobro.descuento_divisa) || 0) * tasa * 100) / 100;
+  const descuentoBs = isBimo
+    ? Math.round((Number(cobro.descuento_divisa) || 0) * tasa * 100) / 100
+    : Number(cobro.descuento_divisa) || 0;
   const subtotalBs =
     subtotalItemsBs > 0
       ? subtotalItemsBs
-      : Math.round((Number(cobro.subtotal_divisa) || 0) * tasa * 100) / 100;
-  const totalPagadoBs =
-    Number(cobro.total_ves) > 0
-      ? Number(cobro.total_ves)
-      : Math.max(0, Math.round((subtotalBs - descuentoBs) * 100) / 100);
+      : isBimo
+      ? Math.round((Number(cobro.subtotal_divisa) || 0) * tasa * 100) / 100
+      : Number(cobro.subtotal_divisa) || 0;
+  const totalPagadoBs = isBimo
+    ? (Number(cobro.total_ves) > 0
+        ? Number(cobro.total_ves)
+        : Math.max(0, Math.round((subtotalBs - descuentoBs) * 100) / 100))
+    : (Number(cobro.total_divisa) > 0
+        ? Number(cobro.total_divisa)
+        : Number(cobro.total_ves) || Math.max(0, Math.round((subtotalBs - descuentoBs) * 100) / 100));
 
   const montoRecibidoBs = cobro.pagos.reduce((acc, p) => acc + getPagoMontoBs(p), 0);
-  const vueltoBs =
-    Number(cobro.monto_vuelto_ves) > 0
-      ? Number(cobro.monto_vuelto_ves)
-      : Math.round((Number(cobro.monto_vuelto_divisa) || 0) * tasa * 100) / 100;
+  const vueltoBs = isBimo
+    ? (Number(cobro.monto_vuelto_ves) > 0
+        ? Number(cobro.monto_vuelto_ves)
+        : Math.round((Number(cobro.monto_vuelto_divisa) || 0) * tasa * 100) / 100)
+    : (Number(cobro.monto_vuelto_divisa) > 0
+        ? Number(cobro.monto_vuelto_divisa)
+        : Number(cobro.monto_vuelto_ves) || 0);
 
-  // Comprobante por WhatsApp 100% expresado en Bolívares (Bs.)
+  // Comprobante por WhatsApp en moneda local o Bolívares
   const handleSendWhatsApp = () => {
     if (!cobro.paciente_telefono) {
       toast.error('El paciente no tiene un número telefónico registrado para WhatsApp');
@@ -335,7 +373,7 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
     const itemsText = cobro.detalles
       .map(
         (d) =>
-          `• ${d.cantidad}x ${d.descripcion}${d.diente_fdi ? ` (Pieza ${d.diente_fdi})` : ''}: ${formatTicketBs(getDetalleSubtotalBs(d))}`
+          `• ${d.cantidad}x ${d.descripcion}${d.diente_fdi ? ` (Pieza ${d.diente_fdi})` : ''}: ${formatTicketMoney(getDetalleSubtotalBs(d))}`
       )
       .join('\n');
 
@@ -348,15 +386,15 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
         `👤 *Paciente:* ${cobro.paciente_nombre || 'Particular'}${cobro.paciente_documento ? ` (${cobro.paciente_documento})` : ''}\n` +
         (cobro.medico_nombre ? `👨‍⚕️ *Especialista:* Dr(a). ${cobro.medico_nombre}\n` : '') +
         `\n📋 *Detalle de Conceptos:*\n${itemsText}\n\n` +
-        (descuentoBs > 0 ? `🏷️ *Descuento:* -${formatTicketBs(descuentoBs)}\n` : '') +
-        `💳 *TOTAL CANCELADO:* *${formatTicketBs(totalPagadoBs)}*\n\n` +
+        (descuentoBs > 0 ? `🏷️ *Descuento:* -${formatTicketMoney(descuentoBs)}\n` : '') +
+        `💳 *TOTAL CANCELADO:* *${formatTicketMoney(totalPagadoBs)}*\n\n` +
         `${printerConfig.footerMsg || DEFAULT_POS_PRINTER_CONFIG.footerMsg}`
     );
 
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
   };
 
-  const notaLimpia = sanitizeLegalNote(cobro.notas);
+  const notaLimpia = sanitizeLegalNote(cobro.notas, isBimo);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -407,13 +445,15 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
 
           <div className="flex items-center justify-between pt-1">
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Formato legal expresado 100% en Bolívares (Bs.).
+              {isBimo
+                ? 'Formato legal expresado 100% en Bolívares (Bs.).'
+                : `Comprobante de pago emitido en ${currencyCode}.`}
             </p>
             <Badge
               variant="outline"
               className="text-[9.5px] font-mono border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10"
             >
-              Solo Bs. (VES)
+              {isBimo ? 'Solo Bs. (VES)' : currencyCode}
             </Badge>
           </div>
         </DialogHeader>
@@ -512,14 +552,14 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
 
             <div className="dashed-divider border-t border-dashed border-black my-1.5" />
 
-            {/* 3. TABLA DE CONCEPTOS FACTURADOS (100% EN BOLÍVARES) */}
+            {/* 3. TABLA DE CONCEPTOS FACTURADOS */}
             <table className="w-full text-[9.5px]">
               <thead>
                 <tr className="border-b border-black font-extrabold text-black">
                   <th className="text-left py-1 w-6">CANT</th>
                   <th className="text-left py-1">DESCRIPCIÓN</th>
-                  <th className="text-right py-1 w-20">P.U. (Bs.)</th>
-                  <th className="text-right py-1 w-22">TOTAL (Bs.)</th>
+                  <th className="text-right py-1 w-20">P.U. ({isBimo ? 'Bs.' : symbol})</th>
+                  <th className="text-right py-1 w-22">TOTAL ({isBimo ? 'Bs.' : symbol})</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-dotted divide-slate-400">
@@ -531,7 +571,7 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
                       <td className="py-1 font-bold align-top">{d.cantidad}</td>
                       <td className="py-1 pr-1 align-top">
                         <span className="font-bold block leading-tight">
-                          {sanitizeLegalNote(d.descripcion)}
+                          {sanitizeLegalNote(d.descripcion, isBimo)}
                         </span>
                         {d.diente_fdi && (
                           <span className="text-[8.5px] font-bold block">
@@ -540,13 +580,13 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
                         )}
                       </td>
                       <td className="py-1 text-right align-top whitespace-nowrap">
-                        {unitBs.toLocaleString('es-VE', {
+                        {unitBs.toLocaleString(isBimo ? 'es-VE' : undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </td>
                       <td className="py-1 text-right font-bold align-top whitespace-nowrap">
-                        {lineBs.toLocaleString('es-VE', {
+                        {lineBs.toLocaleString(isBimo ? 'es-VE' : undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
@@ -559,32 +599,32 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
 
             <div className="dashed-divider border-t border-dashed border-black my-1.5" />
 
-            {/* 4. TOTALES ESTRICTAMENTE EN BOLÍVARES */}
+            {/* 4. TOTALES */}
             <div className="space-y-0.5 text-[10.5px]">
               <div className="flex justify-between">
                 <span>SUBTOTAL:</span>
-                <span className="font-bold">{formatTicketBs(subtotalBs)}</span>
+                <span className="font-bold">{formatTicketMoney(subtotalBs)}</span>
               </div>
 
               {descuentoBs > 0 && (
                 <div className="flex justify-between">
                   <span>DESCUENTO:</span>
-                  <span className="font-bold">-{formatTicketBs(descuentoBs)}</span>
+                  <span className="font-bold">-{formatTicketMoney(descuentoBs)}</span>
                 </div>
               )}
 
               <div className="total-highlight border-t-2 border-b-2 border-black py-1 my-1 flex justify-between items-baseline font-black text-[12.5px]">
                 <span>TOTAL A PAGAR:</span>
-                <span>{formatTicketBs(totalPagadoBs)}</span>
+                <span>{formatTicketMoney(totalPagadoBs)}</span>
               </div>
             </div>
 
-            {/* 5. DESGLOSE DE FORMAS DE PAGO (EXPRESADO EN BOLÍVARES) */}
+            {/* 5. DESGLOSE DE FORMAS DE PAGO */}
             <div className="space-y-0.5 text-[10px] pt-0.5">
               <div className="font-extrabold uppercase">PAGADO CON:</div>
               {cobro.pagos.map((p, pidx) => {
                 const montoPagoBs = getPagoMontoBs(p);
-                const refClean = sanitizeLegalNote(p.referencia);
+                const refClean = sanitizeLegalNote(p.referencia, isBimo);
                 return (
                   <div key={pidx} className="flex justify-between items-start gap-2">
                     <div>
@@ -594,7 +634,7 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
                       )}
                     </div>
                     <span className="font-bold whitespace-nowrap">
-                      {formatTicketBs(montoPagoBs)}
+                      {formatTicketMoney(montoPagoBs)}
                     </span>
                   </div>
                 );
@@ -603,14 +643,14 @@ export const CobroReciboModal: React.FC<CobroReciboModalProps> = ({
               {montoRecibidoBs > 0 && (
                 <div className="flex justify-between pt-0.5 border-t border-dotted border-slate-400">
                   <span>MONTO RECIBIDO:</span>
-                  <span className="font-bold">{formatTicketBs(montoRecibidoBs)}</span>
+                  <span className="font-bold">{formatTicketMoney(montoRecibidoBs)}</span>
                 </div>
               )}
 
               {vueltoBs > 0 && (
                 <div className="flex justify-between font-extrabold">
                   <span>CAMBIO / VUELTO:</span>
-                  <span>{formatTicketBs(vueltoBs)}</span>
+                  <span>{formatTicketMoney(vueltoBs)}</span>
                 </div>
               )}
             </div>

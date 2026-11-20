@@ -57,6 +57,9 @@ interface PosPaymentModalProps {
   preferredSubmitMode: 'ticket' | 'solo_cobrar';
   onConfirmCobro: (emitirTicket: boolean) => void;
   onPlayBeep: () => void;
+  esBimonetario?: boolean;
+  simboloMoneda?: string;
+  monedaLocal?: string;
 }
 
 export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
@@ -81,16 +84,32 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
   preferredSubmitMode,
   onConfirmCobro,
   onPlayBeep,
+  esBimonetario = true,
+  simboloMoneda,
+  monedaLocal,
 }) => {
   const cashReceivedInputRef = useRef<HTMLInputElement>(null);
-  const refSym = monedaReferencia === 'EUR' ? '€' : '$';
-  const safeTasa = tasaActiva > 0 ? tasaActiva : 1;
+  const isBimo = esBimonetario !== false;
+  const localSym = simboloMoneda || (monedaReferencia === 'EUR' ? '€' : '$');
+  const currencyCode = isBimo ? monedaReferencia : (monedaLocal || 'USD');
+  const refSym = isBimo ? (monedaReferencia === 'EUR' ? '€' : '$') : localSym;
+  const safeTasa = isBimo ? (tasaActiva > 0 ? tasaActiva : 1) : 1;
 
-  const formatBs = (val: number) =>
-    `Bs. ${(Number.isFinite(val) ? val : 0).toLocaleString('es-VE', {
+  const formatPrice = (val: number) => {
+    const safeVal = Number.isFinite(val) ? val : 0;
+    if (isBimo) {
+      return `Bs. ${safeVal.toLocaleString('es-VE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    }
+    return `${localSym} ${safeVal.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
+  };
+
+  const formatBs = formatPrice;
 
   // Cálculos en tiempo real de lo abonado, faltante y vuelto en Bs. y Divisa
   const totalAbonadoDivisa = useMemo(() => {
@@ -149,11 +168,26 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
 
   // Selección rápida de modalidad única (FixSale Speed Presets)
   const applyQuickPreset = (
-    preset: 'pago_movil' | 'punto_venta' | 'efectivo_ves' | 'efectivo_divisa',
+    preset: string,
     customAmount?: number
   ) => {
     onPlayBeep();
     setTieneSeguro(false);
+
+    if (!isBimo) {
+      const exactAmount = Math.round(totalFacturaDivisa * 100) / 100;
+      setPagos([
+        {
+          metodo: preset,
+          moneda: currencyCode,
+          monto_moneda_origen: customAmount ?? exactAmount,
+          referencia: '',
+          banco_origen: '',
+          notas: '',
+        },
+      ]);
+      return;
+    }
 
     if (preset === 'pago_movil' || preset === 'punto_venta' || preset === 'efectivo_ves') {
       const exactBs = Math.round(totalFacturaVes * 100) / 100;
@@ -186,6 +220,21 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
   // Agregar nueva fila de pago mixto con el saldo faltante precargado
   const handleAddPagoRow = () => {
     onPlayBeep();
+    if (!isBimo) {
+      const falta = Math.max(0.01, Math.round(saldoPendienteDivisa * 100) / 100);
+      setPagos((prev) => [
+        ...prev,
+        {
+          metodo: 'efectivo',
+          moneda: currencyCode,
+          monto_moneda_origen: falta,
+          referencia: '',
+          banco_origen: '',
+          notas: '',
+        },
+      ]);
+      return;
+    }
     const faltaBs = Math.max(0.01, Math.round(saldoPendienteVes * 100) / 100);
     setPagos((prev) => [
       ...prev,
@@ -253,39 +302,61 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
             </div>
           </div>
           <DialogDescription className="text-xs flex items-center justify-between flex-wrap gap-1 pt-0.5">
-            <span>
-              El comprobante impreso se emitirá <strong>100% en Bolívares (Bs.)</strong> conforme a normativa legal.
-            </span>
-            <span className="font-mono font-bold text-foreground">
-              Tasa BCV: 1 {monedaReferencia} = {formatBs(safeTasa)}
-            </span>
+            {isBimo ? (
+              <>
+                <span>
+                  El comprobante impreso se emitirá <strong>100% en Bolívares (Bs.)</strong> conforme a normativa legal.
+                </span>
+                <span className="font-mono font-bold text-foreground">
+                  Tasa BCV: 1 {monedaReferencia} = {formatBs(safeTasa)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span>
+                  Cobro y comprobante de pago emitido en <strong>{currencyCode} ({localSym})</strong>.
+                </span>
+                <span className="font-mono font-bold text-primary">
+                  Moneda Nacional: {currencyCode}
+                </span>
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3.5 py-1">
-          {/* 1. HERO TOTAL EN BOLÍVARES + ESTADO DE CAMBIO ESTILO FIXSALE */}
+          {/* 1. HERO TOTAL + ESTADO DE CAMBIO */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
             {/* Total a Pagar */}
             <div className="sm:col-span-7 p-3.5 rounded-xl bg-slate-900 dark:bg-slate-950 text-white border border-slate-800 flex flex-col justify-between shadow-inner">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
-                  TOTAL A PAGAR EN BOLÍVARES
+                  {isBimo ? 'TOTAL A PAGAR EN BOLÍVARES' : `TOTAL A PAGAR (${currencyCode})`}
                 </span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-slate-200">
-                  Ref: {refSym}
-                  {totalFacturaDivisa.toFixed(2)}
-                </span>
+                {isBimo && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-slate-200">
+                    Ref: {refSym}
+                    {totalFacturaDivisa.toFixed(2)}
+                  </span>
+                )}
               </div>
               <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-emerald-400 mt-1">
-                {formatBs(totalFacturaVes)}
+                {isBimo ? formatBs(totalFacturaVes) : formatPrice(totalFacturaDivisa)}
               </div>
               <div className="text-[10.5px] text-slate-400 font-mono mt-0.5">
-                Recibido: {formatBs(totalAbonadoVes)} ({refSym}
-                {totalAbonadoDivisa.toFixed(2)})
+                Recibido:{' '}
+                {isBimo ? (
+                  <>
+                    {formatBs(totalAbonadoVes)} ({refSym}
+                    {totalAbonadoDivisa.toFixed(2)})
+                  </>
+                ) : (
+                  formatPrice(totalAbonadoDivisa)
+                )}
               </div>
             </div>
 
-            {/* Calculadora Dinámica de Vuelto / Falta por Cobrar (FixSale Signature) */}
+            {/* Calculadora Dinámica de Vuelto / Falta por Cobrar */}
             <div
               className={cn(
                 'sm:col-span-5 p-3.5 rounded-xl border-2 flex flex-col justify-between transition-all',
@@ -316,22 +387,26 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
               {vueltoDivisa > 0 ? (
                 <>
                   <div className="text-xl sm:text-2xl font-black font-mono leading-tight mt-1">
-                    {formatBs(vueltoVes)}
+                    {isBimo ? formatBs(vueltoVes) : formatPrice(vueltoDivisa)}
                   </div>
-                  <div className="text-[10.5px] font-mono font-bold opacity-80">
-                    Equiv. cajero: {refSym}
-                    {vueltoDivisa.toFixed(2)}
-                  </div>
+                  {isBimo && (
+                    <div className="text-[10.5px] font-mono font-bold opacity-80">
+                      Equiv. cajero: {refSym}
+                      {vueltoDivisa.toFixed(2)}
+                    </div>
+                  )}
                 </>
               ) : saldoPendienteDivisa > 0.01 ? (
                 <>
                   <div className="text-xl sm:text-2xl font-black font-mono leading-tight mt-1">
-                    {formatBs(saldoPendienteVes)}
+                    {isBimo ? formatBs(saldoPendienteVes) : formatPrice(saldoPendienteDivisa)}
                   </div>
-                  <div className="text-[10.5px] font-mono font-bold opacity-80">
-                    Faltan: {refSym}
-                    {saldoPendienteDivisa.toFixed(2)}
-                  </div>
+                  {isBimo && (
+                    <div className="text-[10.5px] font-mono font-bold opacity-80">
+                      Faltan: {refSym}
+                      {saldoPendienteDivisa.toFixed(2)}
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -347,7 +422,7 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
             </div>
           </div>
 
-          {/* 2. BOTONERA RÁPIDA 1-CLIC DE MODALIDAD Y DENOMINACIONES (FIXSALE) */}
+          {/* 2. BOTONERA RÁPIDA 1-CLIC DE MODALIDAD Y DENOMINACIONES */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-muted-foreground">
@@ -358,127 +433,212 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-              <button
-                type="button"
-                onClick={() => applyQuickPreset('pago_movil')}
-                className={cn(
-                  'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
-                  isSinglePayment && primaryPago?.metodo === 'pago_movil'
-                    ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
-                    : 'border-border bg-background hover:bg-muted/60'
-                )}
-              >
-                <Smartphone className="w-4 h-4 text-amber-600 shrink-0" />
-                <div className="min-w-0">
-                  <span className="text-[11px] font-extrabold block leading-none truncate">
-                    Pago Móvil
-                  </span>
-                  <span className="text-[9.5px] text-muted-foreground font-mono">Exacto Bs.</span>
-                </div>
-              </button>
+            {isBimo ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => applyQuickPreset('pago_movil')}
+                    className={cn(
+                      'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
+                      isSinglePayment && primaryPago?.metodo === 'pago_movil'
+                        ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                        : 'border-border bg-background hover:bg-muted/60'
+                    )}
+                  >
+                    <Smartphone className="w-4 h-4 text-amber-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-extrabold block leading-none truncate">
+                        Pago Móvil
+                      </span>
+                      <span className="text-[9.5px] text-muted-foreground font-mono">Exacto Bs.</span>
+                    </div>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => applyQuickPreset('punto_venta')}
-                className={cn(
-                  'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
-                  isSinglePayment && primaryPago?.metodo === 'punto_venta'
-                    ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
-                    : 'border-border bg-background hover:bg-muted/60'
-                )}
-              >
-                <CreditCard className="w-4 h-4 text-sky-600 shrink-0" />
-                <div className="min-w-0">
-                  <span className="text-[11px] font-extrabold block leading-none truncate">
-                    Punto / Tarjeta
-                  </span>
-                  <span className="text-[9.5px] text-muted-foreground font-mono">Exacto Bs.</span>
-                </div>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => applyQuickPreset('punto_venta')}
+                    className={cn(
+                      'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
+                      isSinglePayment && primaryPago?.metodo === 'punto_venta'
+                        ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                        : 'border-border bg-background hover:bg-muted/60'
+                    )}
+                  >
+                    <CreditCard className="w-4 h-4 text-sky-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-extrabold block leading-none truncate">
+                        Punto / Tarjeta
+                      </span>
+                      <span className="text-[9.5px] text-muted-foreground font-mono">Exacto Bs.</span>
+                    </div>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => applyQuickPreset('efectivo_ves')}
-                className={cn(
-                  'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
-                  isSinglePayment && primaryPago?.metodo === 'efectivo_ves'
-                    ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
-                    : 'border-border bg-background hover:bg-muted/60'
-                )}
-              >
-                <Banknote className="w-4 h-4 text-emerald-600 shrink-0" />
-                <div className="min-w-0">
-                  <span className="text-[11px] font-extrabold block leading-none truncate">
-                    Efectivo Bs.
-                  </span>
-                  <span className="text-[9.5px] text-muted-foreground font-mono">Bolívares</span>
-                </div>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => applyQuickPreset('efectivo_ves')}
+                    className={cn(
+                      'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
+                      isSinglePayment && primaryPago?.metodo === 'efectivo_ves'
+                        ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                        : 'border-border bg-background hover:bg-muted/60'
+                    )}
+                  >
+                    <Banknote className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-extrabold block leading-none truncate">
+                        Efectivo Bs.
+                      </span>
+                      <span className="text-[9.5px] text-muted-foreground font-mono">Bolívares</span>
+                    </div>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => applyQuickPreset('efectivo_divisa')}
-                className={cn(
-                  'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
-                  isSinglePayment &&
-                    (primaryPago?.metodo === 'efectivo_usd' ||
-                      primaryPago?.metodo === 'efectivo_eur')
-                    ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
-                    : 'border-border bg-background hover:bg-muted/60'
-                )}
-              >
-                <Coins className="w-4 h-4 text-teal-600 shrink-0" />
-                <div className="min-w-0">
-                  <span className="text-[11px] font-extrabold block leading-none truncate">
-                    Efectivo {monedaReferencia}
-                  </span>
-                  <span className="text-[9.5px] text-muted-foreground font-mono">
-                    Exacto {refSym}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => applyQuickPreset('efectivo_divisa')}
+                    className={cn(
+                      'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
+                      isSinglePayment &&
+                        (primaryPago?.metodo === 'efectivo_usd' ||
+                          primaryPago?.metodo === 'efectivo_eur')
+                        ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                        : 'border-border bg-background hover:bg-muted/60'
+                    )}
+                  >
+                    <Coins className="w-4 h-4 text-teal-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-extrabold block leading-none truncate">
+                        Efectivo {monedaReferencia}
+                      </span>
+                      <span className="text-[9.5px] text-muted-foreground font-mono">
+                        Exacto {refSym}
+                      </span>
+                    </div>
+                  </button>
                 </div>
-              </button>
-            </div>
 
-            {/* Billetes Rápidos para Cálculo de Vuelto Instantáneo */}
-            <div className="grid grid-cols-6 gap-1.5 pt-0.5">
-              <button
-                type="button"
-                onClick={() => applyQuickPreset('efectivo_ves')}
-                className="py-1.5 px-2 rounded-lg bg-primary text-primary-foreground font-extrabold text-[11px] cursor-pointer hover:bg-primary/90 shadow-2xs truncate"
-              >
-                Exacto Bs.
-              </button>
-              {[5, 10, 20, 50, 100].map((bill) => (
+                {/* Billetes Rápidos en Divisa */}
+                <div className="grid grid-cols-6 gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => applyQuickPreset('efectivo_ves')}
+                    className="py-1.5 px-2 rounded-lg bg-primary text-primary-foreground font-extrabold text-[11px] cursor-pointer hover:bg-primary/90 shadow-2xs truncate"
+                  >
+                    Exacto Bs.
+                  </button>
+                  {[5, 10, 20, 50, 100].map((bill) => (
+                    <button
+                      key={bill}
+                      type="button"
+                      onClick={() => applyQuickPreset('efectivo_divisa', bill)}
+                      className="py-1.5 px-2 rounded-lg bg-muted hover:bg-muted/80 text-foreground font-extrabold text-xs cursor-pointer border border-border font-mono transition-colors"
+                      title={`Equivale a ${formatBs(bill * safeTasa)}`}
+                    >
+                      {refSym}
+                      {bill}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              /* Modalidad Moneda Única Internacional */
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                 <button
-                  key={bill}
                   type="button"
-                  onClick={() => applyQuickPreset('efectivo_divisa', bill)}
-                  className="py-1.5 px-2 rounded-lg bg-muted hover:bg-muted/80 text-foreground font-extrabold text-xs cursor-pointer border border-border font-mono transition-colors"
-                  title={`Equivale a ${formatBs(bill * safeTasa)}`}
+                  onClick={() => applyQuickPreset('efectivo')}
+                  className={cn(
+                    'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
+                    isSinglePayment && primaryPago?.metodo === 'efectivo'
+                      ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                      : 'border-border bg-background hover:bg-muted/60'
+                  )}
                 >
-                  {refSym}
-                  {bill}
+                  <Banknote className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-extrabold block leading-none truncate">
+                      Efectivo
+                    </span>
+                    <span className="text-[9.5px] text-muted-foreground font-mono">{localSym} Contado</span>
+                  </div>
                 </button>
-              ))}
-            </div>
+
+                <button
+                  type="button"
+                  onClick={() => applyQuickPreset('punto_venta')}
+                  className={cn(
+                    'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
+                    isSinglePayment && primaryPago?.metodo === 'punto_venta'
+                      ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                      : 'border-border bg-background hover:bg-muted/60'
+                  )}
+                >
+                  <CreditCard className="w-4 h-4 text-sky-600 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-extrabold block leading-none truncate">
+                      Tarjeta Débito
+                    </span>
+                    <span className="text-[9.5px] text-muted-foreground font-mono">Terminal POS</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => applyQuickPreset('tarjeta_credito')}
+                  className={cn(
+                    'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
+                    isSinglePayment && primaryPago?.metodo === 'tarjeta_credito'
+                      ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                      : 'border-border bg-background hover:bg-muted/60'
+                  )}
+                >
+                  <CreditCard className="w-4 h-4 text-purple-600 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-extrabold block leading-none truncate">
+                      Tarjeta Crédito
+                    </span>
+                    <span className="text-[9.5px] text-muted-foreground font-mono">Crédito</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => applyQuickPreset('transferencia')}
+                  className={cn(
+                    'p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2',
+                    isSinglePayment && primaryPago?.metodo === 'transferencia'
+                      ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                      : 'border-border bg-background hover:bg-muted/60'
+                  )}
+                >
+                  <Smartphone className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-extrabold block leading-none truncate">
+                      Transferencia / QR
+                    </span>
+                    <span className="text-[9.5px] text-muted-foreground font-mono">Banca en línea</span>
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* 3. CAJA "¿CON CUÁNTO PAGA EL PACIENTE?" (CUANDO ES UN SOLO MEDIO DE PAGO) */}
+          {/* 3. CAJA "¿CON CUÁNTO PAGA EL PACIENTE?" */}
           {isSinglePayment && primaryPago && (
             <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/25 border border-amber-300/70 dark:border-amber-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div>
                 <Label className="text-xs font-extrabold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
                   <Calculator className="w-3.5 h-3.5 text-amber-600" />
-                  ¿Con cuánto paga el paciente? ({primaryPago.moneda === 'VES' ? 'Bs.' : refSym})
+                  ¿Con cuánto paga el paciente? ({isBimo ? (primaryPago.moneda === 'VES' ? 'Bs.' : refSym) : localSym})
                 </Label>
                 <p className="text-[10.5px] text-amber-800/80 dark:text-amber-300/80">
-                  Ingrese el billete o monto entregado para calcular el vuelto automáticamente en Bolívares.
+                  {isBimo
+                    ? 'Ingrese el billete o monto entregado para calcular el vuelto automáticamente en Bolívares.'
+                    : 'Ingrese el monto recibido para calcular el vuelto o cambio correspondiente.'}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="text-xs font-black font-mono text-amber-900 dark:text-amber-200">
-                  {primaryPago.moneda === 'VES' ? 'Bs.' : refSym}
+                  {isBimo ? (primaryPago.moneda === 'VES' ? 'Bs.' : refSym) : localSym}
                 </span>
                 <Input
                   ref={cashReceivedInputRef}
@@ -596,6 +756,15 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
                           value={p.metodo}
                           onValueChange={(val) => {
                             const updated = [...pagos];
+                            if (!isBimo) {
+                              updated[idx] = {
+                                ...updated[idx],
+                                metodo: val,
+                                moneda: currencyCode,
+                              };
+                              setPagos(updated);
+                              return;
+                            }
                             const prevMoneda = updated[idx].moneda;
                             let nextMoneda: 'VES' | 'USD' | 'EUR' = 'VES';
                             if (
@@ -631,14 +800,26 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="text-xs">
-                            <SelectItem value="pago_movil">Pago Móvil (Bs.)</SelectItem>
-                            <SelectItem value="punto_venta">Punto de Venta / Tarjeta (Bs.)</SelectItem>
-                            <SelectItem value="efectivo_ves">Efectivo Bolívares (Bs.)</SelectItem>
-                            <SelectItem value="transferencia">Transferencia Bancaria (Bs.)</SelectItem>
-                            <SelectItem value="efectivo_usd">Efectivo Divisa ({refSym})</SelectItem>
-                            <SelectItem value="efectivo_eur">Efectivo Euros (€)</SelectItem>
-                            <SelectItem value="zelle">Transferencia Internacional / Zelle</SelectItem>
-                            <SelectItem value="seguro_medico">Cobertura Póliza / Seguro</SelectItem>
+                            {isBimo ? (
+                              <>
+                                <SelectItem value="pago_movil">Pago Móvil (Bs.)</SelectItem>
+                                <SelectItem value="punto_venta">Punto de Venta / Tarjeta (Bs.)</SelectItem>
+                                <SelectItem value="efectivo_ves">Efectivo Bolívares (Bs.)</SelectItem>
+                                <SelectItem value="transferencia">Transferencia Bancaria (Bs.)</SelectItem>
+                                <SelectItem value="efectivo_usd">Efectivo Divisa ({refSym})</SelectItem>
+                                <SelectItem value="efectivo_eur">Efectivo Euros (€)</SelectItem>
+                                <SelectItem value="zelle">Transferencia Internacional / Zelle</SelectItem>
+                                <SelectItem value="seguro_medico">Cobertura Póliza / Seguro</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="efectivo">Efectivo ({currencyCode})</SelectItem>
+                                <SelectItem value="punto_venta">Tarjeta de Débito</SelectItem>
+                                <SelectItem value="tarjeta_credito">Tarjeta de Crédito</SelectItem>
+                                <SelectItem value="transferencia">Transferencia Bancaria / QR</SelectItem>
+                                <SelectItem value="seguro_medico">Cobertura Póliza / Seguro</SelectItem>
+                              </>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
@@ -660,8 +841,8 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
                           }}
                           className="h-8 text-xs font-mono font-bold text-right"
                         />
-                        <span className="text-[10px] font-bold font-mono text-muted-foreground w-8 text-center">
-                          {p.moneda === 'VES' ? 'Bs.' : p.moneda}
+                        <span className="text-[10px] font-bold font-mono text-muted-foreground w-8 text-center truncate">
+                          {isBimo ? (p.moneda === 'VES' ? 'Bs.' : p.moneda) : localSym}
                         </span>
                         <button
                           type="button"
@@ -699,7 +880,7 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
                       </div>
                     </div>
 
-                    {p.moneda !== 'VES' && (
+                    {isBimo && p.moneda !== 'VES' && (
                       <div className="text-[10px] text-muted-foreground font-mono flex justify-between px-0.5">
                         <span>Equivalente legal en ticket (Bs.):</span>
                         <span className="font-bold text-foreground">{formatBs(lineBs)}</span>
@@ -759,7 +940,7 @@ export const PosPaymentModal: React.FC<PosPaymentModalProps> = ({
               ) : (
                 <>
                   <Printer className="w-4 h-4" />
-                  <span>[F11] Emitir Ticket (Bs.) y Cobrar</span>
+                  <span>[F11] {isBimo ? 'Emitir Ticket (Bs.) y Cobrar' : 'Emitir Ticket y Cobrar'}</span>
                 </>
               )}
             </Button>

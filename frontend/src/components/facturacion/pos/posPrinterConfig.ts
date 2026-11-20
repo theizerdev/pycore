@@ -53,3 +53,19 @@ export function formatTicketBs(amount: number): string {
   })}`;
 }
 
+/**
+ * Formatea montos para tickets térmicos respetando la moneda regional configurada.
+ */
+export function formatTicketMoney(
+  amount: number,
+  symbol: string = '$',
+  locale: string = 'es-ES'
+): string {
+  const safeVal = Number.isFinite(amount) ? amount : 0;
+  return `${symbol} ${safeVal.toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+

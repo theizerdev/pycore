@@ -8,6 +8,7 @@ from sqlalchemy import desc
 
 from app.models.tasa_cambio import TasaCambio
 from app.models.empresa import Empresa
+from app.models.pais import Pais
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,25 @@ class ExchangeRateService:
     @classmethod
     async def get_current_rates(cls, empresa_id: int, db: AsyncSession) -> Dict[str, Any]:
         """Obtiene las tasas activas más recientes para USD, EUR y USDT guardadas en BD."""
+        empresa_stmt = select(Empresa).where(Empresa.id == empresa_id)
+        emp_res = await db.execute(empresa_stmt)
+        emp = emp_res.scalar_one_or_none()
+
+        # Si la empresa está en un país no bimonetario (fuera de Venezuela), no usa tasa cambiaria
+        if emp and emp.pais_id:
+            pais_stmt = select(Pais).where(Pais.id == emp.pais_id)
+            pais_res = await db.execute(pais_stmt)
+            pais_obj = pais_res.scalar_one_or_none()
+            if pais_obj and pais_obj.codigo_iso2 != "VE":
+                moneda_local = pais_obj.moneda_principal or "USD"
+                return {
+                    "tasas": {},
+                    "sincronizado_at": datetime.now().isoformat(),
+                    "moneda_cobro_activa": moneda_local,
+                    "tasa_cobro_activa": 1.0,
+                    "es_bimonetario": False
+                }
+
         monedas = ["USD", "EUR", "USDT"]
         rates_dict = {}
 
@@ -367,6 +387,22 @@ class ExchangeRateService:
         empresa_stmt = select(Empresa).where(Empresa.id == empresa_id)
         emp_res = await db.execute(empresa_stmt)
         emp = emp_res.scalar_one_or_none()
+
+        # Si la empresa está fuera de Venezuela, opera estrictamente en moneda local con tasa 1.0
+        if emp and emp.pais_id:
+            pais_stmt = select(Pais).where(Pais.id == emp.pais_id)
+            pais_res = await db.execute(pais_stmt)
+            pais_obj = pais_res.scalar_one_or_none()
+            if pais_obj and pais_obj.codigo_iso2 != "VE":
+                moneda_local = pais_obj.moneda_principal or "USD"
+                return {
+                    "moneda": moneda_local,
+                    "tasa": 1.0,
+                    "fuente": "Moneda Local",
+                    "es_oficial": True,
+                    "es_bimonetario": False
+                }
+
         moneda_activa = getattr(emp, "moneda_cobro_activa", "USD") or "USD"
 
         stmt = select(TasaCambio).where(

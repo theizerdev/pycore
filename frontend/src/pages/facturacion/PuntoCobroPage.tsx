@@ -101,6 +101,7 @@ import {
 import { PatientFormModal } from '../clinica/PatientFormModal';
 import { posSound } from '../../lib/posSounds';
 import { useAuth } from '../../context/AuthContext';
+import { useRegional } from '../../context/RegionalContext';
 import { cn } from '../../lib/utils';
 import type { Paciente, Servicio, Medico, CitaMedica } from '../../types';
 
@@ -148,6 +149,14 @@ const formatBs = (val: number) =>
 
 export const PuntoCobroPage: React.FC = () => {
   const { sucursalActiva } = useAuth();
+  const {
+    esBimonetario,
+    moneda,
+    simboloMoneda,
+    formatMoney,
+    bandera,
+    paisNombre,
+  } = useRegional();
   const currentSucursalId = sucursalActiva?.id || 1;
   const navigate = useNavigate();
 
@@ -453,17 +462,18 @@ export const PuntoCobroPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
-  // Tasa Oficial BCV activa
+  // Tasa Oficial BCV activa (solo en régimen bimonetario Venezuela)
   const monedaReferencia: 'USD' | 'EUR' = ratesData?.moneda_cobro_activa || 'USD';
   const refSym = monedaReferencia === 'EUR' ? '€' : '$';
   const tasaActiva = useMemo(() => {
+    if (!esBimonetario) return 1.0;
     if (!ratesData) return 1.0;
     if (ratesData.tasa_cobro_activa && ratesData.tasa_cobro_activa > 0) {
       return ratesData.tasa_cobro_activa;
     }
     const detail = ratesData.tasas?.[ratesData.moneda_cobro_activa];
     return detail?.tasa && detail.tasa > 0 ? detail.tasa : 1.0;
-  }, [ratesData]);
+  }, [ratesData, esBimonetario]);
 
   const handleSyncRates = async () => {
     try {
@@ -1220,13 +1230,19 @@ export const PuntoCobroPage: React.FC = () => {
         setPrinterConfig(latestPrinterCfg);
         setAutoTriggerPrint(latestPrinterCfg.autoPrintOnSale);
         setReciboModalOpen(true);
-        toast.success(`¡Cobro completado! Comprobante ${cobroGenerado.numero_recibo} listo en Bs.`);
+        toast.success(
+          esBimonetario
+            ? `¡Cobro completado! Comprobante ${cobroGenerado.numero_recibo} listo en Bs.`
+            : `¡Cobro completado! Comprobante ${cobroGenerado.numero_recibo} listo.`
+        );
       } else {
         setAutoTriggerPrint(false);
         toast.success(
-          `¡Cobro registrado exitosamente! Folio ${cobroGenerado.numero_recibo} (${formatBs(
-            cobroGenerado.total_ves
-          )})`
+          `¡Cobro registrado exitosamente! Folio ${cobroGenerado.numero_recibo} (${
+            esBimonetario
+              ? formatBs(cobroGenerado.total_ves)
+              : formatMoney(cobroGenerado.total_divisa || cobroGenerado.total_ves)
+          })`
         );
       }
 
@@ -1380,19 +1396,32 @@ export const PuntoCobroPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Píldora Tasa Oficial BCV */}
-          <button
-            type="button"
-            onClick={() => setIsRateModalOpen(true)}
-            className="px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/15 border border-primary/25 flex items-center gap-1.5 cursor-pointer transition-colors"
-            title="Ver calculadora de cambio o sincronizar tasa BCV"
-          >
-            <RefreshCw className="w-3 h-3 text-primary" />
-            <span className="text-[10.5px] font-extrabold text-primary">BCV:</span>
-            <span className="text-xs font-black font-mono text-foreground">
-              {formatBs(tasaActiva)}
-            </span>
-          </button>
+          {/* Píldora Tasa Oficial BCV (Solo Venezuela) o Moneda Nacional */}
+          {esBimonetario ? (
+            <button
+              type="button"
+              onClick={() => setIsRateModalOpen(true)}
+              className="px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/15 border border-primary/25 flex items-center gap-1.5 cursor-pointer transition-colors"
+              title="Ver calculadora de cambio o sincronizar tasa BCV"
+            >
+              <RefreshCw className="w-3 h-3 text-primary" />
+              <span className="text-[10.5px] font-extrabold text-primary">BCV:</span>
+              <span className="text-xs font-black font-mono text-foreground">
+                {formatBs(tasaActiva)}
+              </span>
+            </button>
+          ) : (
+            <div
+              className="px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/25 flex items-center gap-1.5"
+              title={`Punto de cobro configurado en ${moneda} (${paisNombre})`}
+            >
+              <span className="text-xs">{bandera}</span>
+              <span className="text-[10.5px] font-extrabold text-primary">{moneda}:</span>
+              <span className="text-xs font-black font-mono text-foreground">
+                {simboloMoneda}
+              </span>
+            </div>
+          )}
 
           {/* Píldora Citas Pendientes de Hoy */}
           {todayPendingCitas.length > 0 && (
@@ -1676,7 +1705,7 @@ export const PuntoCobroPage: React.FC = () => {
                     </span>
                   )}
                   <span className="font-mono font-bold text-[10px]">
-                    {formatBs(htDiv * tasaActiva)}
+                    {esBimonetario ? formatBs(htDiv * tasaActiva) : formatMoney(htDiv)}
                   </span>
                   <button
                     type="button"
@@ -1794,12 +1823,14 @@ export const PuntoCobroPage: React.FC = () => {
                     </div>
                     <div className="text-right shrink-0">
                       <span className="font-black font-mono text-xs text-foreground block">
-                        {formatBs(divP * tasaActiva)}
+                        {esBimonetario ? formatBs(divP * tasaActiva) : formatMoney(divP)}
                       </span>
-                      <span className="text-[10px] font-mono text-muted-foreground">
-                        Ref: {refSym}
-                        {divP.toFixed(2)}
-                      </span>
+                      {esBimonetario && (
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          Ref: {refSym}
+                          {divP.toFixed(2)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -1829,12 +1860,14 @@ export const PuntoCobroPage: React.FC = () => {
                   </div>
                   <div className="text-right shrink-0">
                     <span className="font-black font-mono text-xs text-foreground block">
-                      {formatBs(divP * tasaActiva)}
+                      {esBimonetario ? formatBs(divP * tasaActiva) : formatMoney(divP)}
                     </span>
-                    <span className="text-[10px] font-mono text-muted-foreground">
-                      Ref: {refSym}
-                      {divP.toFixed(2)}
-                    </span>
+                    {esBimonetario && (
+                      <span className="text-[10px] font-mono text-muted-foreground">
+                        Ref: {refSym}
+                        {divP.toFixed(2)}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -1902,12 +1935,14 @@ export const PuntoCobroPage: React.FC = () => {
                     </div>
                     <div className="pt-1 border-t border-border/60">
                       <span className="text-xs font-black font-mono text-foreground block">
-                        {formatBs(divP * tasaActiva)}
+                        {esBimonetario ? formatBs(divP * tasaActiva) : formatMoney(divP)}
                       </span>
-                      <span className="text-[9.5px] font-mono text-muted-foreground">
-                        Ref: {refSym}
-                        {divP.toFixed(2)}
-                      </span>
+                      {esBimonetario && (
+                        <span className="text-[9.5px] font-mono text-muted-foreground">
+                          Ref: {refSym}
+                          {divP.toFixed(2)}
+                        </span>
+                      )}
                     </div>
                   </button>
                 );
@@ -2107,9 +2142,13 @@ export const PuntoCobroPage: React.FC = () => {
                   <tr>
                     <th className="py-2.5 px-3 text-left w-28"># / Tipo</th>
                     <th className="py-2.5 px-3 text-left">Concepto / Servicio Clínico</th>
-                    <th className="py-2.5 px-3 text-right w-36">Precio Unit. (Bs.)</th>
+                    <th className="py-2.5 px-3 text-right w-36">
+                      Precio Unit. {esBimonetario ? '(Bs.)' : `(${simboloMoneda})`}
+                    </th>
                     <th className="py-2.5 px-3 text-center w-32">Cantidad</th>
-                    <th className="py-2.5 px-3 text-right w-40">Importe (Bs.)</th>
+                    <th className="py-2.5 px-3 text-right w-40">
+                      Importe {esBimonetario ? '(Bs.)' : `(${simboloMoneda})`}
+                    </th>
                     <th className="py-2.5 px-3 text-center w-12"></th>
                   </tr>
                 </thead>
@@ -2176,15 +2215,17 @@ export const PuntoCobroPage: React.FC = () => {
                           )}
                         </td>
 
-                        {/* Precio Unitario (Bs. principal + Ref interna) */}
+                        {/* Precio Unitario */}
                         <td className="py-2.5 px-3 text-right align-middle font-mono">
                           <span className="font-bold text-xs text-foreground block">
-                            {formatBs(unitBs)}
+                            {esBimonetario ? formatBs(unitBs) : formatMoney(unitDiv)}
                           </span>
-                          <span className="text-[10px] text-muted-foreground block">
-                            Ref: {refSym}
-                            {unitDiv.toFixed(2)}
-                          </span>
+                          {esBimonetario && (
+                            <span className="text-[10px] text-muted-foreground block">
+                              Ref: {refSym}
+                              {unitDiv.toFixed(2)}
+                            </span>
+                          )}
                         </td>
 
                         {/* Controles de Cantidad */}
@@ -2215,12 +2256,14 @@ export const PuntoCobroPage: React.FC = () => {
                         {/* Subtotal / Importe */}
                         <td className="py-2.5 px-3 text-right align-middle font-mono">
                           <span className="font-black text-xs sm:text-sm text-foreground block">
-                            {formatBs(subBs)}
+                            {esBimonetario ? formatBs(subBs) : formatMoney(subDiv)}
                           </span>
-                          <span className="text-[10px] text-muted-foreground block">
-                            Ref: {refSym}
-                            {subDiv.toFixed(2)}
-                          </span>
+                          {esBimonetario && (
+                            <span className="text-[10px] text-muted-foreground block">
+                              Ref: {refSym}
+                              {subDiv.toFixed(2)}
+                            </span>
+                          )}
                         </td>
 
                         {/* Eliminar */}
@@ -2330,13 +2373,15 @@ export const PuntoCobroPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Derecha: Total Ejecutivo en Bolívares + Botones Dobles [F12] Solo Cobrar y [F11] Cobrar y Ticket */}
+        {/* Derecha: Total Ejecutivo (Bolívares o Moneda Local) + Botones Dobles [F12] Solo Cobrar y [F11] Cobrar y Ticket */}
         <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 ml-auto">
           <div className="text-right">
             {activeTicket.descuentoDivisa > 0 && (
               <div className="text-[10.5px] font-mono text-rose-600 dark:text-rose-400 leading-none mb-0.5">
-                Subt: {formatBs(subtotalFacturaVes)} | Dcto: -
-                {formatBs(activeTicket.descuentoDivisa * tasaActiva)}
+                Subt: {esBimonetario ? formatBs(subtotalFacturaVes) : formatMoney(subtotalFacturaDivisa)} | Dcto: -
+                {esBimonetario
+                  ? formatBs(activeTicket.descuentoDivisa * tasaActiva)
+                  : formatMoney(activeTicket.descuentoDivisa)}
               </div>
             )}
             <div className="flex items-baseline justify-end gap-2 leading-none">
@@ -2344,13 +2389,15 @@ export const PuntoCobroPage: React.FC = () => {
                 TOTAL:
               </span>
               <span className="text-xl sm:text-2xl font-black font-mono text-foreground tracking-tight">
-                {formatBs(totalFacturaVes)}
+                {esBimonetario ? formatBs(totalFacturaVes) : formatMoney(totalFacturaDivisa)}
               </span>
             </div>
-            <div className="text-[10px] font-mono text-muted-foreground mt-0.5 leading-none">
-              Ref. Interna: {refSym}
-              {totalFacturaDivisa.toFixed(2)}
-            </div>
+            {esBimonetario && (
+              <div className="text-[10px] font-mono text-muted-foreground mt-0.5 leading-none">
+                Ref. Interna: {refSym}
+                {totalFacturaDivisa.toFixed(2)}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -2409,6 +2456,9 @@ export const PuntoCobroPage: React.FC = () => {
         preferredSubmitMode={preferredSubmitMode}
         onConfirmCobro={handleConfirmarCobro}
         onPlayBeep={() => posSound.playBeep()}
+        esBimonetario={esBimonetario}
+        simboloMoneda={simboloMoneda}
+        monedaLocal={moneda}
       />
 
       {/* [F10] Explorador de Catálogo, Citas del Día y Consultas */}

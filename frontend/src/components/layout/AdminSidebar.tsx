@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useRegional } from '../../context/RegionalContext';
 import { cn, getInitials } from '../../lib/utils';
 import {
   LayoutDashboard,
@@ -100,14 +101,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onCloseMobileMenu,
 }) => {
   const { user, sucursalActiva, hasPermission } = useAuth();
+  const { esBimonetario } = useRegional();
   const location = useLocation();
 
-  const isVenezuelaEmpresa = Boolean(
-    user?.es_superadmin ||
-    user?.empresa?.pais_id === 2 ||
-    user?.empresa?.pais?.codigo_iso2 === 'VE' ||
-    (user?.empresa?.pais?.nombre && user.empresa.pais.nombre.toLowerCase().includes('venezuela'))
-  );
+  const isVenezuelaEmpresa = esBimonetario;
 
   const isDoctorUser = Boolean(user?.rol?.slug === 'medico');
   const isIndependentDoctor = Boolean(user?.empresa?.tipo_entidad === 'medico_independiente');

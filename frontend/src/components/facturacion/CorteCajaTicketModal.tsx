@@ -17,24 +17,28 @@ import {
   loadPosPrinterConfig,
   savePosPrinterConfig,
   formatTicketBs,
+  formatTicketMoney,
 } from './pos/posPrinterConfig';
+import { useRegional } from '../../context/RegionalContext';
 
 /**
- * Normaliza etiquetas de métodos de pago para cumplimiento legal en Venezuela:
- * cero referencias a divisas extranjeras en comprobantes térmicos impresos.
+ * Normaliza etiquetas de métodos de pago para comprobantes térmicos impresos.
  */
-function getLegalMethodName(metodo?: string | null): string {
+function getLegalMethodName(metodo?: string | null, isBimo: boolean = true): string {
   const m = (metodo || '').toLowerCase().trim();
   if (m.includes('efectivo')) return 'EFECTIVO EN CAJA';
-  if (m === 'pago_movil' || m.includes('movil')) return 'PAGO MÓVIL';
+  if (m === 'pago_movil' || m.includes('movil')) return isBimo ? 'PAGO MÓVIL' : 'PAGO MÓVIL / DIGITAL';
   if (m === 'punto_venta' || m.includes('punto') || m.includes('tarjeta')) {
-    return 'PUNTO DE VENTA / TARJETA';
+    return isBimo ? 'PUNTO DE VENTA / TARJETA' : 'TARJETA DÉBITO / CRÉDITO';
   }
   if (m === 'seguro_medico' || m.includes('seguro') || m.includes('poliza')) {
     return 'COBERTURA PÓLIZA / SEGURO';
   }
   if (m === 'transferencia' || m === 'zelle' || m === 'pasarela') {
     return 'TRANSFERENCIA / PAGO DIGITAL';
+  }
+  if (!isBimo) {
+    return m.replace(/_/g, ' ').toUpperCase() || 'OTROS MEDIOS';
   }
   return (
     m
@@ -47,10 +51,11 @@ function getLegalMethodName(metodo?: string | null): string {
 }
 
 /**
- * Limpia textos libres de observaciones para evitar impresión accidental de divisas.
+ * Limpia textos libres de observaciones para evitar impresión accidental de divisas en Venezuela.
  */
-function sanitizeLegalText(text?: string | null): string {
+function sanitizeLegalText(text?: string | null, isBimo: boolean = true): string {
   if (!text) return '';
+  if (!isBimo) return text.trim();
   return text
     .replace(/\b(USD|EUR|USDT|ZELLE|DOLARES|DÓLARES|DIVISAS|DIVISA)\b/gi, '')
     .replace(/\u0024|\u20AC/g, 'Bs. ')
@@ -78,12 +83,23 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
   onAutoPrintHandled,
 }) => {
   const { user, sucursalActiva } = useAuth();
+  const { esBimonetario, moneda, simboloMoneda } = useRegional();
+  const isBimo = esBimonetario;
+
   const ticketRef = useRef<HTMLDivElement>(null);
   const [printerConfig, setPrinterConfig] = useState<PosPrinterConfig>(() =>
     loadPosPrinterConfig()
   );
   const [detalle, setDetalle] = useState<TurnoDetalleResumen | null>(initialDetalle);
   const [loading, setLoading] = useState(false);
+
+  const formatMonto = useCallback(
+    (amount: number) => {
+      if (isBimo) return formatTicketBs(amount);
+      return formatTicketMoney(amount, simboloMoneda, 'es-ES');
+    },
+    [isBimo, simboloMoneda]
+  );
 
   useEffect(() => {
     if (open) {
@@ -124,9 +140,9 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
   };
 
   const turno = detalle?.turno || fallbackTurno;
-  const tasa = detalle && detalle.tasa_bcv_actual > 0 ? detalle.tasa_bcv_actual : 1;
+  const tasa = isBimo && detalle && detalle.tasa_bcv_actual > 0 ? detalle.tasa_bcv_actual : 1;
 
-  // Consolidación 100% en Bolívares (Bs.) para impresión térmica legal
+  // Consolidación de montos para impresión térmica
   const cifrasBs = useMemo(() => {
     if (!turno) {
       return {
@@ -147,35 +163,42 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
       };
     }
 
-    const fondoInicialBs =
-      Math.round(
-        ((Number(turno.fondo_inicial_ves) || 0) +
-          (Number(turno.fondo_inicial_usd) || 0) * tasa) *
-          100
-      ) / 100;
+    const fondoInicialBs = isBimo
+      ? Math.round(
+          ((Number(turno.fondo_inicial_ves) || 0) +
+            (Number(turno.fondo_inicial_usd) || 0) * tasa) *
+            100
+        ) / 100
+      : (Number(turno.fondo_inicial_ves) || 0) + (Number(turno.fondo_inicial_usd) || 0);
 
     if (!detalle) {
-      const ingresosEfecBs =
-        Math.round(
-          ((Number(turno.total_ingresos_ves) || 0) +
-            (Number(turno.total_ingresos_usd) || 0) * tasa) *
-            100
-        ) / 100;
-      const salidasBs =
-        Math.round(
-          ((Number(turno.total_egresos_ves) || 0) +
-            (Number(turno.total_egresos_usd) || 0) * tasa) *
-            100
-        ) / 100;
+      const ingresosEfecBs = isBimo
+        ? Math.round(
+            ((Number(turno.total_ingresos_ves) || 0) +
+              (Number(turno.total_ingresos_usd) || 0) * tasa) *
+              100
+          ) / 100
+        : (Number(turno.total_ingresos_ves) || 0) + (Number(turno.total_ingresos_usd) || 0);
+
+      const salidasBs = isBimo
+        ? Math.round(
+            ((Number(turno.total_egresos_ves) || 0) +
+              (Number(turno.total_egresos_usd) || 0) * tasa) *
+              100
+          ) / 100
+        : (Number(turno.total_egresos_ves) || 0) + (Number(turno.total_egresos_usd) || 0);
+
       const esperadoBs = Math.round((fondoInicialBs + ingresosEfecBs - salidasBs) * 100) / 100;
       const tieneDeclarado =
         turno.arqueo_declarado_ves != null || turno.arqueo_declarado_usd != null;
       const declaradoBs = tieneDeclarado
-        ? Math.round(
-            ((Number(turno.arqueo_declarado_ves) || 0) +
-              (Number(turno.arqueo_declarado_usd) || 0) * tasa) *
-              100
-          ) / 100
+        ? isBimo
+          ? Math.round(
+              ((Number(turno.arqueo_declarado_ves) || 0) +
+                (Number(turno.arqueo_declarado_usd) || 0) * tasa) *
+                100
+            ) / 100
+          : (Number(turno.arqueo_declarado_ves) || 0) + (Number(turno.arqueo_declarado_usd) || 0)
         : null;
       const difBs =
         declaradoBs !== null ? Math.round((declaradoBs - esperadoBs) * 100) / 100 : null;
@@ -198,42 +221,48 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
       };
     }
 
-    const efectivoVentasBs =
-      Math.round(
-        ((Number(detalle.efectivo_ventas_ves) || 0) +
-          (Number(detalle.efectivo_ventas_usd) || 0) * tasa) *
-          100
-      ) / 100;
+    const efectivoVentasBs = isBimo
+      ? Math.round(
+          ((Number(detalle.efectivo_ventas_ves) || 0) +
+            (Number(detalle.efectivo_ventas_usd) || 0) * tasa) *
+            100
+        ) / 100
+      : (Number(detalle.efectivo_ventas_ves) || 0) + (Number(detalle.efectivo_ventas_usd) || 0);
 
-    const entradasExtraBs =
-      Math.round(
-        ((Number(detalle.efectivo_ingresos_extra_ves) || 0) +
-          (Number(detalle.efectivo_ingresos_extra_usd) || 0) * tasa) *
-          100
-      ) / 100;
+    const entradasExtraBs = isBimo
+      ? Math.round(
+          ((Number(detalle.efectivo_ingresos_extra_ves) || 0) +
+            (Number(detalle.efectivo_ingresos_extra_usd) || 0) * tasa) *
+            100
+        ) / 100
+      : (Number(detalle.efectivo_ingresos_extra_ves) || 0) + (Number(detalle.efectivo_ingresos_extra_usd) || 0);
 
-    const salidasExtraBs =
-      Math.round(
-        ((Number(detalle.efectivo_egresos_ves) || 0) +
-          (Number(detalle.efectivo_egresos_usd) || 0) * tasa) *
-          100
-      ) / 100;
+    const salidasExtraBs = isBimo
+      ? Math.round(
+          ((Number(detalle.efectivo_egresos_ves) || 0) +
+            (Number(detalle.efectivo_egresos_usd) || 0) * tasa) *
+            100
+        ) / 100
+      : (Number(detalle.efectivo_egresos_ves) || 0) + (Number(detalle.efectivo_egresos_usd) || 0);
 
-    const esperadoGavetaBs =
-      Math.round(
-        ((Number(detalle.esperado_gaveta_ves) || 0) +
-          (Number(detalle.esperado_gaveta_usd) || 0) * tasa) *
-          100
-      ) / 100;
+    const esperadoGavetaBs = isBimo
+      ? Math.round(
+          ((Number(detalle.esperado_gaveta_ves) || 0) +
+            (Number(detalle.esperado_gaveta_usd) || 0) * tasa) *
+            100
+        ) / 100
+      : (Number(detalle.esperado_gaveta_ves) || 0) + (Number(detalle.esperado_gaveta_usd) || 0);
 
     const tieneDeclarado =
       turno.arqueo_declarado_ves != null || turno.arqueo_declarado_usd != null;
     const declaradoGavetaBs = tieneDeclarado
-      ? Math.round(
-          ((Number(turno.arqueo_declarado_ves) || 0) +
-            (Number(turno.arqueo_declarado_usd) || 0) * tasa) *
-            100
-        ) / 100
+      ? isBimo
+        ? Math.round(
+            ((Number(turno.arqueo_declarado_ves) || 0) +
+              (Number(turno.arqueo_declarado_usd) || 0) * tasa) *
+              100
+          ) / 100
+        : (Number(turno.arqueo_declarado_ves) || 0) + (Number(turno.arqueo_declarado_usd) || 0)
       : null;
 
     const diferenciaBs =
@@ -241,14 +270,15 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
         ? Math.round((declaradoGavetaBs - esperadoGavetaBs) * 100) / 100
         : null;
 
-    // Agrupar métodos de pago por etiqueta legal unificada en Bs.
+    // Agrupar métodos de pago por etiqueta unificada
     const groupedMap = new Map<string, { nombre: string; montoBs: number; ops: number }>();
     for (const m of detalle.por_metodo_pago || []) {
-      const label = getLegalMethodName(m.metodo);
-      const montoBs =
-        (m.moneda || '').toUpperCase() === 'VES'
+      const label = getLegalMethodName(m.metodo, isBimo);
+      const montoBs = isBimo
+        ? (m.moneda || '').toUpperCase() === 'VES'
           ? Number(m.total_monto_origen) || 0
-          : Math.round((Number(m.total_equivalente_divisa) || 0) * tasa * 100) / 100;
+          : Math.round((Number(m.total_equivalente_divisa) || 0) * tasa * 100) / 100
+        : Number(m.total_monto_origen) || 0;
       const existing = groupedMap.get(label);
       if (existing) {
         existing.montoBs = Math.round((existing.montoBs + montoBs) * 100) / 100;
@@ -268,21 +298,29 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
 
     return {
       fondoInicialBs,
-      ventasBrutasBs: Number(detalle.ventas_brutas_ves) || 0,
-      anuladasBs: Number(detalle.total_anuladas_ves) || 0,
+      ventasBrutasBs: isBimo
+        ? Number(detalle.ventas_brutas_ves) || 0
+        : (Number(detalle.ventas_brutas_ves) || 0) + (Number(detalle.ventas_brutas_divisa) || 0),
+      anuladasBs: isBimo
+        ? Number(detalle.total_anuladas_ves) || 0
+        : (Number(detalle.total_anuladas_ves) || 0) + (Number(detalle.total_anuladas_divisa) || 0),
       cantidadAnuladas: Number(detalle.cantidad_anuladas) || 0,
-      ventasNetasBs: Number(detalle.ventas_netas_ves) || 0,
+      ventasNetasBs: isBimo
+        ? Number(detalle.ventas_netas_ves) || 0
+        : (Number(detalle.ventas_netas_ves) || 0) + (Number(detalle.ventas_netas_divisa) || 0),
       cantidadCompletadas: Number(detalle.cantidad_completadas) || 0,
       efectivoVentasBs,
       entradasExtraBs,
       salidasExtraBs,
       esperadoGavetaBs,
-      electronicosBs: Number(detalle.ingresos_electronicos_ves) || 0,
+      electronicosBs: isBimo
+        ? Number(detalle.ingresos_electronicos_ves) || 0
+        : (Number(detalle.ingresos_electronicos_ves) || 0) + (Number(detalle.ingresos_electronicos_divisa) || 0),
       declaradoGavetaBs,
       diferenciaBs,
       metodosAgrupadosBs,
     };
-  }, [turno, detalle, tasa]);
+  }, [turno, detalle, tasa, isBimo]);
 
   const handlePrint = useCallback(() => {
     if (!turno) return;
@@ -406,8 +444,8 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
   const sucursalDir = sucursalActiva?.direccion || user?.empresa?.direccion || '';
   const sucursalTel = sucursalActiva?.telefono || user?.empresa?.telefono || '';
 
-  const notasAperturaLimpias = sanitizeLegalText(turno.notas_apertura);
-  const notasCierreLimpias = sanitizeLegalText(turno.notas_cierre);
+  const notasAperturaLimpias = sanitizeLegalText(turno.notas_apertura, isBimo);
+  const notasCierreLimpias = sanitizeLegalText(turno.notas_cierre, isBimo);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -425,7 +463,9 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
                   {isClosed ? 'Comprobante de Corte Z' : 'Arqueo Parcial (Corte X)'}
                 </DialogTitle>
                 <p className="text-[11px] text-muted-foreground">
-                  Ticket térmico legal expresado 100% en Bolívares (Bs.)
+                  {isBimo
+                    ? 'Ticket térmico legal expresado 100% en Bolívares (Bs.)'
+                    : `Ticket térmico expresado en ${moneda} (${simboloMoneda})`}
                 </p>
               </div>
             </div>
@@ -456,7 +496,9 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
           {loading ? (
             <div className="py-16 text-xs text-muted-foreground font-semibold flex items-center gap-2">
               <span className="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              Calculando conciliación del turno en Bolívares...
+              {isBimo
+                ? 'Calculando conciliación del turno en Bolívares...'
+                : `Calculando conciliación del turno en ${moneda}...`}
             </div>
           ) : (
             <div
@@ -471,7 +513,7 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
                   <div className="font-black uppercase" style={{ fontSize: '13px' }}>
                     {empresaNombre}
                   </div>
-                  {empresaDoc && <div className="font-bold">RIF: {empresaDoc}</div>}
+                  {empresaDoc && <div className="font-bold">{isBimo ? 'RIF: ' : 'ID FISCAL: '}{empresaDoc}</div>}
                   <div>{sucursalNombre}</div>
                   {sucursalDir && <div className="small">{sucursalDir}</div>}
                   {sucursalTel && <div className="small">TEL: {sucursalTel}</div>}
@@ -496,7 +538,7 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
                   <div className="row flex justify-between">
                     <span className="font-bold">APERTURA:</span>
                     <span>
-                      {new Date(turno.apertura_at).toLocaleString('es-VE', {
+                      {new Date(turno.apertura_at).toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                         dateStyle: 'short',
                         timeStyle: 'short',
                       })}
@@ -506,7 +548,7 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
                     <span className="font-bold">CIERRE:</span>
                     <span>
                       {turno.cierre_at
-                        ? new Date(turno.cierre_at).toLocaleString('es-VE', {
+                        ? new Date(turno.cierre_at).toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                             dateStyle: 'short',
                             timeStyle: 'short',
                           })
@@ -517,72 +559,76 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
 
                 <div className="divider border-t border-dashed border-black my-2" />
 
-                {/* Resumen de Flujo en Bolívares */}
-                <div className="font-black uppercase mb-1">RESUMEN DE FLUJO (Bs.)</div>
+                {/* Resumen de Flujo */}
+                <div className="font-black uppercase mb-1">
+                  {isBimo ? 'RESUMEN DE FLUJO (Bs.)' : `RESUMEN DE FLUJO (${moneda})`}
+                </div>
 
                 <div className="row flex justify-between">
                   <span>Fondo Inicial:</span>
-                  <span className="font-bold">{formatTicketBs(cifrasBs.fondoInicialBs)}</span>
+                  <span className="font-bold">{formatMonto(cifrasBs.fondoInicialBs)}</span>
                 </div>
 
                 {cifrasBs.cantidadAnuladas > 0 && (
                   <>
                     <div className="row flex justify-between">
                       <span>Ventas Brutas:</span>
-                      <span>{formatTicketBs(cifrasBs.ventasBrutasBs)}</span>
+                      <span>{formatMonto(cifrasBs.ventasBrutasBs)}</span>
                     </div>
                     <div className="row flex justify-between">
                       <span>Anuladas ({cifrasBs.cantidadAnuladas}):</span>
-                      <span>-{formatTicketBs(cifrasBs.anuladasBs)}</span>
+                      <span>-{formatMonto(cifrasBs.anuladasBs)}</span>
                     </div>
                   </>
                 )}
 
                 <div className="row flex justify-between">
                   <span>Ventas Netas ({cifrasBs.cantidadCompletadas} ops.):</span>
-                  <span className="font-bold">+{formatTicketBs(cifrasBs.ventasNetasBs)}</span>
+                  <span className="font-bold">+{formatMonto(cifrasBs.ventasNetasBs)}</span>
                 </div>
 
                 <div className="row flex justify-between">
                   <span>Cobros en Efectivo:</span>
-                  <span>+{formatTicketBs(cifrasBs.efectivoVentasBs)}</span>
+                  <span>+{formatMonto(cifrasBs.efectivoVentasBs)}</span>
                 </div>
 
                 {cifrasBs.entradasExtraBs > 0 && (
                   <div className="row flex justify-between">
                     <span>Entradas Caja Chica:</span>
-                    <span>+{formatTicketBs(cifrasBs.entradasExtraBs)}</span>
+                    <span>+{formatMonto(cifrasBs.entradasExtraBs)}</span>
                   </div>
                 )}
 
                 <div className="row flex justify-between">
                   <span>Salidas / Gastos Caja:</span>
-                  <span>-{formatTicketBs(cifrasBs.salidasExtraBs)}</span>
+                  <span>-{formatMonto(cifrasBs.salidasExtraBs)}</span>
                 </div>
 
                 <div className="divider-double border-t-2 border-black my-1.5" />
 
                 <div className="row flex justify-between font-black">
                   <span>EFECTIVO ESPERADO CAJÓN:</span>
-                  <span>{formatTicketBs(cifrasBs.esperadoGavetaBs)}</span>
+                  <span>{formatMonto(cifrasBs.esperadoGavetaBs)}</span>
                 </div>
 
                 <div className="row flex justify-between small mt-0.5">
                   <span>Medios Bancarios/Digitales:</span>
-                  <span>{formatTicketBs(cifrasBs.electronicosBs)}</span>
+                  <span>{formatMonto(cifrasBs.electronicosBs)}</span>
                 </div>
 
-                {/* Desglose por Método de Pago en Bs. */}
+                {/* Desglose por Método de Pago */}
                 {cifrasBs.metodosAgrupadosBs.length > 0 && (
                   <>
                     <div className="divider border-t border-dashed border-black my-2" />
-                    <div className="font-black uppercase mb-1">FORMAS DE PAGO (Bs.)</div>
+                    <div className="font-black uppercase mb-1">
+                      {isBimo ? 'FORMAS DE PAGO (Bs.)' : `FORMAS DE PAGO (${moneda})`}
+                    </div>
                     {cifrasBs.metodosAgrupadosBs.map((m, idx) => (
                       <div key={idx} className="row flex justify-between">
                         <span>
                           {m.nombre} ({m.ops}):
                         </span>
-                        <span className="font-bold">{formatTicketBs(m.montoBs)}</span>
+                        <span className="font-bold">{formatMonto(m.montoBs)}</span>
                       </div>
                     ))}
                   </>
@@ -595,20 +641,22 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
                     <div className="font-black uppercase mb-1">ARQUEO FÍSICO DE CAJA</div>
                     <div className="row flex justify-between">
                       <span>Esperado Sistema:</span>
-                      <span>{formatTicketBs(cifrasBs.esperadoGavetaBs)}</span>
+                      <span>{formatMonto(cifrasBs.esperadoGavetaBs)}</span>
                     </div>
                     <div className="row flex justify-between font-bold">
                       <span>Efectivo Contado:</span>
-                      <span>{formatTicketBs(cifrasBs.declaradoGavetaBs)}</span>
+                      <span>{formatMonto(cifrasBs.declaradoGavetaBs)}</span>
                     </div>
                     <div className="row flex justify-between font-black mt-0.5">
                       <span>DIFERENCIA:</span>
                       <span>
                         {cifrasBs.diferenciaBs === null || Math.abs(cifrasBs.diferenciaBs) < 0.01
-                          ? 'CUADRE EXACTO (Bs. 0,00)'
+                          ? isBimo
+                            ? 'CUADRE EXACTO (Bs. 0,00)'
+                            : `CUADRE EXACTO (${simboloMoneda} 0,00)`
                           : cifrasBs.diferenciaBs > 0
-                            ? `SOBRANTE +${formatTicketBs(cifrasBs.diferenciaBs)}`
-                            : `FALTANTE -${formatTicketBs(Math.abs(cifrasBs.diferenciaBs))}`}
+                            ? `SOBRANTE +${formatMonto(cifrasBs.diferenciaBs)}`
+                            : `FALTANTE -${formatMonto(Math.abs(cifrasBs.diferenciaBs))}`}
                       </span>
                     </div>
                   </>
@@ -653,10 +701,14 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
                 <div className="divider border-t border-dashed border-black my-2" />
 
                 <div className="text-center small">
-                  <div>TODOS LOS MONTOS EXPRESADOS EN BOLÍVARES (Bs.)</div>
+                  <div>
+                    {isBimo
+                      ? 'TODOS LOS MONTOS EXPRESADOS EN BOLÍVARES (Bs.)'
+                      : `TODOS LOS MONTOS EXPRESADOS EN ${moneda} (${simboloMoneda})`}
+                  </div>
                   <div>
                     IMPRESO:{' '}
-                    {new Date().toLocaleString('es-VE', {
+                    {new Date().toLocaleString(isBimo ? 'es-VE' : 'es-ES', {
                       dateStyle: 'short',
                       timeStyle: 'medium',
                     })}
@@ -669,7 +721,7 @@ export const CorteCajaTicketModal: React.FC<CorteCajaTicketModalProps> = ({
 
         <DialogFooter className="px-5 py-3 border-t border-border bg-card flex items-center justify-between sm:justify-between gap-2 shrink-0">
           <Badge variant="outline" className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
-            100% Legal en Bs.
+            {isBimo ? '100% Legal en Bs.' : `Moneda: ${moneda}`}
           </Badge>
           <div className="flex items-center gap-2">
             <Button

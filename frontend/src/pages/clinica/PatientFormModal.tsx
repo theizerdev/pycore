@@ -14,11 +14,10 @@ import {
   DialogDescription,
   DialogFooter,
 } from '../../components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Tabs, TabsContent } from '../../components/ui/tabs';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Textarea } from '../../components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -29,20 +28,13 @@ import {
 import { Badge } from '../../components/ui/badge';
 import {
   User,
-  Activity,
   PhoneCall,
   Calendar,
-  AlertTriangle,
-  Heart,
-  Plus,
-  X,
   Save,
-  CheckCircle2,
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
   Check,
-  Info,
 } from 'lucide-react';
 
 interface PatientFormModalProps {
@@ -52,19 +44,6 @@ interface PatientFormModalProps {
   onSaved: (savedPatient?: Paciente) => void;
   initialSearch?: string;
 }
-
-const GRUPOS_SANGUINEOS = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
-
-const ALERGIAS_COMUNES_SUGERIDAS = [
-  'Penicilina',
-  'Dipirona',
-  'Aspirina / AINEs',
-  'Sulfas / Sulfamidas',
-  'Látex',
-  'Yodo / Medio de Contraste',
-  'Mariscos',
-  'Polen / Rinitis',
-];
 
 const PARENTESCOS = [
   'Cónyuge',
@@ -86,7 +65,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
 }) => {
   const { user } = useAuth();
   const regional = useRegional();
-  type PatientTab = 'demograficos' | 'ficha' | 'emergencia';
+  type PatientTab = 'demograficos' | 'emergencia';
   const [activeTab, setActiveTab] = useState<PatientTab>('demograficos');
   const [saving, setSaving] = useState(false);
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
@@ -105,17 +84,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
   const [ciudad, setCiudad] = useState('');
   const [sucursalRegistroId, setSucursalRegistroId] = useState<number | null>(null);
 
-  // ── 2. Estado Ficha Médica Base ──────────────────────────────────────
-  const [grupoSanguineo, setGrupoSanguineo] = useState<string>('O+');
-  const [alergias, setAlergias] = useState<string[]>([]);
-  const [nuevaAlergiaInput, setNuevaAlergiaInput] = useState('');
-  const [antecedentesPatologicos, setAntecedentesPatologicos] = useState('');
-  const [antecedentesFamiliares, setAntecedentesFamiliares] = useState('');
-  const [antecedentesQuirurgicos, setAntecedentesQuirurgicos] = useState('');
-  const [medicacionHabitual, setMedicacionHabitual] = useState('');
-  const [observacionesMedicas, setObservacionesMedicas] = useState('');
-
-  // ── 3. Contacto de Emergencia y Seguro ────────────────────────────────
+  // ── 2. Contacto de Emergencia y Seguro ────────────────────────────────
   const [contactoNombre, setContactoNombre] = useState('');
   const [contactoParentesco, setContactoParentesco] = useState('');
   const [contactoTelefono, setContactoTelefono] = useState('');
@@ -158,14 +127,6 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       setDireccion(patientToEdit.direccion || '');
       setCiudad(patientToEdit.ciudad || '');
       setSucursalRegistroId(patientToEdit.sucursal_registro_id || null);
-
-      setGrupoSanguineo(patientToEdit.grupo_sanguineo || 'O+');
-      setAlergias(Array.isArray(patientToEdit.alergias) ? patientToEdit.alergias : []);
-      setAntecedentesPatologicos(patientToEdit.antecedentes_patologicos || '');
-      setAntecedentesFamiliares(patientToEdit.antecedentes_familiares || '');
-      setAntecedentesQuirurgicos(patientToEdit.antecedentes_quirurgicos || '');
-      setMedicacionHabitual(patientToEdit.medicacion_habitual || '');
-      setObservacionesMedicas(patientToEdit.observaciones_medicas || '');
 
       setContactoNombre(patientToEdit.contacto_emergencia_nombre || '');
       setContactoParentesco(patientToEdit.contacto_emergencia_parentesco || '');
@@ -216,15 +177,6 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       setCiudad('');
       setSucursalRegistroId(user?.sucursal_defecto_id || null);
 
-      setGrupoSanguineo('O+');
-      setAlergias([]);
-      setNuevaAlergiaInput('');
-      setAntecedentesPatologicos('');
-      setAntecedentesFamiliares('');
-      setAntecedentesQuirurgicos('');
-      setMedicacionHabitual('');
-      setObservacionesMedicas('');
-
       setContactoNombre('');
       setContactoParentesco('');
       setContactoTelefono('');
@@ -267,22 +219,6 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
     return `${age} años`;
   }, [fechaNacimiento]);
 
-  // Manejadores de Alergias
-  const handleAddAlergia = (alergia: string) => {
-    const clean = alergia.trim();
-    if (!clean) return;
-    if (alergias.some((a) => a.toLowerCase() === clean.toLowerCase())) {
-      toast.info('Esta alergia ya está registrada');
-      return;
-    }
-    setAlergias([...alergias, clean]);
-    setNuevaAlergiaInput('');
-  };
-
-  const handleRemoveAlergia = (indexToRemove: number) => {
-    setAlergias(alergias.filter((_, i) => i !== indexToRemove));
-  };
-
   // Guardar Paciente
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,13 +249,6 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
         direccion: direccion.trim() || null,
         ciudad: ciudad.trim() || null,
         sucursal_registro_id: sucursalRegistroId || null,
-        grupo_sanguineo: grupoSanguineo || null,
-        alergias,
-        antecedentes_patologicos: antecedentesPatologicos.trim() || null,
-        antecedentes_familiares: antecedentesFamiliares.trim() || null,
-        antecedentes_quirurgicos: antecedentesQuirurgicos.trim() || null,
-        medicacion_habitual: medicacionHabitual.trim() || null,
-        observaciones_medicas: observacionesMedicas.trim() || null,
         contacto_emergencia_nombre: contactoNombre.trim() || null,
         contacto_emergencia_parentesco: contactoParentesco.trim() || null,
         contacto_emergencia_telefono: contactoTelefono.trim() || null,
@@ -381,17 +310,6 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
       isComplete: Boolean(contactoNombre.trim() || seguroMedico.trim()),
       badge: seguroMedico.trim() ? 'Asegurado' : undefined,
     },
-    {
-      id: 'ficha',
-      label: '3. Ficha Médica',
-      shortTitle: 'Ficha Médica',
-      subtitle: 'Preconsulta / Consulta',
-      titleDetail: 'Ficha Clínica, Alergias y Antecedentes (Opcional en Recepción)',
-      descriptionDetail: 'Por privacidad, estos datos íntimos se solicitan en la Preconsulta digital o con el especialista en consulta.',
-      icon: Activity,
-      isComplete: Boolean(alergias.length > 0 || antecedentesPatologicos || medicacionHabitual),
-      badge: 'En Consulta',
-    },
   ];
 
   const currentStepIndex = Math.max(0, STEPS.findIndex((s) => s.id === activeTab));
@@ -419,20 +337,20 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
             </div>
             <div>
               <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
-                <span>{patientToEdit ? `Editar Ficha de ${patientToEdit.nombres} ${patientToEdit.apellidos}` : 'Registrar Nuevo Paciente'}</span>
+                <span>{patientToEdit ? `Editar Datos de ${patientToEdit.nombres} ${patientToEdit.apellidos}` : 'Registrar Nuevo Paciente'}</span>
                 {edadCalculada && (
                   <Badge variant="secondary" className="text-[10px] bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30 font-medium">
                     {edadCalculada}
                   </Badge>
                 )}
                 <Badge variant="outline" className="text-[10px] font-mono border-teal-500/30 text-teal-600 bg-teal-500/5">
-                  MEDISOFT Ficha
+                  Admisión
                 </Badge>
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground mt-0.5">
                 {patientToEdit
-                  ? `Actualizando historia clínica digital de ${patientToEdit.nombres} ${patientToEdit.apellidos}`
-                  : 'Ficha médica integral, datos demográficos, antecedentes clínicos y contacto asistencial.'}
+                  ? `Actualizando datos personales y contacto de ${patientToEdit.nombres} ${patientToEdit.apellidos}`
+                  : 'Datos demográficos de identificación, canales de contacto, familiar de emergencia y seguro.'}
               </DialogDescription>
             </div>
           </div>
@@ -525,8 +443,8 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-1 text-[10px] border-t border-border/50">
-                    <span className="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold font-mono">
-                      {grupoSanguineo}
+                    <span className="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-700 dark:text-teal-300 font-bold">
+                      {genero === 'F' ? 'Femenino' : genero === 'O' ? 'Otro' : 'Masculino'}
                     </span>
                     {edadCalculada && (
                       <span className="text-muted-foreground">
@@ -554,7 +472,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-                      {currentStep.id === 'ficha' ? 'Paso 3 · Preconsulta / Clínico (Opcional)' : `Paso ${currentStepIndex + 1} de 2`}
+                      {`Paso ${currentStepIndex + 1} de ${STEPS.length}`}
                     </span>
                     <h3 className="text-xs sm:text-sm font-bold text-foreground">
                       {currentStep.titleDetail}
@@ -569,11 +487,11 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                   <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden border border-border/50">
                     <div
                       className="h-full bg-teal-500 transition-all duration-300 rounded-full"
-                      style={{ width: `${currentStep.id === 'ficha' ? 100 : Math.round(((currentStepIndex + 1) / 2) * 100)}%` }}
+                      style={{ width: `${Math.round(((currentStepIndex + 1) / STEPS.length) * 100)}%` }}
                     />
                   </div>
                   <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 font-mono">
-                    {currentStep.id === 'ficha' ? '100%' : `${Math.round(((currentStepIndex + 1) / 2) * 100)}%`}
+                    {`${Math.round(((currentStepIndex + 1) / STEPS.length) * 100)}%`}
                   </span>
                 </div>
               </div>
@@ -739,192 +657,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                 </div>
               </TabsContent>
 
-              {/* ── TAB 3: FICHA MÉDICA BASE (CLÍNICO / PRECONSULTA) ────────────────────────── */}
-              <TabsContent value="ficha" className="space-y-4 m-0">
-                {/* Banner de Privacidad y Flujo Clínico */}
-                <div className="p-3.5 rounded-xl border border-teal-500/30 bg-teal-500/10 text-teal-800 dark:text-teal-200 text-xs flex items-start gap-2.5">
-                  <Info className="size-4 text-teal-600 dark:text-teal-400 mt-0.5 shrink-0" />
-                  <div>
-                    <span className="font-bold">Privacidad del Paciente en Recepción:</span>
-                    <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-0.5">
-                      No es necesario exigir estos datos íntimos en el mostrador de recepción. El paciente puede completarlos cómodamente y en privado desde su teléfono mediante el enlace de <strong>Preconsulta</strong>, o bien serán registrados por el médico especialista en el <strong>Paso 1 de la Consulta</strong>.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Grupo Sanguíneo */}
-                <div className="p-3.5 rounded-xl border border-border/80 bg-muted/20 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      <Heart className="size-4 text-rose-600 fill-rose-600/20" />
-                      <span>Grupo Sanguíneo y Factor Rh</span>
-                    </Label>
-                    <Badge variant="outline" className="bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30 text-xs font-bold">
-                      {grupoSanguineo}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                    {GRUPOS_SANGUINEOS.map((gs) => {
-                      const selected = grupoSanguineo === gs;
-                      return (
-                        <button
-                          key={gs}
-                          type="button"
-                          onClick={() => setGrupoSanguineo(gs)}
-                          className={`h-8 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
-                            selected
-                              ? 'bg-rose-600 text-white border-rose-600 shadow-xs scale-105'
-                              : 'bg-background hover:bg-muted text-foreground border-border/80'
-                          }`}
-                        >
-                          {gs}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Gestor Interactivo de Alergias */}
-                <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/5 dark:bg-rose-950/10 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
-                      <AlertTriangle className="size-4 text-rose-600" />
-                      <span>Alergias Medicamentosas y Ambientales</span>
-                    </Label>
-                    <span className="text-[11px] text-muted-foreground">
-                      {alergias.length === 0 ? 'Sin alergias conocidas' : `${alergias.length} registrada(s)`}
-                    </span>
-                  </div>
-
-                  {/* Input para agregar alergia */}
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={nuevaAlergiaInput}
-                      onChange={(e) => setNuevaAlergiaInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddAlergia(nuevaAlergiaInput);
-                        }
-                      }}
-                      placeholder="Escribe una alergia (ej. Penicilina) y presiona Enter o Añadir..."
-                      className="text-xs h-8.5 bg-background"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => handleAddAlergia(nuevaAlergiaInput)}
-                      className="h-8.5 text-xs bg-rose-600 hover:bg-rose-700 text-white cursor-pointer px-3 shrink-0 gap-1"
-                    >
-                      <Plus className="size-3.5" />
-                      <span>Añadir</span>
-                    </Button>
-                  </div>
-
-                  {/* Sugerencias Rápidas */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground font-semibold block uppercase">
-                      Sugerencias clínicas frecuentes (clic para añadir):
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {ALERGIAS_COMUNES_SUGERIDAS.map((sug) => {
-                        const yaAgregada = alergias.some((a) => a.toLowerCase() === sug.toLowerCase());
-                        if (yaAgregada) return null;
-                        return (
-                          <button
-                            key={sug}
-                            type="button"
-                            onClick={() => handleAddAlergia(sug)}
-                            className="text-[11px] py-0.5 px-2 rounded-md bg-background hover:bg-rose-100 dark:hover:bg-rose-900/30 text-rose-700 dark:text-rose-300 border border-rose-300/40 dark:border-rose-800/40 transition-colors cursor-pointer"
-                          >
-                            + {sug}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Lista de Alergias Registradas */}
-                  {alergias.length > 0 && (
-                    <div className="pt-2 border-t border-rose-200/40 dark:border-rose-900/40 flex flex-wrap gap-2">
-                      {alergias.map((al, idx) => (
-                        <Badge
-                          key={idx}
-                          className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-1 px-2.5 gap-1.5 shadow-2xs"
-                        >
-                          <span>⚠️ {al}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveAlergia(idx)}
-                            className="hover:bg-rose-800 rounded-full p-0.5 transition-colors cursor-pointer"
-                          >
-                            <X className="size-3" />
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Antecedentes Médicos */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Antecedentes Personales Patológicos</Label>
-                    <Textarea
-                      value={antecedentesPatologicos}
-                      onChange={(e) => setAntecedentesPatologicos(e.target.value)}
-                      placeholder="Hipertensión, Diabetes, Asma, Gastritis, etc."
-                      rows={3}
-                      className="text-xs resize-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Antecedentes Familiares</Label>
-                    <Textarea
-                      value={antecedentesFamiliares}
-                      onChange={(e) => setAntecedentesFamiliares(e.target.value)}
-                      placeholder="Cardiopatías, Cáncer, Diabetes en padres o abuelos..."
-                      rows={3}
-                      className="text-xs resize-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Cirugías e Intervenciones Previas</Label>
-                    <Textarea
-                      value={antecedentesQuirurgicos}
-                      onChange={(e) => setAntecedentesQuirurgicos(e.target.value)}
-                      placeholder="Apendicectomía (2018), Rinoplastia (2020)..."
-                      rows={2}
-                      className="text-xs resize-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Medicación Habitual de Uso Continuo</Label>
-                    <Textarea
-                      value={medicacionHabitual}
-                      onChange={(e) => setMedicacionHabitual(e.target.value)}
-                      placeholder="Losartán 50mg diario, Levotiroxina 75mcg..."
-                      rows={2}
-                      className="text-xs resize-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Observaciones Médicas Generales</Label>
-                  <Input
-                    value={observacionesMedicas}
-                    onChange={(e) => setObservacionesMedicas(e.target.value)}
-                    placeholder="Notas relevantes del perfil o recomendaciones clínicas..."
-                    className="text-xs h-8.5"
-                  />
-                </div>
-              </TabsContent>
-
-              {/* ── TAB 3: CONTACTO DE EMERGENCIA & SEGURO ─────────── */}
+              {/* ── TAB 2: CONTACTO DE EMERGENCIA & SEGURO ─────────── */}
               <TabsContent value="emergencia" className="space-y-4 m-0">
                 {/* Contacto de Emergencia */}
                 <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-950/10 space-y-3">
@@ -1052,7 +785,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                     className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-8 text-xs cursor-pointer shadow-xs gap-1.5"
                   >
                     <Save className="size-3.5" />
-                    <span>{saving ? 'Guardando...' : patientToEdit ? 'Actualizar Ficha' : 'Guardar Paciente'}</span>
+                    <span>{saving ? 'Guardando...' : patientToEdit ? 'Actualizar Paciente' : 'Guardar Paciente'}</span>
                   </Button>
                 </div>
               </div>
