@@ -105,7 +105,7 @@ export const EmpresasPage: React.FC = () => {
     email: '',
     pais_id: undefined as number | undefined,
     pais_telefono_id: undefined as number | undefined,
-    moneda_principal: 'USD' as 'USD' | 'VES',
+    moneda_principal: 'USD' as string,
     direccion: '',
     ciudad: '',
     latitud: '' as string | number,
@@ -333,10 +333,12 @@ export const EmpresasPage: React.FC = () => {
   const handlePaisChange = (paisIdStr: string) => {
     const pId = Number(paisIdStr);
     const foundPais = paises.find((p) => p.id === pId);
+    const isVe = foundPais?.codigo_iso2 === 'VE' || foundPais?.nombre?.toLowerCase().includes('venezuela');
     setFormData((prev) => ({
       ...prev,
       pais_id: pId,
       pais_telefono_id: pId,
+      moneda_principal: foundPais ? (isVe ? 'USD' : foundPais.moneda_principal || 'USD') : prev.moneda_principal,
       // Si no tenía coordenadas o estaban vacías, asignar las del país
       latitud: prev.latitud === '' && foundPais?.latitud ? foundPais.latitud : prev.latitud,
       longitud: prev.longitud === '' && foundPais?.longitud ? foundPais.longitud : prev.longitud,
@@ -486,16 +488,21 @@ export const EmpresasPage: React.FC = () => {
     },
     {
       header: 'Moneda',
-      cell: (empresa) => (
-        <span className={cn(
-          'text-xs font-semibold px-2 py-0.5 rounded-md border flex items-center gap-1 w-fit',
-          empresa.moneda_principal === 'VES'
-            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400'
-            : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400'
-        )}>
-          {empresa.moneda_principal === 'VES' ? '🇻🇪 VES (Bs.)' : '💵 USD ($)'}
-        </span>
-      ),
+      cell: (empresa) => {
+        const code = (empresa.moneda_principal || empresa.pais?.moneda_principal || 'USD').toUpperCase();
+        const isVes = code === 'VES';
+        const sym = isVes ? 'Bs.' : code === 'EUR' ? '€' : code === 'PEN' ? 'S/' : code === 'BRL' ? 'R$' : '$';
+        return (
+          <span className={cn(
+            'text-xs font-semibold px-2 py-0.5 rounded-md border flex items-center gap-1 w-fit',
+            isVes
+              ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400'
+              : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400'
+          )}>
+            {isVes ? `🇻🇪 VES (${sym})` : `${code === 'USD' ? '💵' : '🌐'} ${code} (${sym})`}
+          </span>
+        );
+      },
     },
     {
       header: 'Estado',
@@ -613,39 +620,59 @@ export const EmpresasPage: React.FC = () => {
           </div>
 
           {/* Moneda Principal de Operación */}
-          <div className="space-y-1.5">
-            <Label htmlFor="moneda_principal" className="flex items-center gap-1.5">
-              <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Moneda Principal de Operación *</span>
-            </Label>
-            <Select
-              value={formData.moneda_principal || 'USD'}
-              onValueChange={(val: 'USD' | 'VES') => setFormData({ ...formData, moneda_principal: val })}
-            >
-              <SelectTrigger id="moneda_principal">
-                <SelectValue placeholder="Selecciona la moneda principal" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="USD">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-emerald-600">$</span>
-                    <span>Dólar Estadounidense (USD - $)</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="VES">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-blue-600">Bs.</span>
-                    <span>Bolívar Venezolano (VES - Bs.)</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-muted-foreground">
-              {formData.moneda_principal === 'USD'
-                ? '💵 Precios y montos en Dólares ($) con equivalencia en Bolívares a la tasa BCV.'
-                : '🇻🇪 Precios y montos reflejados directamente en Bolívares (Bs.).'}
-            </p>
-          </div>
+          {(() => {
+            const isVePais = !selectedPais || selectedPais.codigo_iso2 === 'VE' || Boolean(selectedPais.nombre?.toLowerCase().includes('venezuela'));
+            const paisMoneda = (selectedPais?.moneda_principal || '').toUpperCase();
+            return (
+              <div className="space-y-1.5">
+                <Label htmlFor="moneda_principal" className="flex items-center gap-1.5">
+                  <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Moneda Principal de Operación *</span>
+                </Label>
+                <Select
+                  value={formData.moneda_principal || 'USD'}
+                  onValueChange={(val: string) => setFormData({ ...formData, moneda_principal: val })}
+                >
+                  <SelectTrigger id="moneda_principal">
+                    <SelectValue placeholder="Selecciona la moneda principal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paisMoneda && paisMoneda !== 'USD' && paisMoneda !== 'VES' && (
+                      <SelectItem value={paisMoneda}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-teal-600">{selectedPais?.simbolo_moneda || '$'}</span>
+                          <span>Moneda Nacional ({paisMoneda}) — {selectedPais?.nombre}</span>
+                        </div>
+                      </SelectItem>
+                    )}
+                    <SelectItem value="USD">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-emerald-600">$</span>
+                        <span>Dólar Estadounidense (USD - $)</span>
+                      </div>
+                    </SelectItem>
+                    {isVePais && (
+                      <SelectItem value="VES">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-blue-600">Bs.</span>
+                          <span>Bolívar Venezolano (VES - Bs.)</span>
+                        </div>
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  {formData.moneda_principal === 'USD'
+                    ? isVePais
+                      ? '💵 Precios y montos en Dólares ($) con equivalencia en Bolívares a la tasa BCV.'
+                      : '💵 Precios y montos en Dólares ($).'
+                    : formData.moneda_principal === 'VES'
+                    ? '🇻🇪 Precios y montos reflejados directamente en Bolívares (Bs.).'
+                    : `🌐 Precios y montos reflejados en moneda local (${formData.moneda_principal}).`}
+                </p>
+              </div>
+            );
+          })()}
 
           {/* Email */}
           <div className="space-y-1.5">

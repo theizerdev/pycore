@@ -13,6 +13,23 @@ export const getCountryFlagEmoji = (iso2?: string | null): string => {
   return String.fromCodePoint(...codePoints);
 };
 
+// Mapa explícito de símbolos por código ISO de moneda
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  VES: 'Bs.',
+  EUR: '€',
+  COP: '$',
+  MXN: '$',
+  ARS: '$',
+  CLP: '$',
+  PEN: 'S/',
+  BRL: 'R$',
+  CRC: '₡',
+  DOP: 'RD$',
+  PAB: 'B/.',
+  GBP: '£',
+};
+
 // Fallback por defecto si no hay país asociado
 const DEFAULT_REGIONAL_CONFIG: Partial<Pais> = {
   nombre: 'Venezuela',
@@ -138,12 +155,13 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [esBimonetario, paisActivo.moneda_principal, monedaEmpresa]);
 
   const simboloMoneda = useMemo(() => {
-    if (moneda === 'VES') return 'Bs.';
-    if (moneda === 'EUR') return '€';
-    if (moneda === 'PEN') return 'S/';
-    if (moneda === 'BRL') return 'R$';
-    return paisActivo.simbolo_moneda || '$';
-  }, [moneda, paisActivo.simbolo_moneda]);
+    const code = (moneda || 'USD').toUpperCase();
+    if (CURRENCY_SYMBOLS[code]) return CURRENCY_SYMBOLS[code];
+    if (code === (paisActivo.moneda_principal || '').toUpperCase() && paisActivo.simbolo_moneda) {
+      return paisActivo.simbolo_moneda;
+    }
+    return '$';
+  }, [moneda, paisActivo.moneda_principal, paisActivo.simbolo_moneda]);
 
   const idioma = paisActivo.idioma_principal || 'es';
   const zonaHoraria = paisActivo.zona_horaria || 'America/Caracas';
@@ -339,7 +357,7 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     if (moneda === 'USD') {
-      const primary = formatMoney(validNum);
+      const primary = formatMoney(validNum, '$');
       const secondaryNum = validNum * tasaBcv;
       const secondary = `Bs. ${formatNumber(secondaryNum, 2)}`;
       return {
@@ -349,7 +367,7 @@ export const RegionalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         rate: tasaBcv,
       };
     } else {
-      const primary = formatMoney(validNum);
+      const primary = formatMoney(validNum, 'Bs.');
       const secondaryNum = tasaBcv > 0 ? validNum / tasaBcv : 0;
       const secondary = `$ ${formatNumber(secondaryNum, 2)}`;
       return {

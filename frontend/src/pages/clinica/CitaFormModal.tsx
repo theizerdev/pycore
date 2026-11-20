@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { useAuth } from '../../context/AuthContext';
+import { useRegional } from '../../context/RegionalContext';
 import {
   Calendar,
   Clock,
@@ -127,6 +128,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
   const [notificarWhatsApp, setNotificarWhatsApp] = useState<boolean>(true);
 
   const { user } = useAuth();
+  const { moneda, simboloMoneda, esBimonetario, formatMoney, formatMoneyDual } = useRegional();
   const isDoctorUser = Boolean(user?.rol?.slug === 'medico' || user?.empresa?.tipo_entidad === 'medico_independiente');
 
   // Identificar el perfil médico del usuario logueado
@@ -959,7 +961,9 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
                       </div>
                       <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
                         <span>⏱️ {s.duracion_estimada_minutos} min</span>
-                        <span className="text-teal-700 dark:text-teal-300 font-bold">${Number(s.precio_base).toFixed(2)}</span>
+                        <span className="text-teal-700 dark:text-teal-300 font-bold">
+                          {formatMoney(Number(s.precio_base) || 0)}
+                        </span>
                       </div>
                     </div>
                   </SelectItem>
@@ -1140,7 +1144,12 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
               </span>
               {precioEstimado !== '' && (
                 <span className="text-xs font-mono font-bold text-teal-700 dark:text-teal-300">
-                  Total: ${Number(precioEstimado).toFixed(2)}
+                  Total: {formatMoney(Number(precioEstimado))}
+                  {esBimonetario && moneda === 'USD' && (
+                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                      (≈ {formatMoneyDual(Number(precioEstimado)).secondary})
+                    </span>
+                  )}
                 </span>
               )}
             </div>
@@ -1150,10 +1159,10 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
                   <DollarSign className="size-3 text-muted-foreground" />
-                  <span>Honorarios / Precio Estimado ($)</span>
+                  <span>Honorarios / Precio Estimado ({simboloMoneda})</span>
                 </Label>
                 <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">$</span>
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">{simboloMoneda}</span>
                   <Input
                     type="number"
                     step="0.01"
@@ -1161,7 +1170,7 @@ export const CitaFormModal: React.FC<CitaFormModalProps> = ({
                     value={precioEstimado}
                     onChange={(e) => setPrecioEstimado(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="0.00"
-                    className="pl-7 text-xs h-8 font-mono"
+                    className={`text-xs h-8 font-mono ${simboloMoneda.length > 1 ? 'pl-9' : 'pl-7'}`}
                   />
                 </div>
               </div>

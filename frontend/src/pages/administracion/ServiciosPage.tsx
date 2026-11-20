@@ -70,7 +70,7 @@ const CATEGORIAS_SERVICIOS = [
 
 export const ServiciosPage: React.FC = () => {
   const { user, hasPermission, sucursalActiva } = useAuth();
-  const { formatMoney } = useRegional();
+  const { formatMoney, formatMoneyDual, esBimonetario, moneda, simboloMoneda } = useRegional();
 
   const canCreate = hasPermission('servicios.crear');
   const canEdit = hasPermission('servicios.editar');
@@ -471,6 +471,11 @@ export const ServiciosPage: React.FC = () => {
               <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1 font-mono">
                 {formatMoney(stats.precioPromedio)}
               </h3>
+              {esBimonetario && moneda === 'USD' && (
+                <p className="text-[11px] font-mono text-muted-foreground mt-0.5">
+                  ≈ {formatMoneyDual(stats.precioPromedio).secondary}
+                </p>
+              )}
             </div>
             <div className="flex size-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
               <DollarSign className="size-5" />
@@ -769,6 +774,11 @@ export const ServiciosPage: React.FC = () => {
                       <p className="text-base font-black text-foreground font-mono">
                         {formatMoney(Number(s.precio_base) || 0)}
                       </p>
+                      {esBimonetario && moneda === 'USD' && (
+                        <span className="text-[11px] text-muted-foreground font-mono block">
+                          ≈ {formatMoneyDual(Number(s.precio_base) || 0).secondary}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -893,7 +903,12 @@ export const ServiciosPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right font-black font-mono text-foreground">
-                        {formatMoney(Number(s.precio_base) || 0)}
+                        <span>{formatMoney(Number(s.precio_base) || 0)}</span>
+                        {esBimonetario && moneda === 'USD' && (
+                          <span className="text-[10px] font-normal text-muted-foreground block">
+                            ≈ {formatMoneyDual(Number(s.precio_base) || 0).secondary}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-center font-semibold text-muted-foreground">
                         {s.duracion_estimada_minutos} min
@@ -1090,7 +1105,7 @@ export const ServiciosPage: React.FC = () => {
 
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-foreground">
-                  Tarifa / Precio Base <span className="text-red-500">*</span>
+                  Tarifa / Precio Base ({moneda} {simboloMoneda}) <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   required
@@ -1104,6 +1119,11 @@ export const ServiciosPage: React.FC = () => {
                   }
                   className="text-xs h-9 font-mono font-bold"
                 />
+                {esBimonetario && moneda === 'USD' && (
+                  <p className="text-[10.5px] font-mono text-muted-foreground">
+                    Equivalente BCV: {formatMoneyDual(Number(formData.precio_base) || 0).secondary}
+                  </p>
+                )}
               </div>
             </div>
 

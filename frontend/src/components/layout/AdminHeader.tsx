@@ -73,6 +73,9 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
     impuestoPredeterminado,
     codigoTelefonico,
     bandera,
+    esBimonetario,
+    tasaBcv,
+    formatNumber,
   } = useRegional();
   const location = useLocation();
   const navigate = useNavigate();
@@ -553,6 +556,12 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
                 <span>Moneda Principal:</span>
                 <span className="font-bold text-foreground font-mono">{moneda} ({simboloMoneda})</span>
               </div>
+              {esBimonetario && moneda === 'USD' && (
+                <div className="flex items-center justify-between p-1.5 rounded bg-muted/40 text-muted-foreground">
+                  <span>Conversión Local (BCV):</span>
+                  <span className="font-bold text-foreground font-mono">VES (Bs. {formatNumber(tasaBcv, 2)})</span>
+                </div>
+              )}
               <div className="flex items-center justify-between p-1.5 rounded bg-muted/40 text-muted-foreground">
                 <span>Zona Horaria:</span>
                 <span className="font-bold text-foreground truncate max-w-[140px] font-mono text-[11px]">{zonaHoraria}</span>
