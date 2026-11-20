@@ -30,13 +30,27 @@ async def run_whatsapp_migrations():
         ("scheduled_at", "DATETIME NULL"),
     ]
 
+    estudios_columns = [
+        ("origen", "VARCHAR(30) DEFAULT 'manual'"),
+        ("whatsapp_remitente", "VARCHAR(120) NULL"),
+        ("analisis_agente", "JSON NULL"),
+    ]
+
     try:
+        # Asegurar tablas nuevas (ej. whatsapp_estudios_pendientes)
+        from app.core.database import Base
+        import app.models.estudio  # noqa: F401
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
         async with engine.begin() as conn:
             dialect = conn.dialect.name
             table_specs = [
                 ("empresas", entity_columns),
                 ("sucursales", entity_columns),
                 ("whatsapp_messages", message_columns),
+                ("estudios_adjuntos", estudios_columns),
             ]
 
             for table_name, cols in table_specs:

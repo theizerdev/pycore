@@ -383,7 +383,7 @@ export interface WhatsAppInstanceSummary {
   label: string;
   is_sucursal: boolean;
   sucursal_id?: number | null;
-  connection_state: 'CONNECTED' | 'QR_READY' | 'CONNECTING' | 'DISCONNECTED' | 'BANNED_COOLDOWN';
+  connection_state: 'CONNECTED' | 'QR_READY' | 'CONNECTING' | 'RECONNECTING' | 'DISCONNECTED' | 'BANNED_COOLDOWN';
   is_connected: boolean;
   phone_number?: string | null;
   push_name?: string | null;
@@ -404,7 +404,7 @@ export interface WhatsAppInstanceSummary {
 
 export interface WhatsAppStatus {
   is_connected: boolean;
-  connection_state: 'CONNECTED' | 'QR_READY' | 'CONNECTING' | 'DISCONNECTED' | 'BANNED_COOLDOWN';
+  connection_state: 'CONNECTED' | 'QR_READY' | 'CONNECTING' | 'RECONNECTING' | 'DISCONNECTED' | 'BANNED_COOLDOWN';
   qr_code?: string | null;
   qr_data_url?: string | null;
   qr_expires_in?: number | null;

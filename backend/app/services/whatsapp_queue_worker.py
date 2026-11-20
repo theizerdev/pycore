@@ -46,7 +46,7 @@ _batch_sent_count: Dict[str, int] = {}
 async def _load_entity_policy(
     db, empresa_id: int, sucursal_id: Optional[int]
 ) -> Tuple[Optional[Any], str, str]:
-    """Retorna (entidad_config, instance_name, country_code)."""
+    """Retorna (entidad_config, instance_name, country_code) priorizando siempre Sucursal."""
     stmt_emp = (
         select(Empresa)
         .options(selectinload(Empresa.pais_telefono), selectinload(Empresa.pais))
@@ -55,23 +55,40 @@ async def _load_entity_policy(
     empresa = (await db.execute(stmt_emp)).scalar_one_or_none()
     cod_pais = get_empresa_codigo_pais_resolver(empresa)
 
-    if sucursal_id:
-        stmt_suc = (
-            select(Sucursal)
-            .options(selectinload(Sucursal.pais_telefono))
-            .where(Sucursal.id == sucursal_id, Sucursal.empresa_id == empresa_id)
+    stmt_sucs = (
+        select(Sucursal)
+        .options(selectinload(Sucursal.pais_telefono))
+        .where(Sucursal.empresa_id == empresa_id, Sucursal.activo == True)
+        .order_by(Sucursal.id.asc())
+    )
+    sucs = (await db.execute(stmt_sucs)).scalars().all()
+
+    def _suc_tuple(suc: Sucursal) -> Tuple[Sucursal, str, str]:
+        inst = suc.whatsapp_instance or f"sucursal_{empresa_id}_{suc.id}"
+        cod_suc = (
+            suc.pais_telefono.codigo_telefonico
+            if suc.pais_telefono and suc.pais_telefono.codigo_telefonico
+            else cod_pais
         )
-        suc = (await db.execute(stmt_suc)).scalar_one_or_none()
-        if suc:
-            inst = suc.whatsapp_instance or f"sucursal_{empresa_id}_{suc.id}"
-            rt = whatsapp_engine.get_runtime(inst)
-            if rt and rt.connection_state == "CONNECTED":
-                cod_suc = (
-                    suc.pais_telefono.codigo_telefonico
-                    if suc.pais_telefono and suc.pais_telefono.codigo_telefonico
-                    else cod_pais
-                )
-                return suc, inst, cod_suc
+        return suc, inst, cod_suc
+
+    if sucursal_id:
+        for suc in sucs:
+            if suc.id == sucursal_id:
+                s_ent, s_inst, s_cod = _suc_tuple(suc)
+                rt = whatsapp_engine.get_runtime(s_inst)
+                if rt and rt.connection_state == "CONNECTED":
+                    return s_ent, s_inst, s_cod
+                break
+
+    for suc in sucs:
+        s_ent, s_inst, s_cod = _suc_tuple(suc)
+        rt = whatsapp_engine.get_runtime(s_inst)
+        if rt and rt.connection_state == "CONNECTED":
+            return s_ent, s_inst, s_cod
+
+    if sucs:
+        return _suc_tuple(sucs[0])
 
     if empresa:
         inst = empresa.whatsapp_instance or f"empresa_{empresa.id}"

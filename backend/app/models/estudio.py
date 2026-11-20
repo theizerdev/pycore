@@ -45,9 +45,49 @@ class EstudioAdjunto(Base, TimestampMixin):
     # Lista resumida de parámetros o hallazgos alterados para vista rápida
     alertas_detectadas = Column(JSON, nullable=True)
 
+    # Inteligencia estructurada del Agente Clínico Propio MediCore AI Local:
+    # { agent_version, engine_used, ocr_confidence, extraction_method, calculos_derivados,
+    #   sindromes_detectados, cie10_sugeridos, critical_alerts, hallazgos_clave, medidas_detectadas,
+    #   escalas_detectadas, guia_paciente, resumen_medico, extracted_text_preview, patient_context_applied }
+    analisis_agente = Column(JSON, nullable=True)
+
+    # Trazabilidad de origen (manual vs recepción directa por WhatsApp)
+    origen = Column(String(30), default="manual", nullable=False, index=True)  # "manual" | "whatsapp"
+    whatsapp_remitente = Column(String(120), nullable=True)  # Teléfono o nombre de quien envió por WhatsApp
+
     # Relaciones
     empresa = relationship("Empresa", lazy="selectin")
     paciente = relationship("Paciente", lazy="selectin")
     consulta = relationship("ConsultaMedica", lazy="selectin")
     medico = relationship("Medico", lazy="selectin")
     sucursal = relationship("Sucursal", lazy="selectin")
+
+
+class WhatsAppEstudioPendiente(Base, TimestampMixin):
+    """
+    Bandeja entrante temporal para PDFs o imágenes recibidos por WhatsApp cuyo
+    número remitente no coincidió automáticamente con un paciente en consulta
+    (por ejemplo, enviados desde el teléfono de un familiar).
+    El médico puede asignarlos con 1 clic a la consulta activa en el Paso 4.
+    """
+    __tablename__ = "whatsapp_estudios_pendientes"
+
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False, index=True)
+    sucursal_id = Column(Integer, ForeignKey("sucursales.id", ondelete="SET NULL"), nullable=True, index=True)
+    instance_name = Column(String(100), nullable=True, index=True)
+
+    remitente_telefono = Column(String(40), nullable=False, index=True)
+    remitente_nombre = Column(String(150), nullable=True)
+    caption = Column(Text, nullable=True)
+
+    archivo_url = Column(Text().with_variant(LONGTEXT, "mysql"), nullable=False)
+    archivo_nombre = Column(String(255), nullable=False)
+    archivo_tipo = Column(String(100), nullable=False)
+    archivo_tamano = Column(Integer, default=0, nullable=False)
+    categoria_sugerida = Column(String(50), default="laboratorio", nullable=False)
+
+    # 'pendiente' | 'asignado' | 'descartado'
+    estado = Column(String(30), default="pendiente", nullable=False, index=True)
+    estudio_asignado_id = Column(Integer, ForeignKey("estudios_adjuntos.id", ondelete="SET NULL"), nullable=True)
+    consulta_asignada_id = Column(Integer, ForeignKey("consultas_medicas.id", ondelete="SET NULL"), nullable=True)
+    whatsapp_message_id = Column(String(120), nullable=True, index=True)

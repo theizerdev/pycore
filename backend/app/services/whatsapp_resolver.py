@@ -1,7 +1,8 @@
 """
 Servicio Resolver de WhatsApp (Motor Nativo Python / Neonize).
-Determina si se debe utilizar la instancia local de una Sucursal o
-hacer fallback a la instancia central de la Empresa.
+Opera por instancia de Sucursal:
+- Si se indica sucursal_id, utiliza esa sucursal.
+- Si no se indica sucursal_id, selecciona automáticamente la sucursal principal (o la primera sucursal conectada) de la empresa.
 """
 import logging
 from typing import Optional, Tuple, Any
@@ -61,10 +62,9 @@ async def get_whatsapp_target(
     sucursal_id: Optional[int] = None,
 ) -> Tuple[Any, bool]:
     """
-    Obtiene la entidad de destino para configuración/gestión de WhatsApp:
+    Obtiene la Sucursal de destino para configuración/gestión de WhatsApp.
     Retorna (entidad, es_sucursal).
-    Si se especifica sucursal_id válida, retorna la Sucursal.
-    De lo contrario, retorna la Empresa.
+    Si sucursal_id es None, retorna la primera sucursal activa de la empresa.
     """
     if sucursal_id:
         stmt_suc = (
@@ -72,20 +72,32 @@ async def get_whatsapp_target(
             .options(selectinload(Sucursal.pais_telefono), selectinload(Sucursal.empresa))
             .where(Sucursal.id == sucursal_id, Sucursal.empresa_id == empresa_id)
         )
-        res_suc = await db.execute(stmt_suc)
-        sucursal = res_suc.scalar_one_or_none()
+        sucursal = (await db.execute(stmt_suc)).scalar_one_or_none()
         if sucursal:
             if not sucursal.whatsapp_instance:
                 sucursal.whatsapp_instance = f"sucursal_{empresa_id}_{sucursal.id}"
             return sucursal, True
 
+    # Seleccionar la primera sucursal activa de la empresa por defecto
+    stmt_first_suc = (
+        select(Sucursal)
+        .options(selectinload(Sucursal.pais_telefono), selectinload(Sucursal.empresa))
+        .where(Sucursal.empresa_id == empresa_id, Sucursal.activo == True)
+        .order_by(Sucursal.id.asc())
+    )
+    first_suc = (await db.execute(stmt_first_suc)).scalars().first()
+    if first_suc:
+        if not first_suc.whatsapp_instance:
+            first_suc.whatsapp_instance = f"sucursal_{empresa_id}_{first_suc.id}"
+        return first_suc, True
+
+    # Fallback de emergencia solo si la empresa no tuviera ninguna sucursal creada
     stmt_emp = (
         select(Empresa)
         .options(selectinload(Empresa.pais_telefono), selectinload(Empresa.pais))
         .where(Empresa.id == empresa_id)
     )
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
+    empresa = (await db.execute(stmt_emp)).scalar_one_or_none()
     if empresa and not empresa.whatsapp_instance:
         empresa.whatsapp_instance = f"empresa_{empresa.id}"
     return empresa, False
@@ -97,9 +109,10 @@ async def resolve_whatsapp_service(
     sucursal_id: Optional[int] = None,
 ) -> Tuple[Optional[WhatsAppService], Any, bool, bool]:
     """
-    Resuelve el servicio de WhatsApp adecuado para el envío de mensajes:
-    1. Si sucursal_id tiene instancia conectada en el motor Python -> Usa Sucursal.
-    2. Fallback -> Usa la Empresa central.
+    Resuelve la instancia de Sucursal adecuada para el envío de mensajes:
+    1. Si sucursal_id está conectada -> Usa esa sucursal.
+    2. Si no -> Busca otra sucursal conectada de la misma empresa (respaldo entre sedes).
+    3. Si ninguna está conectada -> Retorna la sucursal solicitada (o la primera activa).
     Retorna: (wa_service, entidad_usada, es_sucursal, using_fallback)
     """
     stmt_emp = (
@@ -107,35 +120,56 @@ async def resolve_whatsapp_service(
         .options(selectinload(Empresa.pais_telefono), selectinload(Empresa.pais))
         .where(Empresa.id == empresa_id)
     )
-    res_emp = await db.execute(stmt_emp)
-    empresa = res_emp.scalar_one_or_none()
+    empresa = (await db.execute(stmt_emp)).scalar_one_or_none()
     cod_pais = get_empresa_codigo_pais_resolver(empresa)
 
-    if sucursal_id:
-        stmt_suc = (
-            select(Sucursal)
-            .options(selectinload(Sucursal.pais_telefono))
-            .where(Sucursal.id == sucursal_id, Sucursal.empresa_id == empresa_id)
+    stmt_sucs = (
+        select(Sucursal)
+        .options(selectinload(Sucursal.pais_telefono))
+        .where(Sucursal.empresa_id == empresa_id, Sucursal.activo == True)
+        .order_by(Sucursal.id.asc())
+    )
+    sucursales = (await db.execute(stmt_sucs)).scalars().all()
+
+    def _make_suc_service(suc: Sucursal) -> WhatsAppService:
+        inst = suc.whatsapp_instance or f"sucursal_{empresa_id}_{suc.id}"
+        cod_suc = (
+            suc.pais_telefono.codigo_telefonico
+            if suc.pais_telefono and suc.pais_telefono.codigo_telefonico
+            else cod_pais
         )
-        res_suc = await db.execute(stmt_suc)
-        sucursal = res_suc.scalar_one_or_none()
+        return build_service_from_entity(suc, inst, empresa_id, cod_suc)
 
-        if sucursal:
-            instance = sucursal.whatsapp_instance or f"sucursal_{empresa_id}_{sucursal.id}"
-            live = whatsapp_engine.get_status(instance)
-            if live.get("is_connected") or (sucursal.whatsapp_active and sucursal.whatsapp_connected):
-                cod_pais_suc = (
-                    sucursal.pais_telefono.codigo_telefonico
-                    if sucursal.pais_telefono and sucursal.pais_telefono.codigo_telefonico
-                    else cod_pais
-                )
-                service = build_service_from_entity(sucursal, instance, empresa_id, cod_pais_suc)
-                return service, sucursal, True, False
+    requested_suc: Optional[Sucursal] = None
+    if sucursal_id is not None:
+        for s in sucursales:
+            if s.id == sucursal_id:
+                requested_suc = s
+                break
 
+    # 1. Prioridad: sucursal solicitada si está conectada
+    if requested_suc:
+        inst = requested_suc.whatsapp_instance or f"sucursal_{empresa_id}_{requested_suc.id}"
+        live = whatsapp_engine.get_status(inst)
+        if live.get("is_connected") or (requested_suc.whatsapp_active and requested_suc.whatsapp_connected):
+            return _make_suc_service(requested_suc), requested_suc, True, False
+
+    # 2. Respaldo: otra sucursal conectada de la misma empresa
+    for s in sucursales:
+        inst = s.whatsapp_instance or f"sucursal_{empresa_id}_{s.id}"
+        live = whatsapp_engine.get_status(inst)
+        if live.get("is_connected") or (s.whatsapp_active and s.whatsapp_connected):
+            using_fallback = bool(requested_suc is not None and s.id != requested_suc.id)
+            return _make_suc_service(s), s, True, using_fallback
+
+    # 3. Ninguna conectada aún -> devolver la sucursal solicitada o la primera disponible
+    chosen = requested_suc or (sucursales[0] if sucursales else None)
+    if chosen:
+        return _make_suc_service(chosen), chosen, True, False
+
+    # 4. Fallback extremo si no existe ninguna sucursal
     if empresa:
-        instance = empresa.whatsapp_instance or f"empresa_{empresa.id}"
-        service = build_service_from_entity(empresa, instance, empresa.id, cod_pais)
-        using_fallback = bool(sucursal_id is not None)
-        return service, empresa, False, using_fallback
+        inst = empresa.whatsapp_instance or f"empresa_{empresa.id}"
+        return build_service_from_entity(empresa, inst, empresa.id, cod_pais), empresa, False, False
 
     return None, None, False, False

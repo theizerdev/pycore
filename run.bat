@@ -23,4 +23,9 @@ echo       Password:  Admin1234*
 echo ================================================================
 echo.
 
+REM Liberar posibles instancias previas en puerto 8000 para evitar conflictos de sesion WhatsApp
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8000 " ^| findstr "LISTENING"') do (
+    taskkill /F /T /PID %%a >nul 2>&1
+)
+
 npm.cmd run dev

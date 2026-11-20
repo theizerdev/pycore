@@ -194,11 +194,20 @@ export const WhatsAppCenter: React.FC = () => {
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagnostic, setDiagnostic] = useState<WhatsAppDiagnostic | null>(null);
 
-  // Cargar resumen de todas las instancias
+  // Cargar resumen de todas las instancias (por sucursal)
   const loadInstances = useCallback(async () => {
     try {
       const list = await integracionesApi.getWhatsAppInstances();
       setInstances(list);
+      // Seleccionar automáticamente la primera sucursal disponible si aún no hay una seleccionada
+      if (list.length > 0) {
+        setSelectedSucursalId((prev) => {
+          if (prev !== null && list.some((i) => i.sucursal_id === prev)) {
+            return prev;
+          }
+          return list[0].sucursal_id ?? null;
+        });
+      }
     } catch {
       // silencioso
     }
@@ -284,11 +293,12 @@ export const WhatsAppCenter: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSucursalId]);
 
-  // Polling inteligente en vivo: cada 2.5s mientras espera QR/conexión o hay mensajes en cola, si no cada 10s
+  // Polling inteligente en vivo: cada 2.5s mientras espera QR/conexión/reconexión o hay mensajes en cola, si no cada 10s
   useEffect(() => {
     const fastMode =
       status?.connection_state === 'QR_READY' ||
       status?.connection_state === 'CONNECTING' ||
+      status?.connection_state === 'RECONNECTING' ||
       (queueStats?.queued ?? 0) > 0 ||
       Boolean(status?.currently_typing_to);
 
@@ -708,7 +718,8 @@ export const WhatsAppCenter: React.FC = () => {
 
   const isConnected = status?.connection_state === 'CONNECTED';
   const isQrReady = status?.connection_state === 'QR_READY';
-  const isConnecting = status?.connection_state === 'CONNECTING';
+  const isConnecting = status?.connection_state === 'CONNECTING' || status?.connection_state === 'RECONNECTING';
+  const isReconnecting = status?.connection_state === 'RECONNECTING';
   const isBannedCooldown = status?.connection_state === 'BANNED_COOLDOWN';
   const isPaused = Boolean(queueStats?.queuePaused || status?.queue_paused);
 
@@ -734,6 +745,13 @@ export const WhatsAppCenter: React.FC = () => {
           <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 gap-1.5 font-semibold">
             <QrCode className="size-3" />
             Esperando QR
+          </Badge>
+        );
+      case 'RECONNECTING':
+        return (
+          <Badge className="bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 gap-1.5 font-semibold">
+            <Loader2 className="size-3 animate-spin" />
+            Reconectando
           </Badge>
         );
       case 'CONNECTING':
@@ -844,12 +862,12 @@ export const WhatsAppCenter: React.FC = () => {
         </Button>
       </ModuleHeader>
 
-      {/* ── SELECTOR MULTI-INSTANCIA (EMPRESA PRINCIPAL + SUCURSALES) ── */}
+      {/* ── SELECTOR MULTI-INSTANCIA POR SUCURSAL ── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Building2 className="size-3.5" />
-            <span>Instancias Independientes ({instances.length || 1})</span>
+            <span>Instancias por Sucursal ({instances.length || 1})</span>
           </div>
           {status?.currently_typing_to && (
             <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 gap-1.5 animate-pulse">
@@ -1224,10 +1242,14 @@ export const WhatsAppCenter: React.FC = () => {
                             <Loader2 className="size-10 animate-spin text-primary mx-auto" />
                             <div>
                               <p className="text-sm font-semibold text-foreground">
-                                Negociando sesión cifrada con WhatsApp...
+                                {isReconnecting
+                                  ? 'Restaurando sesión de WhatsApp automáticamente...'
+                                  : 'Negociando sesión cifrada con WhatsApp...'}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                Generando código QR desde el motor nativo en Python
+                                {isReconnecting
+                                  ? 'No hace falta volver a escanear; reconectando el socket cifrado.'
+                                  : 'Generando código QR desde el motor nativo en Python'}
                               </p>
                             </div>
                           </div>

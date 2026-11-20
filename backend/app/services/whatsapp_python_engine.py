@@ -39,9 +39,14 @@ from neonize.events import (
     ConnectedEv,
     ConnectFailureEv,
     DisconnectedEv,
+    KeepAliveRestoredEv,
+    KeepAliveTimeoutEv,
     LoggedOutEv,
+    ManualLoginReconnectEv,
+    MessageEv,
     PairStatusEv,
     ReceiptEv,
+    StreamReplacedEv,
     TemporaryBanEv,
 )
 from neonize.proto.waCompanionReg.WACompanionReg_pb2 import DeviceProps
@@ -303,7 +308,7 @@ class WhatsAppInstanceRuntime:
     db_path: str
     client: Optional[NewClient] = None
     thread: Optional[threading.Thread] = None
-    connection_state: str = "DISCONNECTED"  # DISCONNECTED | CONNECTING | QR_READY | CONNECTED | BANNED_COOLDOWN
+    connection_state: str = "DISCONNECTED"  # DISCONNECTED | CONNECTING | RECONNECTING | QR_READY | CONNECTED | BANNED_COOLDOWN
     qr_code: Optional[str] = None
     qr_data_url: Optional[str] = None
     qr_generated_at: Optional[datetime] = None
@@ -313,6 +318,10 @@ class WhatsAppInstanceRuntime:
     last_sync: datetime = field(default_factory=datetime.now)
     last_error: Optional[str] = None
     proxy_url: Optional[str] = None
+    manual_disconnect: bool = False
+    logged_out: bool = False
+    reconnect_attempts: int = 0
+    disconnected_at: Optional[datetime] = None
 
     # Estado en vivo Anti-Baneo
     queue_paused: bool = False
@@ -353,7 +362,19 @@ class WhatsAppPythonEngine:
 
     def has_persisted_session(self, instance_name: str) -> bool:
         path = self._session_path(instance_name)
-        return os.path.exists(path) and os.path.getsize(path) > 4096
+        if not os.path.exists(path) or os.path.getsize(path) < 4096:
+            return False
+        try:
+            import sqlite3
+            con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=1.0)
+            try:
+                cur = con.execute("SELECT COUNT(*) FROM whatsmeow_device WHERE jid IS NOT NULL AND jid != ''")
+                count = int(cur.fetchone()[0] or 0)
+                return count > 0
+            finally:
+                con.close()
+        except Exception:
+            return False
 
     def _get_or_create_runtime(self, instance_name: str) -> WhatsAppInstanceRuntime:
         safe = sanitize_instance_name(instance_name)
@@ -518,6 +539,10 @@ class WhatsAppPythonEngine:
                 rt.qr_code = None
                 rt.qr_data_url = None
                 rt.qr_generated_at = None
+                rt.logged_out = False
+                rt.manual_disconnect = False
+                rt.reconnect_attempts = 0
+                rt.disconnected_at = None
                 if phone:
                     rt.phone_number = phone
                 if push_name:
@@ -545,6 +570,10 @@ class WhatsAppPythonEngine:
                 rt.connection_state = "CONNECTED"
                 rt.qr_code = None
                 rt.qr_data_url = None
+                rt.logged_out = False
+                rt.manual_disconnect = False
+                rt.reconnect_attempts = 0
+                rt.disconnected_at = None
                 if not rt.connected_at:
                     rt.connected_at = datetime.now()
                 rt.last_sync = datetime.now()
@@ -554,20 +583,78 @@ class WhatsAppPythonEngine:
                 self._persist_connection_state(rt.instance_name, True, "connected", phone=phone)
             )
 
-        @client.event(DisconnectedEv)
-        def on_disconnected(_c: NewClient, _ev: DisconnectedEv):
+        @client.event(KeepAliveTimeoutEv)
+        def on_ka_timeout(_c: NewClient, _ev: KeepAliveTimeoutEv):
+            logger.warning(f"[WA {rt.instance_name}] Keep-alive timeout temporal; esperando reconexión automática...")
             with rt.lock:
-                if rt.connection_state != "BANNED_COOLDOWN":
-                    rt.connection_state = "DISCONNECTED"
+                if rt.connection_state == "CONNECTED":
+                    rt.connection_state = "RECONNECTING"
+                    rt.disconnected_at = datetime.now()
+
+        @client.event(KeepAliveRestoredEv)
+        def on_ka_restored(_c: NewClient, _ev: KeepAliveRestoredEv):
+            logger.info(f"[WA {rt.instance_name}] Keep-alive restaurado.")
+            with rt.lock:
+                if rt.connection_state in ("RECONNECTING", "CONNECTING"):
+                    rt.connection_state = "CONNECTED"
+                    rt.disconnected_at = None
+                    rt.last_error = None
+                    rt.last_sync = datetime.now()
+
+        @client.event(StreamReplacedEv)
+        def on_stream_replaced(_c: NewClient, _ev: StreamReplacedEv):
+            logger.warning(
+                f"[WA {rt.instance_name}] StreamReplacedEv: otra instancia abrió la misma sesión simultáneamente."
+            )
+            with rt.lock:
+                rt.manual_disconnect = True  # No entrar en bucle infinito de pelea con otro proceso
+                rt.connection_state = "DISCONNECTED"
+                rt.last_error = "Conflicto de sesión: otro proceso abrió la misma sesión de WhatsApp."
                 rt.last_sync = datetime.now()
-            logger.info(f"[WA {rt.instance_name}] Sesión desconectada.")
             self._schedule_coro(
                 self._persist_connection_state(rt.instance_name, False, "disconnected")
             )
 
+        @client.event(ManualLoginReconnectEv)
+        def on_manual_reconnect(_c: NewClient, _ev: ManualLoginReconnectEv):
+            logger.info(f"[WA {rt.instance_name}] ManualLoginReconnectEv recibido; reiniciando socket...")
+            with rt.lock:
+                rt.connection_state = "RECONNECTING"
+                rt.disconnected_at = datetime.now()
+
+        @client.event(DisconnectedEv)
+        def on_disconnected(_c: NewClient, _ev: DisconnectedEv):
+            with rt.lock:
+                if rt.connection_state == "BANNED_COOLDOWN":
+                    return
+                if rt.manual_disconnect or rt.logged_out:
+                    rt.connection_state = "DISCONNECTED"
+                    rt.last_sync = datetime.now()
+                    persist_disc = True
+                elif self.has_persisted_session(rt.instance_name):
+                    # Desconexión transitoria (ej. reinicio 515 post-pairing o microcorte de red):
+                    # WhatsMeow reconecta automáticamente; no marcar desconectado de inmediato.
+                    rt.connection_state = "RECONNECTING"
+                    rt.disconnected_at = datetime.now()
+                    rt.last_sync = datetime.now()
+                    persist_disc = False
+                else:
+                    rt.connection_state = "DISCONNECTED"
+                    rt.last_sync = datetime.now()
+                    persist_disc = True
+            logger.info(
+                f"[WA {rt.instance_name}] DisconnectedEv (estado={rt.connection_state})."
+            )
+            if persist_disc:
+                self._schedule_coro(
+                    self._persist_connection_state(rt.instance_name, False, "disconnected")
+                )
+
         @client.event(LoggedOutEv)
         def on_logged_out(_c: NewClient, _ev: LoggedOutEv):
             with rt.lock:
+                rt.logged_out = True
+                rt.manual_disconnect = True
                 rt.connection_state = "DISCONNECTED"
                 rt.phone_number = None
                 rt.push_name = None
@@ -617,6 +704,95 @@ class WhatsAppPythonEngine:
             except Exception:
                 pass
 
+        @client.event(MessageEv)
+        def on_message(c: NewClient, ev: MessageEv):
+            """
+            Captura en tiempo real documentos PDF e imágenes enviados por pacientes al WhatsApp
+            de la sucursal y los despacha al servicio de Estudios Clínicos.
+            """
+            try:
+                src = ev.Info.MessageSource
+                if src.IsFromMe or src.IsGroup:
+                    return
+
+                msg = ev.Message
+                mime_type = ""
+                file_name = ""
+                caption = ""
+                file_length = 0
+
+                if msg.HasField("imageMessage"):
+                    im = msg.imageMessage
+                    mime_type = im.mimetype or "image/jpeg"
+                    caption = im.caption or ""
+                    file_length = int(im.fileLength or 0)
+                    file_name = f"imagen_estudio_{ev.Info.ID or int(time.time())}.jpg"
+                elif msg.HasField("documentMessage"):
+                    dm = msg.documentMessage
+                    mime_type = dm.mimetype or "application/pdf"
+                    file_name = dm.fileName or dm.title or f"documento_{ev.Info.ID or int(time.time())}.pdf"
+                    caption = dm.caption or ""
+                    file_length = int(dm.fileLength or 0)
+                elif msg.HasField("documentWithCaptionMessage") and msg.documentWithCaptionMessage.message.HasField("documentMessage"):
+                    dm = msg.documentWithCaptionMessage.message.documentMessage
+                    mime_type = dm.mimetype or "application/pdf"
+                    file_name = dm.fileName or dm.title or f"documento_{ev.Info.ID or int(time.time())}.pdf"
+                    caption = dm.caption or ""
+                    file_length = int(dm.fileLength or 0)
+                else:
+                    return
+
+                clean_mime = mime_type.split(";")[0].strip().lower()
+                if clean_mime not in ("application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"):
+                    return
+                if file_length > 15 * 1024 * 1024:
+                    logger.warning(f"[WA {rt.instance_name}] Archivo entrante omitido por superar 15MB ({file_length} bytes).")
+                    return
+
+                # Resolver teléfono real del remitente (soportando LID y JID estándar)
+                sender_phone = ""
+                if getattr(src, "SenderAlt", None) and src.SenderAlt.User and src.SenderAlt.Server != "lid":
+                    sender_phone = str(src.SenderAlt.User)
+                elif src.Sender and src.Sender.User and src.Sender.Server != "lid":
+                    sender_phone = str(src.Sender.User)
+                elif src.Chat and src.Chat.User and src.Chat.Server != "lid":
+                    sender_phone = str(src.Chat.User)
+                elif src.Sender and src.Sender.Server == "lid":
+                    try:
+                        pn_jid = c.get_pn_from_lid(src.Sender)
+                        if pn_jid and pn_jid.User:
+                            sender_phone = str(pn_jid.User)
+                    except Exception:
+                        sender_phone = str(src.Sender.User or "")
+
+                if not sender_phone:
+                    return
+
+                push_name = str(getattr(ev.Info, "Pushname", "") or "").strip()
+                msg_id = str(getattr(ev.Info, "ID", "") or "")
+
+                # Descargar bytes reales del PDF/imagen directamente desde WhatsApp (sin intermediarios)
+                file_bytes = c.download_any(msg)
+                if not file_bytes:
+                    return
+
+                from app.services.whatsapp_inbound_studies import handle_inbound_whatsapp_media
+
+                self._schedule_coro(
+                    handle_inbound_whatsapp_media(
+                        instance_name=rt.instance_name,
+                        sender_phone=sender_phone,
+                        push_name=push_name,
+                        message_id=msg_id,
+                        file_bytes=bytes(file_bytes),
+                        mime_type=clean_mime,
+                        file_name=file_name,
+                        caption=caption,
+                    )
+                )
+            except Exception as exc:
+                logger.warning(f"[WA {rt.instance_name}] Error procesando media entrante en MessageEv: {exc}")
+
         return client
 
     def _start_client_thread(
@@ -626,7 +802,9 @@ class WhatsAppPythonEngine:
             if rt.thread and rt.thread.is_alive():
                 return
             rt.ready_event.clear()
-            rt.connection_state = "CONNECTING"
+            rt.manual_disconnect = False
+            rt.logged_out = False
+            rt.connection_state = "RECONNECTING" if self.has_persisted_session(rt.instance_name) else "CONNECTING"
             rt.last_error = None
             rt.proxy_url = proxy_url
             client = self._build_client(rt)
@@ -643,14 +821,37 @@ class WhatsAppPythonEngine:
                     logger.warning(f"[WA {rt.instance_name}] Hilo cliente finalizado: {exc}")
                     with rt.lock:
                         rt.last_error = str(exc)
-                        if rt.connection_state not in ("CONNECTED", "BANNED_COOLDOWN"):
-                            rt.connection_state = "DISCONNECTED"
                         rt.ready_event.set()
                 finally:
+                    should_auto_retry = False
+                    retry_delay = 5.0
                     with rt.lock:
-                        if rt.client is client and rt.connection_state == "CONNECTING":
-                            rt.connection_state = "DISCONNECTED"
+                        if rt.client is client:
+                            rt.client = None
+                            rt.thread = None
+                            if (
+                                not rt.manual_disconnect
+                                and not rt.logged_out
+                                and rt.connection_state != "BANNED_COOLDOWN"
+                                and self.has_persisted_session(rt.instance_name)
+                                and rt.reconnect_attempts < 6
+                            ):
+                                rt.reconnect_attempts += 1
+                                rt.connection_state = "RECONNECTING"
+                                retry_delay = min(30.0, 3.0 * (2 ** (rt.reconnect_attempts - 1)))
+                                should_auto_retry = True
+                            else:
+                                if rt.connection_state != "BANNED_COOLDOWN":
+                                    rt.connection_state = "DISCONNECTED"
                         rt.ready_event.set()
+
+                    if should_auto_retry:
+                        logger.info(
+                            f"🔄 [WA {rt.instance_name}] Auto-reconexión en {retry_delay:.0f}s (intento {rt.reconnect_attempts}/6)..."
+                        )
+                        self._schedule_coro(
+                            self._delayed_reconnect(rt.instance_name, rt.proxy_url, retry_delay)
+                        )
 
             thread = threading.Thread(
                 target=_runner,
@@ -659,6 +860,21 @@ class WhatsAppPythonEngine:
             )
             rt.thread = thread
             thread.start()
+
+    async def _delayed_reconnect(
+        self, instance_name: str, proxy_url: Optional[str], delay: float
+    ) -> None:
+        await asyncio.sleep(delay)
+        rt = self.get_runtime(instance_name)
+        if not rt:
+            return
+        with rt.lock:
+            if rt.manual_disconnect or rt.logged_out or rt.connection_state == "BANNED_COOLDOWN":
+                return
+            if rt.thread and rt.thread.is_alive():
+                return
+        if self.has_persisted_session(instance_name):
+            self._start_client_thread(rt, proxy_url=proxy_url)
 
     async def connect_instance(
         self,
@@ -812,6 +1028,8 @@ class WhatsAppPythonEngine:
             with rt.lock:
                 client = rt.client
                 thread = rt.thread
+                rt.manual_disconnect = True
+                rt.logged_out = clear_session
                 rt.client = None
                 rt.thread = None
                 rt.connection_state = "DISCONNECTED"
@@ -857,7 +1075,24 @@ class WhatsAppPythonEngine:
         rt = self._get_or_create_runtime(instance_name)
         with rt.lock:
             ws_open = bool(rt.client and rt.client.is_connected)
+            logged_in = bool(rt.client and rt.client.is_logged_in)
             thread_alive = bool(rt.thread and rt.thread.is_alive())
+
+            # Si el socket Go ya reconectó en segundo plano, sincronizar a CONNECTED
+            if ws_open and logged_in and thread_alive and rt.connection_state in ("RECONNECTING", "CONNECTING", "DISCONNECTED"):
+                rt.connection_state = "CONNECTED"
+                rt.disconnected_at = None
+                rt.last_error = None
+                if not rt.phone_number:
+                    try:
+                        me = rt.client.get_me()
+                        if me and me.JID and me.JID.User:
+                            rt.phone_number = str(me.JID.User)
+                        if me and me.PushName:
+                            rt.push_name = str(me.PushName)
+                    except Exception:
+                        pass
+
             # Si el QR expiró o el websocket ya cerró, reflejar desconectado
             if rt.connection_state == "QR_READY":
                 age = (datetime.now() - rt.qr_generated_at).total_seconds() if rt.qr_generated_at else 999
@@ -867,7 +1102,11 @@ class WhatsAppPythonEngine:
                     rt.qr_data_url = None
                     rt.qr_generated_at = None
             elif rt.connection_state == "CONNECTED" and not thread_alive:
-                rt.connection_state = "DISCONNECTED"
+                rt.connection_state = "RECONNECTING" if (not rt.manual_disconnect and not rt.logged_out and self.has_persisted_session(rt.instance_name)) else "DISCONNECTED"
+            elif rt.connection_state == "RECONNECTING" and rt.disconnected_at:
+                # Si lleva > 90s sin lograr reconectar y no hay hilo vivo, pasar a DISCONNECTED
+                if not thread_alive and (datetime.now() - rt.disconnected_at).total_seconds() > 90:
+                    rt.connection_state = "DISCONNECTED"
             return self.build_status_payload(rt)
 
     def build_status_payload(self, rt: WhatsAppInstanceRuntime) -> Dict[str, Any]:
@@ -1198,31 +1437,26 @@ class WhatsAppPythonEngine:
     async def auto_reconnect_saved_sessions(self) -> None:
         """
         Al iniciar FastAPI, reconecta automáticamente las sesiones SQLite existentes
-        que correspondan a empresas o sucursales marcadas como activas en BD.
+        por Sucursal (deduplicadas por nombre de instancia para evitar conflictos).
         """
         try:
             from sqlalchemy.future import select
             from app.core.database import AsyncSessionLocal
-            from app.models.empresa import Empresa
             from app.models.sucursal import Sucursal
 
-            to_reconnect: List[Tuple[str, Optional[str]]] = []
+            to_reconnect: Dict[str, Optional[str]] = {}
 
             async with AsyncSessionLocal() as db:
-                emps = (await db.execute(select(Empresa))).scalars().all()
-                for emp in emps:
-                    inst = emp.whatsapp_instance or f"empresa_{emp.id}"
-                    if self.has_persisted_session(inst):
-                        to_reconnect.append((inst, emp.whatsapp_proxy_url))
-
-                sucs = (await db.execute(select(Sucursal))).scalars().all()
+                sucs = (await db.execute(select(Sucursal).where(Sucursal.activo == True))).scalars().all()
                 for suc in sucs:
-                    inst = suc.whatsapp_instance or f"sucursal_{suc.empresa_id}_{suc.id}"
+                    inst = sanitize_instance_name(
+                        suc.whatsapp_instance or f"sucursal_{suc.empresa_id}_{suc.id}"
+                    )
                     if self.has_persisted_session(inst):
-                        to_reconnect.append((inst, suc.whatsapp_proxy_url))
+                        to_reconnect[inst] = suc.whatsapp_proxy_url
 
-            for inst, proxy in to_reconnect:
-                logger.info(f"🔄 [WA ENGINE] Reconectando sesión guardada: {inst}")
+            for inst, proxy in to_reconnect.items():
+                logger.info(f"🔄 [WA ENGINE] Reconectando sesión de sucursal guardada: {inst}")
                 rt = self._get_or_create_runtime(inst)
                 self._start_client_thread(rt, proxy_url=proxy)
         except Exception as e:
@@ -1235,6 +1469,7 @@ class WhatsAppPythonEngine:
         for rt in runtimes:
             try:
                 with rt.lock:
+                    rt.manual_disconnect = True
                     client = rt.client
                 if client:
                     client.stop()

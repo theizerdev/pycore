@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # URL del Frontend (Portal Web)
     FRONTEND_URL: str = "http://localhost:5173"
 
+    # Agente Clínico Propio (MediCore AI Local - $0 APIs externas)
+    # Conector opcional a servidor local de IA open-source (ej. Ollama con MedGemma / Qwen2.5-VL en servidor propio con GPU)
+    LOCAL_AI_URL: str = ""
+    LOCAL_AI_MODEL: str = "qwen2.5vl:7b"
+
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
         "https://medisoft.theizerdev.com",

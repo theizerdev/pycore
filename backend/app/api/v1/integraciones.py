@@ -429,9 +429,12 @@ async def list_whatsapp_instances(
             has_saved_session=bool(live.get("has_saved_session")),
         )
 
-    items.append(await _build_summary(empresa, False))
-    for suc in sucursales:
-        items.append(await _build_summary(suc, True))
+    # Solo instancias por Sucursal (si la empresa no tiene sucursales activas, fallback a empresa)
+    if sucursales:
+        for suc in sucursales:
+            items.append(await _build_summary(suc, True))
+    else:
+        items.append(await _build_summary(empresa, False))
 
     return items
 

@@ -1,22 +1,44 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List, Optional, Any, Dict
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+import re
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy import select, or_, and_, desc, func, case
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from jose import jwt, JWTError
 import base64
 
-from app.core.database import get_db
+from app.core.config import settings
+from app.core.database import get_db, AsyncSessionLocal
 from app.models.usuario import Usuario
 from app.models.paciente import Paciente
-from app.models.estudio import EstudioAdjunto
+from app.models.estudio import EstudioAdjunto, WhatsAppEstudioPendiente
 from app.models.consulta import ConsultaMedica
 from app.models.medico import Medico
 from app.models.sucursal import Sucursal
 from app.core.security import get_current_user, require_permission
+from app.services.clinical_agent import PatientContext, clinical_agent, decode_data_uri
+from app.services.estudios_ws_manager import estudios_ws_manager
+from app.services.whatsapp_python_engine import whatsapp_engine, format_phone_number
+from app.services.whatsapp_resolver import resolve_whatsapp_service, get_whatsapp_target
 
 router = APIRouter(prefix="/estudios", tags=["Estudios Médicos y Visor Inteligente"])
+
+
+class SolicitarWhatsAppRequest(BaseModel):
+    enviar_mensaje: bool = True
+    mensaje_personalizado: Optional[str] = None
+    telefono_destino: Optional[str] = None
+
+
+class AsignarPendienteRequest(BaseModel):
+    consulta_id: int
+    paciente_id: int
+    medico_id: Optional[int] = None
+    titulo: Optional[str] = None
+    categoria: Optional[str] = None
+    notas: Optional[str] = None
 
 
 # ==========================================
@@ -74,205 +96,57 @@ class EstudioActualizarRequest(BaseModel):
     estado_analisis: Optional[str] = None
 
 
+class AnalizarTextoClinicoRequest(BaseModel):
+    texto: str
+    paciente_id: Optional[int] = None
+
+
 # ==========================================
-# MOTOR DEL BOT CLÍNICO INTELIGENTE
+# HELPER DE CONTEXTO DEL PACIENTE PARA MEDICORE AI
 # ==========================================
 
-def ejecutar_bot_analisis_laboratorio(titulo: str, subtipo: Optional[str], valores_existentes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
-    """
-    Motor del Asistente/Bot Clínico para Exámenes de Laboratorio.
-    Calcula desvíos, detecta analitos fuera de rango y redacta notas
-    explicativas orientadas al médico y al paciente.
-    """
-    valores = valores_existentes or []
-
-    # Si no hay valores cargados, proveer plantilla inteligente según título
-    if not valores:
-        t_low = (titulo + " " + (subtipo or "")).lower()
-        if "hemo" in t_low or "sangre" in t_low or "completa" in t_low:
-            valores = [
-                {"parametro": "Glóbulos Rojos (Eritrocitos)", "valor": 4.1, "unidad": "M/uL", "ref_min": 4.3, "ref_max": 5.8},
-                {"parametro": "Hemoglobina (Hb)", "valor": 11.2, "unidad": "g/dL", "ref_min": 13.0, "ref_max": 17.5},
-                {"parametro": "Hematocrito (Hto)", "valor": 34.0, "unidad": "%", "ref_min": 39.0, "ref_max": 50.0},
-                {"parametro": "Glóbulos Blancos (Leucocitos)", "valor": 7200.0, "unidad": "/mm3", "ref_min": 4500.0, "ref_max": 10500.0},
-                {"parametro": "Plaquetas", "valor": 240000.0, "unidad": "/mm3", "ref_min": 150000.0, "ref_max": 450000.0},
-                {"parametro": "VCM", "valor": 78.5, "unidad": "fL", "ref_min": 80.0, "ref_max": 96.0},
-            ]
-        elif "lipid" in t_low or "colesterol" in t_low:
-            valores = [
-                {"parametro": "Colesterol Total", "valor": 235.0, "unidad": "mg/dL", "ref_min": 120.0, "ref_max": 200.0},
-                {"parametro": "Triglicéridos", "valor": 185.0, "unidad": "mg/dL", "ref_min": 50.0, "ref_max": 150.0},
-                {"parametro": "Colesterol HDL (Bueno)", "valor": 42.0, "unidad": "mg/dL", "ref_min": 40.0, "ref_max": 60.0},
-                {"parametro": "Colesterol LDL (Malo)", "valor": 156.0, "unidad": "mg/dL", "ref_min": 0.0, "ref_max": 100.0},
-            ]
-        elif "glu" in t_low or "quimica" in t_low or "perfil 20" in t_low:
-            valores = [
-                {"parametro": "Glucosa Basal", "valor": 118.0, "unidad": "mg/dL", "ref_min": 70.0, "ref_max": 99.0},
-                {"parametro": "Urea", "valor": 28.0, "unidad": "mg/dL", "ref_min": 15.0, "ref_max": 45.0},
-                {"parametro": "Creatinina", "valor": 0.9, "unidad": "mg/dL", "ref_min": 0.6, "ref_max": 1.2},
-                {"parametro": "Ácido Úrico", "valor": 7.4, "unidad": "mg/dL", "ref_min": 3.4, "ref_max": 7.0},
-            ]
-        else:
-            valores = [
-                {"parametro": "Glucosa", "valor": 104.0, "unidad": "mg/dL", "ref_min": 70.0, "ref_max": 99.0},
-                {"parametro": "Colesterol Total", "valor": 210.0, "unidad": "mg/dL", "ref_min": 120.0, "ref_max": 200.0},
-                {"parametro": "Hemoglobina", "valor": 13.5, "unidad": "g/dL", "ref_min": 12.0, "ref_max": 16.0},
-            ]
-
-    # Procesar analitos
-    alertas = []
-    valores_procesados = []
-
-    for item in valores:
-        val = float(item.get("valor", 0))
-        rmin = float(item.get("ref_min", 0))
-        rmax = float(item.get("ref_max", 0))
-        param = item.get("parametro", "Parámetro")
-        unidad = item.get("unidad", "")
-
-        if val < rmin:
-            estado = "bajo"
-            alerta = True
-            interp = f"Por debajo del rango de referencia ({rmin} - {rmax} {unidad})."
-            alertas.append(f"🔻 {param}: {val} {unidad} (Bajo)")
-        elif val > rmax:
-            estado = "alto"
-            alerta = True
-            interp = f"Por encima del rango de referencia ({rmin} - {rmax} {unidad})."
-            alertas.append(f"⚠️ {param}: {val} {unidad} (Elevado)")
-        else:
-            estado = "normal"
-            alerta = False
-            interp = f"Dentro de parámetros normales esperados."
-
-        valores_procesados.append({
-            "parametro": param,
-            "valor": val,
-            "unidad": unidad,
-            "ref_min": rmin,
-            "ref_max": rmax,
-            "estado": estado,
-            "alerta": alerta,
-            "interpretacion": item.get("interpretacion") or interp
-        })
-
-    total_alterados = len(alertas)
-    estado_general = "analizado_alterado" if total_alterados > 0 else "analizado_normal"
-
-    # Redacción clínica del Bot
-    if total_alterados > 0:
-        resumen_medico = (
-            f"El estudio presenta {total_alterados} parámetro(s) fuera del rango fisiológico estándar:\n"
-            + "\n".join([f"- {a}" for a in alertas])
-            + "\n\nSe recomienda correlacionar con la clínica del paciente, hábitos nutricionales y considerar pruebas confirmatorias."
-        )
-        guia_paciente = (
-            f"Se identificaron algunas variaciones en su examen ({', '.join([a.split(':')[0].replace('⚠️ ', '').replace('🔻 ', '') for a in alertas])}). "
-            f"Su médico tratante le indicará los ajustes preventivos (dieta, suplementación o medicación) "
-            f"para mantener sus valores debidamente controlados y en equilibrio."
-        )
-    else:
-        resumen_medico = "Todos los parámetros analizados se encuentran dentro de los intervalos biológicos de referencia normales."
-        guia_paciente = "¡Buenas noticias! Los resultados de su examen se encuentran completamente dentro de los rangos normales y saludables."
-
-    interpretacion_final = (
-        f"🤖 RESUMEN DEL ASISTENTE CLÍNICO INTELIGENTE\n\n"
-        f"📋 CONSIDERACIONES MÉDICAS:\n{resumen_medico}\n\n"
-        f"🗣️ GUÍA EXPLICATIVA PARA EL PACIENTE:\n{guia_paciente}"
+def _build_patient_context(pac: Optional[Paciente]) -> PatientContext:
+    if not pac:
+        return PatientContext()
+    return PatientContext(
+        edad=getattr(pac, "edad", None),
+        genero=getattr(pac, "genero", None),
+        antecedentes=getattr(pac, "antecedentes_patologicos", None),
+        medicacion=getattr(pac, "medicacion_habitual", None),
+        alergias=getattr(pac, "alergias", None),
     )
 
-    return {
-        "valores_laboratorio": valores_procesados,
-        "alertas_detectadas": alertas,
-        "interpretacion_clinica": interpretacion_final,
-        "estado_analisis": estado_general
-    }
+
+@router.get("/agente/capacidades")
+async def obtener_capacidades_agente(
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Expone las capacidades activas del Agente Clínico Propio (MediCore AI Local)."""
+    return clinical_agent.get_capabilities()
 
 
-def ejecutar_bot_analisis_imagenologia(titulo: str, subtipo: Optional[str], datos_existentes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+@router.post("/agente/analizar-texto")
+async def analizar_texto_con_agente(
+    req: AnalizarTextoClinicoRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
     """
-    Motor del Asistente/Bot Clínico para Estudios de Imagen (Ecos, Panorámicas Dentales, Rx).
-    Estructura hallazgos anatómicos, técnica radiológica y guía de comunicación al paciente.
+    Endpoint reutilizable del Agente Clínico MediCore AI Local para analizar texto clínico libre
+    (resultados pegados, notas de evolución, informes externos) y extraer biomarcadores,
+    cálculos derivados, síndromes y códigos CIE-10 sugeridos.
     """
-    t_low = (titulo + " " + (subtipo or "")).lower()
-    datos = dict(datos_existentes or {})
-
-    # Detectar tipo de estudio
-    if "panoramica" in t_low or "dental" in t_low or "orto" in t_low or "diente" in t_low:
-        region = datos.get("region_anatomica") or "Maxilar superior, mandíbula, rebordes alveolares y articulación temporomandibular (ATM)"
-        tecnica = datos.get("tecnica") or "Ortopantomografía Digital Panorámica"
-        hallazgos = datos.get("hallazgos") or (
-            "Arcadas dentarias con adecuada altura de cresta ósea alveolar. "
-            "Se observa pieza 38 (tercer molar inferior izquierdo) en posición mesioangular submucosa, en íntima relación con raíz de pieza 37. "
-            "Pieza 48 erupcionada sin alteración periapical. No se evidencian lesiones osteolíticas quísticas ni ensanchamiento patológico del ligamento periodontal en sector anteroinferior."
-        )
-        conclusion = datos.get("conclusion") or "Impactación parcial de tercer molar 38. Salud periodontal ósea conservada en sectores restantes."
-        recomendaciones = datos.get("recomendaciones") or "Evaluación odontológica/quirúrgica para planificar exodoncia profiláctica de pieza 38."
-        guia_paciente = datos.get("guia_paciente") or (
-            "En la panorámica se visualiza que la muela del juicio inferior izquierda está creciendo un poco inclinada hacia el diente de adelante. "
-            "El odontólogo le explicará las opciones para retirarla a tiempo y evitar molestias o apiñamiento dental."
-        )
-        alertas = ["⚠️ Tercer Molar 38 en posición mesioangular"]
-    elif "eco" in t_low or "ultra" in t_low:
-        region = datos.get("region_anatomica") or "Abdomen superior (Hígado, Vesícula biliar, Vía biliar, Páncreas, Bazo y Riñones)"
-        tecnica = datos.get("tecnica") or "Ultrasonografía / Ecografía Abdominal Multi-frecuencia"
-        hallazgos = datos.get("hallazgos") or (
-            "Hígado de tamaño conservado, bordes regulares, con incremento leve y difuso de su ecogenicidad parenquimatosa sin lesiones focales sólidas ni quísticas. "
-            "Vesícula biliar distendida de paredes finas (2 mm), alitiasica. Vía biliar intra y extrahepática de calibre normal. "
-            "Ambos riñones conservan adecuada relación córtico-medular."
-        )
-        conclusion = datos.get("conclusion") or "Signos ecográficos sugestivos de esteatosis hepática leve (Grado I). Resto de órganos abdominales dentro de la normalidad."
-        recomendaciones = datos.get("recomendaciones") or "Plan nutricional bajo en grasas saturadas, actividad física y control ecográfico evolutivo en 6-12 meses."
-        guia_paciente = datos.get("guia_paciente") or (
-            "El ecograma muestra que su hígado y riñones tienen buen tamaño y funcionamiento, únicamente con una leve acumulación de grasa (hígado graso leve). "
-            "Con mejoras en la alimentación y ejercicio se corrige satisfactoriamente."
-        )
-        alertas = ["⚠️ Esteatosis Hepática Leve (Grado I)"]
-    elif "torax" in t_low or "rx" in t_low or "rayos" in t_low:
-        region = datos.get("region_anatomica") or "Tórax óseo y campos pleuropulmonares (Proyección PA)"
-        tecnica = datos.get("tecnica") or "Radiografía Digital de Tórax Posteroanterior"
-        hallazgos = datos.get("hallazgos") or (
-            "Campos pulmonares bien expandidos, con trama broncovascular bilateral conservada. "
-            "Sin consolidaciones neumónicas activas, atelectasias ni derrame pleural. Silueta cardiaca de morfología y tamaño normales (ICT < 0.50). "
-            "Senos costofrénicos y cardiofrénicos libres."
-        )
-        conclusion = datos.get("conclusion") or "Radiografía de tórax dentro de límites normales. Sin signos de patología pleuropulmonar aguda."
-        recomendaciones = datos.get("recomendaciones") or "Correlación clínica. No requiere imágenes adicionales de tórax."
-        guia_paciente = datos.get("guia_paciente") or "Sus pulmones y corazón se observan limpios, con buena expansión de aire y sin signos de infección o líquido."
-        alertas = []
-    else:
-        region = datos.get("region_anatomica") or "Región anatómica evaluada"
-        tecnica = datos.get("tecnica") or "Estudio Imagenológico Diagnóstico"
-        hallazgos = datos.get("hallazgos") or "Estructuras anatómicas adecuadamente visualizadas con contrastes de densidad característicos."
-        conclusion = datos.get("conclusion") or "Estudio evaluado satisfactoriamente sin hallazgos de urgencia inmediata."
-        recomendaciones = datos.get("recomendaciones") or "Seguimiento habitual según criterio del médico tratante."
-        guia_paciente = datos.get("guia_paciente") or "El estudio de imagen ha sido registrado en su historial clínico para la valoración médica correspondiente."
-        alertas = []
-
-    datos_actualizados = {
-        "region_anatomica": region,
-        "tecnica": tecnica,
-        "calidad_estudio": datos.get("calidad_estudio", "Adecuada"),
-        "hallazgos": hallazgos,
-        "conclusion": conclusion,
-        "recomendaciones": recomendaciones,
-        "guia_paciente": guia_paciente
-    }
-
-    interpretacion_final = (
-        f"🤖 ASISTENTE CLÍNICO DE IMAGENOLOGÍA\n\n"
-        f"🎯 REGIÓN & TÉCNICA: {region} ({tecnica})\n\n"
-        f"🔬 HALLAZGOS RADIOLÓGICOS:\n{hallazgos}\n\n"
-        f"📌 CONCLUSIÓN DIAGNÓSTICA:\n{conclusion}\n\n"
-        f"🗣️ EXPLICACIÓN AL PACIENTE:\n{guia_paciente}"
-    )
-
-    return {
-        "datos_imagenologia": datos_actualizados,
-        "alertas_detectadas": alertas,
-        "interpretacion_clinica": interpretacion_final,
-        "estado_analisis": "analizado_alterado" if len(alertas) > 0 else "analizado_normal"
-    }
+    pac = None
+    if req.paciente_id:
+        pac = (
+            await db.execute(
+                select(Paciente).where(
+                    Paciente.id == req.paciente_id,
+                    Paciente.empresa_id == current_user.empresa_id,
+                )
+            )
+        ).scalar_one_or_none()
+    return clinical_agent.analyze_clinical_text(req.texto, _build_patient_context(pac))
 
 
 # ==========================================
@@ -416,8 +290,11 @@ async def listar_estudios_global(
             "valores_laboratorio": e.valores_laboratorio or [],
             "datos_imagenologia": e.datos_imagenologia,
             "alertas_detectadas": e.alertas_detectadas or [],
+            "analisis_agente": getattr(e, "analisis_agente", None),
             "interpretacion_clinica": e.interpretacion_clinica,
             "notas": e.notas,
+            "origen": getattr(e, "origen", "manual") or "manual",
+            "whatsapp_remitente": getattr(e, "whatsapp_remitente", None),
             "created_at": e.created_at.isoformat() if e.created_at else None,
         })
 
@@ -483,7 +360,10 @@ async def listar_estudios_paciente(
             "fecha_estudio": str(e.fecha_estudio),
             "estado_analisis": e.estado_analisis,
             "alertas_detectadas": e.alertas_detectadas or [],
+            "analisis_agente": getattr(e, "analisis_agente", None),
             "notas": e.notas,
+            "origen": getattr(e, "origen", "manual") or "manual",
+            "whatsapp_remitente": getattr(e, "whatsapp_remitente", None),
             "created_at": e.created_at.isoformat() if e.created_at else None
         }
         for e in estudios
@@ -527,11 +407,346 @@ async def listar_estudios_consulta(
             "fecha_estudio": str(e.fecha_estudio),
             "estado_analisis": e.estado_analisis,
             "alertas_detectadas": e.alertas_detectadas or [],
+            "analisis_agente": getattr(e, "analisis_agente", None),
             "notas": e.notas,
+            "origen": getattr(e, "origen", "manual") or "manual",
+            "whatsapp_remitente": getattr(e, "whatsapp_remitente", None),
             "created_at": e.created_at.isoformat() if e.created_at else None
         }
         for e in estudios
     ]
+
+
+# ==========================================
+# RECEPCIÓN EN TIEMPO REAL VÍA WHATSAPP (PASO 4)
+# ==========================================
+
+@router.websocket("/ws")
+async def estudios_whatsapp_websocket(
+    websocket: WebSocket,
+    token: str = Query(...),
+    consulta_id: Optional[int] = Query(None),
+    sucursal_id: Optional[int] = Query(None),
+):
+    """WebSocket en tiempo real para alertar al médico en consulta cuando llega un estudio por WhatsApp."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        user_id = int(user_id_str)
+    except (JWTError, ValueError):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    async with AsyncSessionLocal() as db:
+        user = (await db.execute(select(Usuario).where(Usuario.id == user_id))).scalar_one_or_none()
+        if not user or not user.activo:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        empresa_id = user.empresa_id or 1
+        resolved_suc_id = sucursal_id or user.sucursal_defecto_id
+
+    await estudios_ws_manager.connect(websocket, empresa_id, resolved_suc_id, consulta_id)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            if data.get("event") == "ping":
+                await websocket.send_json({"event": "pong"})
+    except WebSocketDisconnect:
+        estudios_ws_manager.disconnect(websocket, empresa_id, resolved_suc_id, consulta_id)
+    except Exception:
+        estudios_ws_manager.disconnect(websocket, empresa_id, resolved_suc_id, consulta_id)
+
+
+@router.post("/consulta/{consulta_id}/solicitar-whatsapp")
+async def solicitar_estudio_por_whatsapp(
+    consulta_id: int,
+    req: SolicitarWhatsAppRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """
+    Activa la ventana de escucha en tiempo real (30 min) para el Paso 4 de esta consulta
+    y opcionalmente envía una invitación por WhatsApp al paciente para que adjunte su PDF o foto.
+    """
+    empresa_id = current_user.empresa_id or 1
+    stmt = (
+        select(ConsultaMedica)
+        .options(
+            selectinload(ConsultaMedica.paciente),
+            selectinload(ConsultaMedica.medico),
+            selectinload(ConsultaMedica.sucursal),
+        )
+        .where(ConsultaMedica.id == consulta_id, ConsultaMedica.empresa_id == empresa_id)
+    )
+    consulta = (await db.execute(stmt)).scalar_one_or_none()
+    if not consulta:
+        raise HTTPException(status_code=404, detail="Consulta médica no encontrada")
+
+    suc_id = consulta.sucursal_id or current_user.sucursal_defecto_id
+    wa_service, target_ent, _, _ = await resolve_whatsapp_service(db, empresa_id, suc_id)
+    live_status = whatsapp_engine.get_status(wa_service.instance_name) if wa_service else {}
+
+    pac = consulta.paciente
+    raw_phone = (req.telefono_destino or (pac.telefono if pac else "") or "").strip()
+    pac_digits = format_phone_number(raw_phone, wa_service.country_code if wa_service else "+58") if raw_phone else ""
+    pac_nombre = f"{pac.nombres} {pac.apellidos}".strip() if pac else "Paciente"
+    med_nombre = (
+        f"Dr(a). {consulta.medico.nombres} {consulta.medico.apellidos}".strip()
+        if consulta.medico
+        else f"Dr(a). {current_user.nombre} {current_user.apellido}".strip()
+    )
+
+    # Registrar ventana de recepción en vivo por 30 minutos
+    estudios_ws_manager.register_listening_window(
+        consulta_id=consulta.id,
+        paciente_id=consulta.paciente_id,
+        paciente_nombre=pac_nombre,
+        paciente_phone_digits=pac_digits,
+        medico_id=consulta.medico_id,
+        usuario_id=current_user.id,
+        empresa_id=empresa_id,
+        sucursal_id=getattr(target_ent, "id", suc_id),
+        ttl_minutes=30,
+    )
+
+    mensaje_enviado = False
+    error_envio = None
+    if req.enviar_mensaje:
+        if not wa_service or not live_status.get("is_connected"):
+            raise HTTPException(
+                status_code=400,
+                detail="La línea de WhatsApp de la sucursal no está conectada. Vincúlala en Integraciones → WhatsApp.",
+            )
+        if not pac_digits or len(pac_digits) < 10:
+            raise HTTPException(
+                status_code=400,
+                detail="El paciente no tiene un número de teléfono válido registrado. Ingresa un número manualmente.",
+            )
+        texto = (req.mensaje_personalizado or "").strip() or (
+            f"{{Hola|Buen día}} *{pac.nombres if pac else 'estimado/a paciente'}*, "
+            f"*{med_nombre}* está listo en consulta para revisar tus exámenes. 🩺\n\n"
+            f"Por favor responde a este mensaje adjuntando la *foto o archivo PDF* de tus resultados "
+            f"(laboratorio, ecografía, rayos X o informe) y el sistema los cargará automáticamente en tu historia clínica."
+        )
+        send_res = await wa_service.send_message(
+            to=pac_digits,
+            message=texto,
+            sync=True,
+            simulate_typing=True,
+        )
+        if send_res.get("success"):
+            mensaje_enviado = True
+        else:
+            error_envio = send_res.get("error") or "No se pudo enviar el mensaje de invitación"
+
+    return {
+        "success": True,
+        "listening_active": True,
+        "mensaje_enviado": mensaje_enviado,
+        "error_envio": error_envio,
+        "whatsapp_connected": bool(live_status.get("is_connected")),
+        "whatsapp_phone": live_status.get("phone_number") or getattr(target_ent, "whatsapp_phone", None),
+        "paciente_phone": pac_digits,
+        "message": (
+            f"Invitación enviada a +{pac_digits}. Esperando archivos en vivo para {pac_nombre}."
+            if mensaje_enviado
+            else f"Modo escucha activado para {pac_nombre}. Cualquier PDF o foto que envíe al WhatsApp de la sede se cargará aquí."
+        ),
+    }
+
+
+@router.get("/whatsapp/pendientes")
+async def listar_estudios_whatsapp_pendientes(
+    consulta_id: Optional[int] = Query(None),
+    sucursal_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """
+    Retorna archivos PDF/imágenes recibidos por WhatsApp en las últimas 6 horas
+    que no coincidieron automáticamente con un paciente (ej. enviados desde el teléfono de un familiar),
+    junto al estado en vivo de la línea WhatsApp de la sucursal.
+    """
+    empresa_id = current_user.empresa_id or 1
+    suc_id = sucursal_id or current_user.sucursal_defecto_id
+    target_ent, _ = await get_whatsapp_target(db, empresa_id, suc_id)
+    inst_name = (
+        getattr(target_ent, "whatsapp_instance", None)
+        or (f"sucursal_{empresa_id}_{target_ent.id}" if target_ent else f"empresa_{empresa_id}")
+    )
+    live = whatsapp_engine.get_status(inst_name)
+
+    cutoff = datetime.now() - timedelta(hours=6)
+    q = (
+        select(WhatsAppEstudioPendiente)
+        .where(
+            WhatsAppEstudioPendiente.empresa_id == empresa_id,
+            WhatsAppEstudioPendiente.estado == "pendiente",
+            WhatsAppEstudioPendiente.created_at >= cutoff,
+        )
+        .order_by(desc(WhatsAppEstudioPendiente.id))
+        .limit(20)
+    )
+    rows = (await db.execute(q)).scalars().all()
+
+    win = estudios_ws_manager.get_active_window_for_consulta(consulta_id) if consulta_id else None
+
+    return {
+        "whatsapp_connected": bool(live.get("is_connected")),
+        "whatsapp_state": live.get("connection_state", "DISCONNECTED"),
+        "whatsapp_phone": live.get("phone_number") or getattr(target_ent, "whatsapp_phone", None),
+        "sucursal_nombre": getattr(target_ent, "nombre", None),
+        "listening_active": bool(win),
+        "agent_info": clinical_agent.get_capabilities(),
+        "pendientes": [
+            {
+                "id": r.id,
+                "remitente_telefono": r.remitente_telefono,
+                "remitente_nombre": r.remitente_nombre,
+                "caption": r.caption,
+                "archivo_nombre": r.archivo_nombre,
+                "archivo_tipo": r.archivo_tipo,
+                "archivo_tamano": r.archivo_tamano,
+                "archivo_url": r.archivo_url if r.archivo_tipo.startswith("image/") else None,
+                "categoria_sugerida": r.categoria_sugerida,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/whatsapp/pendientes/{pendiente_id}/asignar")
+async def asignar_estudio_whatsapp_pendiente(
+    pendiente_id: int,
+    req: AsignarPendienteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """
+    Asigna un archivo PDF/imagen recibido en la bandeja entrante de WhatsApp a la consulta activa,
+    ejecuta el análisis del Bot Clínico Híbrido, lo inserta en el Paso 4 y confirma al remitente.
+    """
+    empresa_id = current_user.empresa_id or 1
+    pend = (
+        await db.execute(
+            select(WhatsAppEstudioPendiente).where(
+                WhatsAppEstudioPendiente.id == pendiente_id,
+                WhatsAppEstudioPendiente.empresa_id == empresa_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not pend:
+        raise HTTPException(status_code=404, detail="Archivo entrante de WhatsApp no encontrado")
+
+    file_bytes, decoded_mime = decode_data_uri(pend.archivo_url)
+    mime = decoded_mime or pend.archivo_tipo
+    cat_inicial = (req.categoria or pend.categoria_sugerida or "laboratorio").strip().lower()
+    titulo_inicial = (req.titulo or pend.caption or pend.archivo_nombre).strip()[:200]
+
+    pac_obj = (
+        await db.execute(
+            select(Paciente).where(Paciente.id == req.paciente_id, Paciente.empresa_id == empresa_id)
+        )
+    ).scalar_one_or_none()
+
+    bot_res = await clinical_agent.analyze_study(
+        file_bytes=file_bytes,
+        mime_type=mime,
+        titulo=titulo_inicial,
+        categoria=cat_inicial,
+        caption=pend.caption or "",
+        patient_ctx=_build_patient_context(pac_obj),
+    )
+
+    remitente_label = f"+{pend.remitente_telefono}" + (
+        f" ({pend.remitente_nombre})" if pend.remitente_nombre else ""
+    )
+
+    nuevo_estudio = EstudioAdjunto(
+        empresa_id=empresa_id,
+        paciente_id=req.paciente_id,
+        consulta_id=req.consulta_id,
+        medico_id=req.medico_id,
+        sucursal_id=pend.sucursal_id or current_user.sucursal_defecto_id,
+        titulo=(req.titulo.strip() if req.titulo else (bot_res.get("titulo_sugerido") or titulo_inicial))[:200],
+        categoria=(bot_res.get("categoria") or (req.categoria.strip().lower() if req.categoria else cat_inicial)),
+        subtipo="whatsapp_asignado",
+        archivo_url=pend.archivo_url,
+        archivo_nombre=pend.archivo_nombre,
+        archivo_tipo=pend.archivo_tipo,
+        archivo_tamano=pend.archivo_tamano,
+        fecha_estudio=date.today(),
+        notas=req.notas or f"Recibido por WhatsApp de {remitente_label} y asignado en consulta.",
+        estado_analisis=bot_res.get("estado_analisis", "pendiente"),
+        valores_laboratorio=bot_res.get("valores_laboratorio"),
+        datos_imagenologia=bot_res.get("datos_imagenologia"),
+        interpretacion_clinica=bot_res.get("interpretacion_clinica"),
+        alertas_detectadas=bot_res.get("alertas_detectadas") or [],
+        analisis_agente=bot_res.get("analisis_agente"),
+        origen="whatsapp",
+        whatsapp_remitente=remitente_label[:120],
+    )
+    db.add(nuevo_estudio)
+    await db.flush()
+
+    pend.estado = "asignado"
+    pend.estudio_asignado_id = nuevo_estudio.id
+    pend.consulta_asignada_id = req.consulta_id
+    await db.commit()
+    await db.refresh(nuevo_estudio)
+
+    # Confirmar por WhatsApp en segundo plano sin bloquear la respuesta
+    if pend.instance_name and pend.remitente_telefono:
+        try:
+            await whatsapp_engine.send_text_humanized(
+                instance_name=pend.instance_name,
+                to=pend.remitente_telefono,
+                message=f"✅ Recibimos el archivo *{nuevo_estudio.titulo}* y ya fue incorporado a la consulta médica para su evaluación.",
+                simulate_typing=True,
+                typing_min_sec=1.2,
+                typing_max_sec=2.5,
+                verify_number=False,
+                enforce_cooldown=False,
+            )
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "estudio_id": nuevo_estudio.id,
+        "titulo": nuevo_estudio.titulo,
+        "categoria": nuevo_estudio.categoria,
+        "estado_analisis": nuevo_estudio.estado_analisis,
+        "alertas_detectadas": nuevo_estudio.alertas_detectadas or [],
+        "engine_used": bot_res.get("engine_used", "python-local"),
+        "message": "Estudio asignado y analizado con éxito por el Asistente Clínico.",
+    }
+
+
+@router.delete("/whatsapp/pendientes/{pendiente_id}")
+async def descartar_estudio_whatsapp_pendiente(
+    pendiente_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    empresa_id = current_user.empresa_id or 1
+    pend = (
+        await db.execute(
+            select(WhatsAppEstudioPendiente).where(
+                WhatsAppEstudioPendiente.id == pendiente_id,
+                WhatsAppEstudioPendiente.empresa_id == empresa_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not pend:
+        raise HTTPException(status_code=404, detail="Archivo entrante no encontrado")
+    pend.estado = "descartado"
+    await db.commit()
+    return {"success": True, "message": "Archivo descartado de la bandeja entrante."}
 
 
 @router.get("/{estudio_id}")
@@ -571,6 +786,9 @@ async def obtener_estudio_detalle(
         "datos_imagenologia": estudio.datos_imagenologia,
         "interpretacion_clinica": estudio.interpretacion_clinica,
         "alertas_detectadas": estudio.alertas_detectadas or [],
+        "analisis_agente": getattr(estudio, "analisis_agente", None),
+        "origen": getattr(estudio, "origen", "manual") or "manual",
+        "whatsapp_remitente": getattr(estudio, "whatsapp_remitente", None),
         "created_at": estudio.created_at.isoformat() if estudio.created_at else None
     }
 
@@ -581,33 +799,42 @@ async def crear_estudio(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    """Crea un nuevo estudio o examen adjunto para un paciente."""
-    # Verificar existencia del paciente
+    """Crea un nuevo estudio o examen adjunto para un paciente y lo analiza con MediCore AI Local."""
     res_pac = await db.execute(
         select(Paciente).where(Paciente.id == req.paciente_id, Paciente.empresa_id == current_user.empresa_id)
     )
-    if not res_pac.scalar_one_or_none():
+    paciente_obj = res_pac.scalar_one_or_none()
+    if not paciente_obj:
         raise HTTPException(status_code=404, detail="Paciente no encontrado en la empresa")
 
-    # Ejecutar análisis del Bot Clínico si viene sin analizar
     valores_lab = req.valores_laboratorio
     datos_img = req.datos_imagenologia
     interpretacion = req.interpretacion_clinica
     alertas = []
+    analisis_agente = None
     estado = "pendiente"
+    categoria_final = req.categoria.strip().lower()
 
-    if req.categoria == "laboratorio":
-        bot_res = ejecutar_bot_analisis_laboratorio(req.titulo, req.subtipo, valores_lab)
-        valores_lab = bot_res["valores_laboratorio"]
-        alertas = bot_res["alertas_detectadas"]
-        interpretacion = interpretacion or bot_res["interpretacion_clinica"]
-        estado = bot_res["estado_analisis"]
-    elif req.categoria == "imagenologia":
-        bot_res = ejecutar_bot_analisis_imagenologia(req.titulo, req.subtipo, datos_img)
-        datos_img = bot_res["datos_imagenologia"]
-        alertas = bot_res["alertas_detectadas"]
-        interpretacion = interpretacion or bot_res["interpretacion_clinica"]
-        estado = bot_res["estado_analisis"]
+    file_bytes, decoded_mime = decode_data_uri(req.archivo_url)
+    agent_res = await clinical_agent.analyze_study(
+        file_bytes=file_bytes,
+        mime_type=decoded_mime or req.archivo_tipo,
+        titulo=req.titulo,
+        categoria=categoria_final,
+        subtipo=req.subtipo,
+        caption=req.notas or "",
+        patient_ctx=_build_patient_context(paciente_obj),
+        existing_lab_values=valores_lab,
+        existing_img_data=datos_img,
+    )
+    valores_lab = agent_res.get("valores_laboratorio")
+    datos_img = agent_res.get("datos_imagenologia")
+    alertas = agent_res.get("alertas_detectadas") or []
+    analisis_agente = agent_res.get("analisis_agente")
+    interpretacion = interpretacion or agent_res.get("interpretacion_clinica")
+    estado = agent_res.get("estado_analisis", "pendiente")
+    if agent_res.get("categoria"):
+        categoria_final = agent_res["categoria"]
 
     # Determinar sucursal del usuario
     suc_id = current_user.sucursal_defecto_id
@@ -622,7 +849,7 @@ async def crear_estudio(
             medico_id=req.medico_id,
             sucursal_id=suc_id,
             titulo=req.titulo.strip(),
-            categoria=req.categoria.strip().lower(),
+            categoria=categoria_final,
             subtipo=req.subtipo.strip().lower() if req.subtipo else None,
             archivo_url=req.archivo_url,
             archivo_nombre=req.archivo_nombre,
@@ -634,7 +861,8 @@ async def crear_estudio(
             valores_laboratorio=valores_lab,
             datos_imagenologia=datos_img,
             interpretacion_clinica=interpretacion,
-            alertas_detectadas=alertas
+            alertas_detectadas=alertas,
+            analisis_agente=analisis_agente,
         )
 
         db.add(nuevo_estudio)
@@ -647,7 +875,8 @@ async def crear_estudio(
             "categoria": nuevo_estudio.categoria,
             "estado_analisis": nuevo_estudio.estado_analisis,
             "alertas_detectadas": nuevo_estudio.alertas_detectadas,
-            "message": "Estudio creado y analizado exitosamente por el Asistente Clínico"
+            "analisis_agente": nuevo_estudio.analisis_agente,
+            "message": "Estudio creado y analizado por MediCore AI Local"
         }
     except Exception as e:
         import traceback
@@ -666,10 +895,13 @@ async def reanalizar_con_bot(
     current_user: Usuario = Depends(get_current_user)
 ):
     """
-    Ejecuta o regenera el análisis del Bot Clínico Inteligente sobre el estudio.
+    Ejecuta o regenera el análisis completo del Agente Clínico Propio MediCore AI Local
+    (OCR neuronal + tablas PDF + 105+ biomarcadores ajustados a edad/sexo + cálculos derivados + síndromes CIE-10).
     """
     res = await db.execute(
-        select(EstudioAdjunto).where(
+        select(EstudioAdjunto)
+        .options(selectinload(EstudioAdjunto.paciente))
+        .where(
             EstudioAdjunto.id == estudio_id,
             EstudioAdjunto.empresa_id == current_user.empresa_id
         )
@@ -678,27 +910,40 @@ async def reanalizar_con_bot(
     if not estudio:
         raise HTTPException(status_code=404, detail="Estudio no encontrado")
 
-    if estudio.categoria == "laboratorio":
-        bot_res = ejecutar_bot_analisis_laboratorio(estudio.titulo, estudio.subtipo, estudio.valores_laboratorio)
-        estudio.valores_laboratorio = bot_res["valores_laboratorio"]
-        estudio.alertas_detectadas = bot_res["alertas_detectadas"]
-        estudio.interpretacion_clinica = bot_res["interpretacion_clinica"]
-        estudio.estado_analisis = bot_res["estado_analisis"]
-    else:
-        bot_res = ejecutar_bot_analisis_imagenologia(estudio.titulo, estudio.subtipo, estudio.datos_imagenologia)
-        estudio.datos_imagenologia = bot_res["datos_imagenologia"]
-        estudio.alertas_detectadas = bot_res["alertas_detectadas"]
-        estudio.interpretacion_clinica = bot_res["interpretacion_clinica"]
-        estudio.estado_analisis = bot_res["estado_analisis"]
+    file_bytes, decoded_mime = decode_data_uri(estudio.archivo_url)
+    bot_res = await clinical_agent.analyze_study(
+        file_bytes=file_bytes,
+        mime_type=decoded_mime or estudio.archivo_tipo,
+        titulo=estudio.titulo,
+        categoria=estudio.categoria,
+        subtipo=estudio.subtipo,
+        caption=estudio.notas or "",
+        patient_ctx=_build_patient_context(estudio.paciente),
+        existing_lab_values=estudio.valores_laboratorio,
+        existing_img_data=estudio.datos_imagenologia,
+    )
+    if bot_res.get("categoria"):
+        estudio.categoria = bot_res["categoria"]
+    if bot_res.get("titulo_sugerido") and bot_res["titulo_sugerido"] != estudio.titulo:
+        estudio.titulo = bot_res["titulo_sugerido"][:200]
+    estudio.valores_laboratorio = bot_res.get("valores_laboratorio")
+    estudio.datos_imagenologia = bot_res.get("datos_imagenologia")
+    estudio.alertas_detectadas = bot_res.get("alertas_detectadas") or []
+    estudio.interpretacion_clinica = bot_res.get("interpretacion_clinica") or estudio.interpretacion_clinica
+    estudio.estado_analisis = bot_res.get("estado_analisis") or estudio.estado_analisis
+    estudio.analisis_agente = bot_res.get("analisis_agente")
 
     await db.commit()
     return {
         "success": True,
+        "titulo": estudio.titulo,
+        "categoria": estudio.categoria,
         "estado_analisis": estudio.estado_analisis,
         "alertas_detectadas": estudio.alertas_detectadas,
         "interpretacion_clinica": estudio.interpretacion_clinica,
         "valores_laboratorio": estudio.valores_laboratorio,
-        "datos_imagenologia": estudio.datos_imagenologia
+        "datos_imagenologia": estudio.datos_imagenologia,
+        "analisis_agente": estudio.analisis_agente,
     }
 
 

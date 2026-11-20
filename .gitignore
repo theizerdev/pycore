@@ -170,3 +170,6 @@ backend/uploads/chat/*
 # Sesiones locales de WhatsApp (Motor Python Neonize)
 backend/whatsapp_sessions/
 
+# Modelos ONNX descargables localmente para MediCore AI Vision
+backend/app/services/clinical_agent/models/*.onnx
+

@@ -18,6 +18,7 @@ import SignosVitalesWidget from '../../components/clinica/SignosVitalesWidget';
 import PrescripcionRecetaWidget from '../../components/clinica/PrescripcionRecetaWidget';
 import EstudiosSolicitadosWidget from '../../components/clinica/EstudiosSolicitadosWidget';
 import { EstudiosArchivosTab } from '../../components/clinica/EstudiosArchivosTab';
+import { buildEstudiosWsUrl } from '../../api/estudios';
 import { PatientRecordDrawer } from './PatientRecordDrawer';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
@@ -465,6 +466,13 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
   const [consulta, setConsulta] = useState<ConsultaMedica | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<number | string>(1);
+
+  // Notificaciones en tiempo real de estudios enviados por el paciente al WhatsApp de la sucursal
+  const [waUnreadEstudios, setWaUnreadEstudios] = useState<number>(0);
+  const [waPendientesCount, setWaPendientesCount] = useState<number>(0);
+  const [waRefreshTick, setWaRefreshTick] = useState<number>(0);
+  const [waAutoOpenEstudioId, setWaAutoOpenEstudioId] = useState<number | null>(null);
+  const [waHighlightedIds, setWaHighlightedIds] = useState<number[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
   const [finalizing, setFinalizing] = useState<boolean>(false);
   const [impresionModalOpen, setImpresionModalOpen] = useState<boolean>(false);
@@ -1185,6 +1193,126 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
     }
   }, [consulta, plantillaEfectiva, pasoInicialConfigurado, pasosHabilitados, stepsList]);
 
+  // Limpiar badge de nuevos estudios WhatsApp al entrar al Paso de Estudios Médicos
+  const estudiosStepNum = isOftalmologia ? 5 : 4;
+  useEffect(() => {
+    if (currentStep === estudiosStepNum && waUnreadEstudios > 0) {
+      setWaUnreadEstudios(0);
+    }
+  }, [currentStep, estudiosStepNum, waUnreadEstudios]);
+
+  // WebSocket en tiempo real: escucha PDFs e imágenes que el paciente envía al WhatsApp de la sede
+  useEffect(() => {
+    if (!consulta?.id) return;
+    const wsUrl = buildEstudiosWsUrl(consulta.id, consulta.sucursal_id);
+    if (!wsUrl) return;
+
+    let ws: WebSocket | null = null;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let closedByCleanup = false;
+
+    const playSoftChime = () => {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1174.66, ctx.currentTime + 0.14);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.36);
+      } catch {
+        // navegador bloqueó audio sin interacción previa
+      }
+    };
+
+    const connect = () => {
+      if (closedByCleanup) return;
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          pingTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ event: 'ping' }));
+            }
+          }, 25000);
+        };
+        ws.onmessage = (evt) => {
+          try {
+            const payload = JSON.parse(evt.data);
+            if (payload.event === 'whatsapp_estudio_recibido' && payload.consulta_id === consulta.id) {
+              const est = payload.estudio;
+              playSoftChime();
+              setWaRefreshTick((t) => t + 1);
+              if (est?.id) {
+                setWaHighlightedIds((prev) => (prev.includes(est.id) ? prev : [est.id, ...prev]));
+              }
+              setWaUnreadEstudios((c) => c + 1);
+              const alterado = est?.estado_analisis === 'analizado_alterado';
+              toast.success(
+                `📲 Estudio recibido por WhatsApp: ${est?.titulo || 'Documento'}`,
+                {
+                  description: alterado
+                    ? `Analizado por Bot: ${est.alertas_detectadas?.length || 1} alerta(s) detectadas.`
+                    : `Cargado automáticamente de ${est?.whatsapp_remitente || 'paciente'}.`,
+                  duration: 9000,
+                  action: {
+                    label: 'Ver en Paso 4',
+                    onClick: () => {
+                      setCurrentStep(estudiosStepNum);
+                      if (est?.id) setWaAutoOpenEstudioId(est.id);
+                    },
+                  },
+                }
+              );
+            } else if (payload.event === 'whatsapp_estudio_pendiente') {
+              const pend = payload.pendiente;
+              playSoftChime();
+              setWaRefreshTick((t) => t + 1);
+              setWaPendientesCount((c) => c + 1);
+              toast.info(
+                `📥 Archivo recibido por WhatsApp (+${pend?.remitente_telefono || ''})`,
+                {
+                  description: `${pend?.caption || pend?.archivo_nombre || 'Documento'} listo en bandeja del Paso 4 para asignar a esta consulta.`,
+                  duration: 9000,
+                  action: {
+                    label: 'Revisar en Paso 4',
+                    onClick: () => setCurrentStep(estudiosStepNum),
+                  },
+                }
+              );
+            }
+          } catch {
+            // ignorar mensajes no JSON
+          }
+        };
+        ws.onclose = () => {
+          if (pingTimer) clearInterval(pingTimer);
+          if (!closedByCleanup) {
+            reconnectTimer = setTimeout(connect, 4000);
+          }
+        };
+      } catch {
+        // silencioso
+      }
+    };
+
+    connect();
+    return () => {
+      closedByCleanup = true;
+      if (pingTimer) clearInterval(pingTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws) ws.close();
+    };
+  }, [consulta?.id, consulta?.sucursal_id, estudiosStepNum]);
+
   // Asegurar que currentStep sea siempre uno de los pasos activos
   useEffect(() => {
     if (stepsList.length > 0 && !stepsList.some((s) => String(s.num) === String(currentStep))) {
@@ -1839,6 +1967,11 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                     {isPast ? <CheckCircle2 className="h-4 w-4" /> : step.num}
                   </span>
                   <span>{step.label}</span>
+                  {step.num === estudiosStepNum && (waUnreadEstudios > 0 || waPendientesCount > 0) && (
+                    <Badge className="ml-0.5 h-5 px-1.5 text-[10px] font-bold bg-emerald-500 text-white border-0 animate-pulse">
+                      +{waUnreadEstudios + waPendientesCount} WA
+                    </Badge>
+                  )}
                 </button>
               );
             })}
@@ -3057,6 +3190,23 @@ export const ConsultaAtencionPage: React.FC<ConsultaAtencionPageProps> = ({
                     pacienteId={consulta.paciente_id}
                     consultaId={consulta.id}
                     medicoId={consulta.medico_id || undefined}
+                    sucursalId={consulta.sucursal_id || undefined}
+                    pacienteNombre={
+                      consulta.paciente
+                        ? `${consulta.paciente.nombres} ${consulta.paciente.apellidos}`.trim()
+                        : undefined
+                    }
+                    pacienteTelefono={consulta.paciente?.telefono || null}
+                    whatsappRefreshTick={waRefreshTick}
+                    autoOpenEstudioId={waAutoOpenEstudioId}
+                    highlightedEstudioIds={waHighlightedIds}
+                    onAutoOpenHandled={() => setWaAutoOpenEstudioId(null)}
+                    onPendientesCountChange={setWaPendientesCount}
+                    onApplyDiagnosticoPrincipal={(texto) => {
+                      setDiagnosticoPrincipal(texto);
+                      toast.success(`Diagnóstico Principal actualizado: ${texto}`);
+                    }}
+                    onAddDiagnosticoSecundario={handleAgregarDiagSecundarioConTexto}
                   />
                 ) : (
                   <p className="text-xs text-muted-foreground">Paciente no seleccionado</p>

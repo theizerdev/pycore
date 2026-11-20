@@ -1,14 +1,70 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  FlaskConical, Image as ImageIcon, Plus, Search,
-  Calendar, Trash2, Upload, AlertTriangle, CheckCircle2,
-  RefreshCw, Eye, Sparkles, History, Stethoscope
+  FlaskConical,
+  Image as ImageIcon,
+  Plus,
+  Search,
+  Calendar,
+  Trash2,
+  Upload,
+  AlertTriangle,
+  CheckCircle2,
+  RefreshCw,
+  Eye,
+  Sparkles,
+  History,
+  Stethoscope,
+  MessageSquare,
+  Radio,
+  FileText,
+  Send,
+  Inbox,
+  Check,
+  X,
+  Phone,
+  Bot,
+  Loader2,
+  WifiOff,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
+import { Textarea } from '../ui/textarea';
+import { Label } from '../ui/label';
+import { Badge } from '../ui/badge';
+import { Switch } from '../ui/switch';
+import { Card, CardContent } from '../ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { toast } from 'sonner';
-import { estudiosApi, type EstudioAdjunto } from '../../api/estudios';
+import {
+  estudiosApi,
+  type EstudioAdjunto,
+  type WhatsAppEstudioPendienteItem,
+  type WhatsAppPendientesResponse,
+} from '../../api/estudios';
 import { EstudioDetalleModal } from './EstudioDetalleModal';
 import { cn, getLocalDateString } from '../../lib/utils';
 
@@ -16,12 +72,32 @@ interface EstudiosArchivosTabProps {
   pacienteId: number;
   consultaId?: number;
   medicoId?: number;
+  sucursalId?: number | null;
+  pacienteNombre?: string;
+  pacienteTelefono?: string | null;
+  whatsappRefreshTick?: number;
+  autoOpenEstudioId?: number | null;
+  highlightedEstudioIds?: number[];
+  onAutoOpenHandled?: () => void;
+  onPendientesCountChange?: (count: number) => void;
+  onApplyDiagnosticoPrincipal?: (texto: string) => void;
+  onAddDiagnosticoSecundario?: (texto: string) => void;
 }
 
 export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
   pacienteId,
   consultaId,
   medicoId,
+  sucursalId,
+  pacienteNombre,
+  pacienteTelefono,
+  whatsappRefreshTick = 0,
+  autoOpenEstudioId = null,
+  highlightedEstudioIds = [],
+  onAutoOpenHandled,
+  onPendientesCountChange,
+  onApplyDiagnosticoPrincipal,
+  onAddDiagnosticoSecundario,
 }) => {
   const [estudios, setEstudios] = useState<EstudioAdjunto[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -31,11 +107,30 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
     consultaId ? 'esta_consulta' : 'todos'
   );
 
+  // Estado WhatsApp en Vivo (Recepción Paso 4)
+  const [waInfo, setWaInfo] = useState<WhatsAppPendientesResponse | null>(null);
+  const [modalSolicitarWaOpen, setModalSolicitarWaOpen] = useState(false);
+  const [waTelefonoDestino, setWaTelefonoDestino] = useState(pacienteTelefono || '');
+  const [waEnviarMensaje, setWaEnviarMensaje] = useState(true);
+  const [waMensajeCustom, setWaMensajeCustom] = useState('');
+  const [waSolicitando, setWaSolicitando] = useState(false);
+
+  // Asignación de archivo entrante desde bandeja WhatsApp (ej. enviado por familiar)
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [selectedPendiente, setSelectedPendiente] = useState<WhatsAppEstudioPendienteItem | null>(null);
+  const [assignTitulo, setAssignTitulo] = useState('');
+  const [assignCategoria, setAssignCategoria] = useState<'laboratorio' | 'imagenologia' | 'informe' | 'otro'>('laboratorio');
+  const [assignNotas, setAssignNotas] = useState('');
+  const [assignLoading, setAssignLoading] = useState(false);
+
   // Modal de Detalle / Visor Inteligente
   const [selectedEstudioId, setSelectedEstudioId] = useState<number | null>(null);
   const [modalViewerOpen, setModalViewerOpen] = useState<boolean>(false);
 
-  // Modal de Subida / Nuevo Estudio
+  // Confirmación de eliminación con Radix AlertDialog
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+
+  // Modal de Subida / Nuevo Estudio Manual
   const [modalUploadOpen, setModalUploadOpen] = useState<boolean>(false);
   const [uploadLoading, setUploadLoading] = useState<boolean>(false);
   const [titulo, setTitulo] = useState<string>('');
@@ -48,34 +143,70 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
   const [archivoTipo, setArchivoTipo] = useState<string>('');
   const [archivoTamano, setArchivoTamano] = useState<number>(0);
 
-  const fetchEstudios = async () => {
+  const fetchEstudios = useCallback(async () => {
+    if (!pacienteId) return;
     setLoading(true);
     try {
       const data = await estudiosApi.listarPorPaciente(pacienteId, categoriaFiltro);
       setEstudios(data);
-    } catch (err) {
+    } catch {
       toast.error('Error al cargar estudios del paciente');
     } finally {
       setLoading(false);
     }
-  };
+  }, [pacienteId, categoriaFiltro]);
+
+  const fetchWaPendientes = useCallback(async () => {
+    if (!consultaId) return;
+    try {
+      const res = await estudiosApi.listarPendientesWhatsApp(consultaId, sucursalId);
+      setWaInfo(res);
+      onPendientesCountChange?.(res.pendientes.length);
+    } catch {
+      // silencioso
+    }
+  }, [consultaId, sucursalId, onPendientesCountChange]);
 
   useEffect(() => {
-    if (consultaId) {
-      setAlcance('esta_consulta');
-    } else {
-      setAlcance('todos');
-    }
+    setWaTelefonoDestino(pacienteTelefono || '');
+  }, [pacienteTelefono]);
+
+  useEffect(() => {
+    setAlcance(consultaId ? 'esta_consulta' : 'todos');
   }, [consultaId]);
 
   useEffect(() => {
     if (pacienteId) {
-      setEstudios([]);
       fetchEstudios();
     }
-  }, [pacienteId, categoriaFiltro]);
+  }, [pacienteId, categoriaFiltro, fetchEstudios]);
 
-  // Manejador de selección de archivo local
+  useEffect(() => {
+    if (consultaId) {
+      fetchWaPendientes();
+    }
+  }, [consultaId, sucursalId, fetchWaPendientes]);
+
+  // Refrescar automáticamente cuando llega un evento WebSocket de WhatsApp
+  useEffect(() => {
+    if (whatsappRefreshTick > 0) {
+      fetchEstudios();
+      fetchWaPendientes();
+      if (consultaId) {
+        setAlcance('esta_consulta');
+      }
+    }
+  }, [whatsappRefreshTick, consultaId, fetchEstudios, fetchWaPendientes]);
+
+  // Abrir visor automáticamente cuando el doctor pulsa "Ver ahora" desde el toast en tiempo real
+  useEffect(() => {
+    if (autoOpenEstudioId) {
+      setSelectedEstudioId(autoOpenEstudioId);
+      setModalViewerOpen(true);
+      onAutoOpenHandled?.();
+    }
+  }, [autoOpenEstudioId, onAutoOpenHandled]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -97,7 +228,6 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Crear y guardar el estudio
   const handleGuardarEstudio = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!titulo.trim()) {
@@ -128,50 +258,280 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
 
       toast.success('Estudio guardado y analizado por el Asistente Clínico');
       setModalUploadOpen(false);
-      // Reset form
       setTitulo('');
       setArchivoBase64('');
       setArchivoNombre('');
       setNotas('');
-      if (consultaId) {
-        setAlcance('esta_consulta');
-      }
+      if (consultaId) setAlcance('esta_consulta');
       fetchEstudios();
-    } catch (err: unknown) {
+    } catch {
       toast.error('Error al guardar el estudio adjunto');
     } finally {
       setUploadLoading(false);
     }
   };
 
-  const handleEliminar = async (id: number) => {
-    if (!confirm('¿Está seguro de eliminar este estudio clínico?')) return;
+  const handleConfirmEliminar = async () => {
+    if (!deleteTargetId) return;
     try {
-      await estudiosApi.eliminar(id);
+      await estudiosApi.eliminar(deleteTargetId);
       toast.success('Estudio eliminado');
+      setDeleteTargetId(null);
       fetchEstudios();
-    } catch (err) {
+    } catch {
       toast.error('Error al eliminar estudio');
     }
   };
 
-  // Separar estudios de esta consulta vs historial
-  const estudiosEstaConsulta = estudios.filter(e => e.consulta_id === consultaId);
-  const estudiosHistorial = estudios.filter(e => !consultaId || e.consulta_id !== consultaId);
+  // Solicitar estudio al paciente por WhatsApp / Activar escucha
+  const handleSolicitarPorWhatsApp = async () => {
+    if (!consultaId) return;
+    setWaSolicitando(true);
+    try {
+      const res = await estudiosApi.solicitarPorWhatsApp(consultaId, {
+        enviar_mensaje: waEnviarMensaje,
+        telefono_destino: waTelefonoDestino.trim() || undefined,
+        mensaje_personalizado: waMensajeCustom.trim() || undefined,
+      });
+      toast.success(res.message);
+      setModalSolicitarWaOpen(false);
+      setWaMensajeCustom('');
+      fetchWaPendientes();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'No se pudo activar la solicitud por WhatsApp');
+    } finally {
+      setWaSolicitando(false);
+    }
+  };
 
+  const openAssignDialog = (item: WhatsAppEstudioPendienteItem) => {
+    setSelectedPendiente(item);
+    const baseTitle =
+      (item.caption && item.caption.trim()) ||
+      item.archivo_nombre.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ');
+    setAssignTitulo(baseTitle.charAt(0).toUpperCase() + baseTitle.slice(1));
+    const cat = (item.categoria_sugerida || 'laboratorio') as 'laboratorio' | 'imagenologia' | 'informe' | 'otro';
+    setAssignCategoria(['laboratorio', 'imagenologia', 'informe', 'otro'].includes(cat) ? cat : 'laboratorio');
+    setAssignNotas('');
+    setAssignModalOpen(true);
+  };
+
+  const handleConfirmAssign = async () => {
+    if (!selectedPendiente || !consultaId) return;
+    setAssignLoading(true);
+    try {
+      const res = await estudiosApi.asignarPendienteWhatsApp(selectedPendiente.id, {
+        consulta_id: consultaId,
+        paciente_id: pacienteId,
+        medico_id: medicoId,
+        titulo: assignTitulo.trim() || undefined,
+        categoria: assignCategoria,
+        notas: assignNotas.trim() || undefined,
+      });
+      toast.success(res.message);
+      setAssignModalOpen(false);
+      setSelectedPendiente(null);
+      setAlcance('esta_consulta');
+      await Promise.all([fetchEstudios(), fetchWaPendientes()]);
+      if (res.estudio_id) {
+        setSelectedEstudioId(res.estudio_id);
+        setModalViewerOpen(true);
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Error al asignar y analizar el estudio');
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  const handleDescartarPendiente = async (pendId: number) => {
+    try {
+      await estudiosApi.descartarPendienteWhatsApp(pendId);
+      toast.info('Archivo descartado de la bandeja entrante');
+      fetchWaPendientes();
+    } catch {
+      toast.error('No se pudo descartar el archivo');
+    }
+  };
+
+  const estudiosEstaConsulta = estudios.filter((e) => e.consulta_id === consultaId);
+  const estudiosHistorial = estudios.filter((e) => !consultaId || e.consulta_id !== consultaId);
   const estudiosSegunAlcance = consultaId
-    ? (alcance === 'esta_consulta' ? estudiosEstaConsulta : estudiosHistorial)
+    ? alcance === 'esta_consulta'
+      ? estudiosEstaConsulta
+      : estudiosHistorial
     : estudios;
 
-  // Filtrar por búsqueda
-  const estudiosFiltrados = estudiosSegunAlcance.filter(e =>
-    e.titulo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (e.notas && e.notas.toLowerCase().includes(searchQuery.toLowerCase()))
+  const estudiosFiltrados = estudiosSegunAlcance.filter(
+    (e) =>
+      e.titulo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (e.notas && e.notas.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (e.whatsapp_remitente && e.whatsapp_remitente.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
-    <div className="space-y-5">
-      {/* SELECTOR DE ALCANCE: DE ESTA CONSULTA VS HISTORIAL PREVIO (Solo dentro de una consulta médica) */}
+    <div className="space-y-4">
+      {/* ── PANEL DE RECEPCIÓN EN VIVO VÍA WHATSAPP + BOT CLÍNICO (SOLO EN CONSULTA) ── */}
+      {consultaId && (
+        <Card className="border-emerald-500/30 bg-gradient-to-r from-emerald-500/[0.06] via-teal-500/[0.04] to-transparent shadow-xs">
+          <CardContent className="p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div
+                className={cn(
+                  'size-10 rounded-xl flex items-center justify-center shrink-0 border',
+                  waInfo?.whatsapp_connected
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                    : 'bg-muted text-muted-foreground border-border'
+                )}
+              >
+                <MessageSquare className="size-5" />
+              </div>
+
+              <div className="space-y-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs sm:text-sm font-bold text-foreground">
+                    Recepción Directa de Estudios por WhatsApp
+                  </span>
+                  {waInfo?.whatsapp_connected ? (
+                    <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] gap-1 font-semibold">
+                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      En línea {waInfo.whatsapp_phone ? `(+${waInfo.whatsapp_phone})` : ''}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground gap-1">
+                      <WifiOff className="size-3" />
+                      WhatsApp sin vincular
+                    </Badge>
+                  )}
+
+                  {waInfo?.listening_active && (
+                    <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 text-[10px] gap-1 animate-pulse">
+                      <Radio className="size-3" />
+                      Esperando archivo del paciente
+                    </Badge>
+                  )}
+
+                  <Badge variant="outline" className="text-[10px] gap-1 border-primary/35 text-primary bg-primary/5 font-semibold">
+                    <Bot className="size-3" />
+                    MediCore AI Local · OCR + Visión ONNX + {waInfo?.agent_info?.biomarkers_catalog_size || 96} Biomarcadores
+                  </Badge>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Cuando el paciente envíe un <strong>PDF o fotografía de sus exámenes</strong> al WhatsApp de la sede, el sistema lo capturará, lo analizará con el Bot Clínico y lo mostrará aquí al instante.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  fetchEstudios();
+                  fetchWaPendientes();
+                }}
+                className="h-9 px-2.5 text-xs"
+                title="Actualizar estudios y bandeja entrante"
+              >
+                <RefreshCw className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setModalSolicitarWaOpen(true)}
+                className="h-9 gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer"
+              >
+                <Send className="size-3.5" />
+                <span>Solicitar por WhatsApp</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── BANDEJA ENTRANTE DE WHATSAPP (ARCHIVOS ENVIADOS DESDE TELÉFONO DE FAMILIAR / OTRO NÚMERO) ── */}
+      {consultaId && waInfo && waInfo.pendientes.length > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/[0.06] shadow-xs">
+          <CardContent className="p-3.5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Inbox className="size-4 text-amber-600 dark:text-amber-400" />
+                <span className="text-xs font-bold text-foreground">
+                  Archivos Recientes por WhatsApp pendientes por asignar ({waInfo.pendientes.length})
+                </span>
+              </div>
+              <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                Enviados desde números no asociados directamente al paciente (ej. familiar)
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {waInfo.pendientes.map((item) => {
+                const isPdf = item.archivo_tipo.includes('pdf');
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-card p-3 shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {item.archivo_url && !isPdf ? (
+                        <img
+                          src={item.archivo_url}
+                          alt={item.archivo_nombre}
+                          className="size-11 rounded-lg object-cover border border-border shrink-0"
+                        />
+                      ) : (
+                        <div className="size-11 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-center shrink-0 text-amber-600 dark:text-amber-400">
+                          {isPdf ? <FileText className="size-5" /> : <ImageIcon className="size-5" />}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">
+                          {item.caption || item.archivo_nombre}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          De: <span className="font-mono">+{item.remitente_telefono}</span>
+                          {item.remitente_nombre ? ` (${item.remitente_nombre})` : ''}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {Math.max(1, Math.round(item.archivo_tamano / 1024))} KB ·{' '}
+                          {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ahora'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => openAssignDialog(item)}
+                        className="h-8 text-[11px] gap-1 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                      >
+                        <Check className="size-3.5" />
+                        <span>Asignar y Analizar</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleDescartarPendiente(item.id)}
+                        className="size-8 text-muted-foreground hover:text-destructive cursor-pointer"
+                        title="Descartar archivo"
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── SELECTOR DE ALCANCE: DE ESTA CONSULTA VS HISTORIAL PREVIO ── */}
       {consultaId && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2.5 bg-muted/40 rounded-2xl border border-border">
           <div className="flex items-center gap-1.5 p-1 bg-background rounded-xl border border-border shadow-xs text-xs">
@@ -187,12 +547,14 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
             >
               <Stethoscope className="w-3.5 h-3.5" />
               <span>De esta Consulta</span>
-              <span className={cn(
-                'px-1.5 py-0.5 rounded-full text-[10px] font-bold',
-                alcance === 'esta_consulta'
-                  ? 'bg-primary-foreground/20 text-primary-foreground'
-                  : 'bg-muted text-muted-foreground'
-              )}>
+              <span
+                className={cn(
+                  'px-1.5 py-0.5 rounded-full text-[10px] font-bold',
+                  alcance === 'esta_consulta'
+                    ? 'bg-primary-foreground/20 text-primary-foreground'
+                    : 'bg-muted text-muted-foreground'
+                )}
+              >
                 {estudiosEstaConsulta.length}
               </span>
             </button>
@@ -209,12 +571,14 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
             >
               <History className="w-3.5 h-3.5" />
               <span>Historial del Paciente</span>
-              <span className={cn(
-                'px-1.5 py-0.5 rounded-full text-[10px] font-bold',
-                alcance === 'historial_previo'
-                  ? 'bg-primary-foreground/20 text-primary-foreground'
-                  : 'bg-muted text-muted-foreground'
-              )}>
+              <span
+                className={cn(
+                  'px-1.5 py-0.5 rounded-full text-[10px] font-bold',
+                  alcance === 'historial_previo'
+                    ? 'bg-primary-foreground/20 text-primary-foreground'
+                    : 'bg-muted text-muted-foreground'
+                )}
+              >
                 {estudiosHistorial.length}
               </span>
             </button>
@@ -222,7 +586,7 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
 
           <div className="text-xs text-muted-foreground px-2">
             {alcance === 'esta_consulta' ? (
-              <span>Exámenes y análisis adjuntos exclusivos de la atención médica actual.</span>
+              <span>Exámenes recibidos por WhatsApp o cargados manualmente en esta atención.</span>
             ) : (
               <span>Estudios previos del paciente para consulta de antecedentes clínicos.</span>
             )}
@@ -230,16 +594,15 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
         </div>
       )}
 
-      {/* BARRA SUPERIOR DE ACCIONES Y FILTROS */}
+      {/* ── BARRA SUPERIOR DE ACCIONES Y FILTROS ── */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5">
-        {/* Pestañas de Filtro Rápido */}
         <div className="flex items-center gap-1 p-1 bg-muted/60 dark:bg-muted/30 rounded-xl border border-border text-xs">
           {[
             { key: 'todos', label: 'Todos' },
-            { key: 'laboratorio', label: '🧪 Laboratorio' },
-            { key: 'imagenologia', label: '🩻 Imagenología' },
-            { key: 'informe', label: '📄 Informes' },
-          ].map(tab => (
+            { key: 'laboratorio', label: 'Laboratorio' },
+            { key: 'imagenologia', label: 'Imagenología' },
+            { key: 'informe', label: 'Informes' },
+          ].map((tab) => (
             <button
               key={tab.key}
               type="button"
@@ -256,19 +619,19 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
           ))}
         </div>
 
-        {/* Buscador y Botón Subir */}
         <div className="flex items-center gap-2.5">
           <div className="relative flex-1 sm:w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar estudio..."
               className="pl-9 h-9 text-xs bg-card border-border text-foreground"
             />
           </div>
 
           <Button
+            type="button"
             size="sm"
             onClick={() => setModalUploadOpen(true)}
             className="h-9 gap-1.5 font-semibold shadow-xs shrink-0 cursor-pointer"
@@ -279,7 +642,7 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
         </div>
       </div>
 
-      {/* LISTADO / GRID DE ESTUDIOS */}
+      {/* ── LISTADO / GRID DE ESTUDIOS ── */}
       {loading ? (
         <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-3">
           <RefreshCw className="w-8 h-8 animate-spin text-primary" />
@@ -287,70 +650,112 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
         </div>
       ) : estudiosFiltrados.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {estudiosFiltrados.map(est => {
+          {estudiosFiltrados.map((est) => {
             const isLab = est.categoria === 'laboratorio';
             const isAlterado = est.estado_analisis === 'analizado_alterado';
+            const isPendienteAnalisis = est.estado_analisis === 'pendiente';
             const esDeConsultaPrevia = Boolean(consultaId && est.consulta_id !== consultaId);
+            const esWhatsApp = est.origen === 'whatsapp';
+            const isHighlighted = highlightedEstudioIds.includes(est.id);
 
             return (
               <div
                 key={est.id}
                 className={cn(
                   'group relative bg-card border rounded-2xl p-4 sm:p-5 transition-all shadow-xs hover:shadow-md flex flex-col justify-between',
-                  esDeConsultaPrevia
+                  isHighlighted
+                    ? 'border-emerald-500 ring-2 ring-emerald-500/25'
+                    : esDeConsultaPrevia
                     ? 'border-border/70 bg-muted/20 hover:border-border'
                     : 'border-border hover:border-primary/50'
                 )}
               >
                 <div>
-                  {/* Categoría, Estado y Badge de Historial */}
-                  <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={cn(
-                        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border',
-                        isLab
-                          ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30'
-                          : 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
-                      )}>
-                        {isLab ? <FlaskConical className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> : <ImageIcon className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />}
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'gap-1 text-[11px] font-semibold',
+                          isLab
+                            ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30'
+                            : 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30'
+                        )}
+                      >
+                        {isLab ? <FlaskConical className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                         <span className="capitalize">{est.categoria}</span>
-                      </span>
+                      </Badge>
+
+                      {esWhatsApp && (
+                        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] gap-1 font-semibold">
+                          <MessageSquare className="w-3 h-3" />
+                          WhatsApp
+                        </Badge>
+                      )}
+
+                      {isHighlighted && (
+                        <Badge className="bg-emerald-600 text-white text-[10px] animate-pulse">
+                          Nuevo
+                        </Badge>
+                      )}
 
                       {esDeConsultaPrevia && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20">
-                          <History className="w-3 h-3 text-slate-500" />
-                          Consulta anterior
-                        </span>
+                        <Badge variant="outline" className="text-[10px] gap-1 text-muted-foreground">
+                          <History className="w-3 h-3" />
+                          Previo
+                        </Badge>
                       )}
                     </div>
 
                     {isAlterado ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
-                        <AlertTriangle className="w-3 h-3 text-rose-600" /> Alterado
-                      </span>
+                      <Badge variant="destructive" className="bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-[10px] gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Alterado
+                      </Badge>
+                    ) : isPendienteAnalisis ? (
+                      <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 text-[10px] gap-1">
+                        <Bot className="w-3 h-3" /> Por revisar
+                      </Badge>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Normal
-                      </span>
+                      <Badge variant="outline" className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px] gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Normal
+                      </Badge>
                     )}
                   </div>
 
-                  {/* Título del Estudio */}
-                  <h4 className="font-bold text-base text-foreground group-hover:text-primary transition-colors line-clamp-1 mb-1">
+                  <h4 className="font-bold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors line-clamp-1 mb-1">
                     {est.titulo}
                   </h4>
 
-                  {/* Fecha y Archivo */}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
-                    <Calendar className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                    <Calendar className="w-3.5 h-3.5 shrink-0" />
                     <span>{est.fecha_estudio}</span>
                     <span>•</span>
-                    <span className="truncate max-w-[140px]">{est.archivo_nombre}</span>
+                    <span className="truncate max-w-[150px]">{est.archivo_nombre}</span>
                   </div>
 
-                  {/* Alertas Detectadas (si tiene) */}
+                  {esWhatsApp && est.whatsapp_remitente && (
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mb-2.5 truncate">
+                      Remitente: {est.whatsapp_remitente}
+                    </p>
+                  )}
+
+                  {est.analisis_agente?.cie10_sugeridos && est.analisis_agente.cie10_sugeridos.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2.5">
+                      {est.analisis_agente.cie10_sugeridos.slice(0, 2).map((cie, i) => (
+                        <Badge
+                          key={i}
+                          variant="outline"
+                          className="text-[10px] font-mono bg-primary/5 border-primary/30 text-primary px-1.5 py-0"
+                        >
+                          {cie.codigo} · {cie.descripcion.slice(0, 26)}
+                          {cie.descripcion.length > 26 ? '…' : ''}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
                   {est.alertas_detectadas && est.alertas_detectadas.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-4">
+                    <div className="flex flex-wrap gap-1.5 mb-3">
                       {est.alertas_detectadas.slice(0, 3).map((alt, i) => (
                         <span
                           key={i}
@@ -368,9 +773,9 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
                   )}
                 </div>
 
-                {/* BOTONES DE ACCIÓN */}
                 <div className="pt-3 border-t border-border/70 flex items-center justify-between gap-2 mt-2">
                   <Button
+                    type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => {
@@ -380,17 +785,19 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
                     className="flex-1 text-xs gap-1.5 h-8 font-medium cursor-pointer"
                   >
                     <Eye className="w-3.5 h-3.5 text-primary" />
-                    <span>Abrir Visor Clínico</span>
+                    <span>Abrir Visor & Bot</span>
                   </Button>
 
-                  <button
+                  <Button
                     type="button"
-                    onClick={() => handleEliminar(est.id)}
-                    className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setDeleteTargetId(est.id)}
+                    className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                     title="Eliminar estudio"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             );
@@ -410,30 +817,47 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
           </h3>
           <p className="text-muted-foreground text-xs max-w-md mb-5">
             {consultaId && alcance === 'esta_consulta'
-              ? 'Aún no se han adjuntado estudios ni análisis para la atención médica actual. Adjunte exámenes para que el Asistente Clínico los analice.'
+              ? 'Solicite al paciente que envíe sus resultados por WhatsApp o adjunte manualmente PDFs e imágenes para que el Bot Clínico los analice.'
               : consultaId && alcance === 'historial_previo'
               ? 'El paciente no posee estudios registrados en consultas anteriores.'
-              : 'Adjunte exámenes de laboratorio o imágenes (ecos, panorámicas dentales, rayos X) para visualizarlos en el visor clínico e interpretarlos con el Asistente Bot.'}
+              : 'Adjunte exámenes de laboratorio o imágenes (ecos, panorámicas dentales, rayos X) para visualizarlos en el visor clínico.'}
           </p>
 
           {(!consultaId || alcance === 'esta_consulta') && (
-            <Button
-              size="sm"
-              onClick={() => setModalUploadOpen(true)}
-              className="text-xs gap-1.5 cursor-pointer font-semibold shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Adjuntar Estudio a esta Consulta</span>
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2.5">
+              {consultaId && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setModalSolicitarWaOpen(true)}
+                  className="text-xs gap-1.5 cursor-pointer font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Solicitar al Paciente por WhatsApp</span>
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setModalUploadOpen(true)}
+                className="text-xs gap-1.5 cursor-pointer font-semibold"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Subir Archivo Manualmente</span>
+              </Button>
+            </div>
           )}
 
           {consultaId && alcance === 'esta_consulta' && estudiosHistorial.length > 0 && (
             <div className="mt-6 p-3 bg-muted/40 rounded-xl border border-border flex items-center gap-3 text-xs text-muted-foreground max-w-md">
               <History className="w-4 h-4 text-primary shrink-0" />
               <div className="flex-1 text-left">
-                El paciente tiene <strong>{estudiosHistorial.length}</strong> {estudiosHistorial.length === 1 ? 'estudio previo' : 'estudios previos'} de consultas anteriores.
+                El paciente tiene <strong>{estudiosHistorial.length}</strong>{' '}
+                {estudiosHistorial.length === 1 ? 'estudio previo' : 'estudios previos'} de consultas anteriores.
               </div>
               <Button
+                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => setAlcance('historial_previo')}
@@ -446,7 +870,169 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
         </div>
       )}
 
-      {/* MODAL PARA SUBIR NUEVO ESTUDIO */}
+      {/* ── MODAL SOLICITAR ESTUDIO POR WHATSAPP (RADIX DIALOG) ── */}
+      <Dialog open={modalSolicitarWaOpen} onOpenChange={setModalSolicitarWaOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="size-5 text-emerald-600" />
+              Solicitar Estudio al Paciente por WhatsApp
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Activa la recepción automática para <strong>{pacienteNombre || 'este paciente'}</strong> y opcionalmente envíale un mensaje invitándolo a responder con su PDF o foto.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="wa-target-phone" className="text-xs font-semibold">
+                WhatsApp del Paciente (o Familiar acompañante)
+              </Label>
+              <div className="relative">
+                <Phone className="size-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  id="wa-target-phone"
+                  value={waTelefonoDestino}
+                  onChange={(e) => setWaTelefonoDestino(e.target.value)}
+                  placeholder="+584121234567"
+                  className="pl-9 h-9 text-xs font-mono"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Cualquier PDF o imagen que llegue desde este número se insertará y analizará automáticamente en el Paso 4.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-border/80 bg-muted/20 p-3">
+              <div className="space-y-0.5 pr-3">
+                <Label className="text-xs font-semibold">Enviar mensaje de invitación por WhatsApp ahora</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Si se desactiva, solo se activa la escucha silenciosa sin escribirle al paciente.
+                </p>
+              </div>
+              <Switch checked={waEnviarMensaje} onCheckedChange={setWaEnviarMensaje} />
+            </div>
+
+            {waEnviarMensaje && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Mensaje personalizado (opcional)</Label>
+                <Textarea
+                  rows={3}
+                  value={waMensajeCustom}
+                  onChange={(e) => setWaMensajeCustom(e.target.value)}
+                  placeholder="Déjalo vacío para usar el mensaje clínico predeterminado con Spintax y simulación 'escribiendo...'."
+                  className="text-xs resize-none"
+                />
+              </div>
+            )}
+
+            {waInfo?.whatsapp_phone && (
+              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs text-muted-foreground">
+                Línea WhatsApp de esta sede: <strong className="font-mono text-foreground">+{waInfo.whatsapp_phone}</strong>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" onClick={() => setModalSolicitarWaOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={waSolicitando}
+              onClick={handleSolicitarPorWhatsApp}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {waSolicitando ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              {waEnviarMensaje ? 'Enviar Invitación y Escuchar' : 'Activar Escucha en Vivo'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── MODAL ASIGNAR ARCHIVO ENTRANTE DE WHATSAPP A ESTA CONSULTA ── */}
+      <Dialog open={assignModalOpen} onOpenChange={setAssignModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="size-5 text-emerald-600" />
+              Asignar y Analizar Estudio de WhatsApp
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              El archivo se vinculará a <strong>{pacienteNombre || 'la consulta actual'}</strong> y el Bot Clínico lo analizará inmediatamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedPendiente && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1">
+                <p className="font-semibold text-foreground truncate">{selectedPendiente.archivo_nombre}</p>
+                <p className="text-muted-foreground">
+                  Enviado por: <span className="font-mono">+{selectedPendiente.remitente_telefono}</span>
+                  {selectedPendiente.remitente_nombre ? ` (${selectedPendiente.remitente_nombre})` : ''}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Título del Estudio *</Label>
+                <Input
+                  value={assignTitulo}
+                  onChange={(e) => setAssignTitulo(e.target.value)}
+                  className="h-9 text-xs"
+                  placeholder="Ej: Hematología Completa, Eco Abdominal..."
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Categoría *</Label>
+                <Select
+                  value={assignCategoria}
+                  onValueChange={(v) => setAssignCategoria(v as any)}
+                >
+                  <SelectTrigger className="h-9 text-xs bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="laboratorio" className="text-xs">Laboratorio Clínico</SelectItem>
+                    <SelectItem value="imagenologia" className="text-xs">Imagenología (Eco, Rx, TAC, Panorámica)</SelectItem>
+                    <SelectItem value="informe" className="text-xs">Informe Médico</SelectItem>
+                    <SelectItem value="otro" className="text-xs">Otro Adjunto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Notas adicionales (opcional)</Label>
+                <Input
+                  value={assignNotas}
+                  onChange={(e) => setAssignNotas(e.target.value)}
+                  className="h-9 text-xs"
+                  placeholder="Observaciones médicas..."
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" onClick={() => setAssignModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={assignLoading}
+              onClick={handleConfirmAssign}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {assignLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Bot className="size-3.5" />}
+              Asignar y Analizar con Bot
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── MODAL SUBIR NUEVO ESTUDIO MANUAL (RADIX SELECT + DIALOG) ── */}
       <Dialog open={modalUploadOpen} onOpenChange={setModalUploadOpen}>
         <DialogContent className="max-w-xl bg-card text-foreground border-border">
           <DialogHeader>
@@ -457,70 +1043,57 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
           </DialogHeader>
 
           <form onSubmit={handleGuardarEstudio} className="space-y-4 mt-2">
-            {/* Título */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                Título del Estudio / Examen *
-              </label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Título del Estudio / Examen *</Label>
               <Input
                 required
                 value={titulo}
-                onChange={e => setTitulo(e.target.value)}
+                onChange={(e) => setTitulo(e.target.value)}
                 placeholder="Ej. Hematología Completa, Panorámica Dental, Eco Abdominal"
                 className="text-sm bg-background border-border text-foreground"
               />
             </div>
 
-            {/* Categoría y Fecha */}
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">
-                  Categoría *
-                </label>
-                <select
-                  value={categoria}
-                  onChange={e => setCategoria(e.target.value as any)}
-                  className="w-full h-9 rounded-md bg-background border border-border text-foreground text-xs px-3 focus:ring-1 focus:ring-primary focus:outline-hidden"
-                >
-                  <option value="laboratorio">🧪 Laboratorio Clínico</option>
-                  <option value="imagenologia">🩻 Imagenología (Eco, Panorámica, Rx)</option>
-                  <option value="informe">📄 Informe Médico</option>
-                  <option value="otro">📁 Otro Adjunto</option>
-                </select>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Categoría *</Label>
+                <Select value={categoria} onValueChange={(v) => setCategoria(v as any)}>
+                  <SelectTrigger className="h-9 text-xs bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="laboratorio" className="text-xs">Laboratorio Clínico</SelectItem>
+                    <SelectItem value="imagenologia" className="text-xs">Imagenología (Eco, Panorámica, Rx)</SelectItem>
+                    <SelectItem value="informe" className="text-xs">Informe Médico</SelectItem>
+                    <SelectItem value="otro" className="text-xs">Otro Adjunto</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">
-                  Fecha del Estudio *
-                </label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Fecha del Estudio *</Label>
                 <Input
                   type="date"
                   required
                   value={fechaEstudio}
-                  onChange={e => setFechaEstudio(e.target.value)}
-                  className="text-xs bg-background border-border text-foreground"
+                  onChange={(e) => setFechaEstudio(e.target.value)}
+                  className="text-xs bg-background border-border text-foreground h-9"
                 />
               </div>
             </div>
 
-            {/* Subtipo opcional */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                Subtipo / Especialidad (Opcional)
-              </label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Subtipo / Especialidad (Opcional)</Label>
               <Input
                 value={subtipo}
-                onChange={e => setSubtipo(e.target.value)}
+                onChange={(e) => setSubtipo(e.target.value)}
                 placeholder="Ej. hemograma, perfil_lipidico, panoramica_dental, ecografia"
-                className="text-xs bg-background border-border text-foreground"
+                className="text-xs bg-background border-border text-foreground h-9"
               />
             </div>
 
-            {/* Archivo Local */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                Archivo de Imagen o Documento *
-              </label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Archivo de Imagen o Documento *</Label>
               <div className="border-2 border-dashed border-border hover:border-primary/60 rounded-xl p-6 text-center cursor-pointer transition-colors bg-muted/30 relative">
                 <input
                   type="file"
@@ -533,9 +1106,7 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
                   <div className="flex items-center justify-center gap-2 text-primary text-sm font-medium">
                     <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                     <span className="truncate max-w-xs">{archivoNombre}</span>
-                    <span className="text-xs text-muted-foreground">
-                      ({Math.round(archivoTamano / 1024)} KB)
-                    </span>
+                    <span className="text-xs text-muted-foreground">({Math.round(archivoTamano / 1024)} KB)</span>
                   </div>
                 ) : (
                   <div className="text-muted-foreground text-xs">
@@ -547,41 +1118,28 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
               </div>
             </div>
 
-            {/* Notas opcionales */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                Notas Médicas / Observaciones (Opcional)
-              </label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Notas Médicas / Observaciones (Opcional)</Label>
               <Input
                 value={notas}
-                onChange={e => setNotas(e.target.value)}
+                onChange={(e) => setNotas(e.target.value)}
                 placeholder="Detalles sobre la orden o indicaciones previas"
-                className="text-xs bg-background border-border text-foreground"
+                className="text-xs bg-background border-border text-foreground h-9"
               />
             </div>
 
-            {/* Asistente Bot Banner */}
             <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-2.5 text-xs text-foreground">
               <Sparkles className="w-4 h-4 text-primary shrink-0" />
               <span>
-                Al guardar, el <strong>Asistente Clínico Inteligente</strong> estructurará automáticamente los parámetros, identificará valores alterados y redactará la guía para el paciente.
+                Al guardar, <strong>MediCore AI Local</strong> leerá el PDF o fotografía con OCR neuronal propio, calculará índices clínicos, detectará síndromes y sugerirá códigos CIE-10 sin costos externos.
               </span>
             </div>
 
             <DialogFooter className="pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setModalUploadOpen(false)}
-                className="text-xs"
-              >
+              <Button type="button" variant="outline" onClick={() => setModalUploadOpen(false)} className="text-xs">
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={uploadLoading}
-                className="text-xs gap-1.5 cursor-pointer font-semibold"
-              >
+              <Button type="submit" disabled={uploadLoading} className="text-xs gap-1.5 cursor-pointer font-semibold">
                 {uploadLoading ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -599,7 +1157,25 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISOR INTELIGENTE */}
+      {/* ── ALERT DIALOG CONFIRMAR ELIMINACIÓN (RADIX) ── */}
+      <AlertDialog open={deleteTargetId !== null} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar estudio clínico?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción retirará permanentemente el archivo adjunto y el análisis generado por el asistente de la historia del paciente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEliminar} className="bg-destructive text-white hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── MODAL VISOR INTELIGENTE ── */}
       <EstudioDetalleModal
         estudioId={selectedEstudioId}
         open={modalViewerOpen}
@@ -608,6 +1184,8 @@ export const EstudiosArchivosTab: React.FC<EstudiosArchivosTabProps> = ({
           setSelectedEstudioId(null);
         }}
         onEstudioUpdated={fetchEstudios}
+        onApplyDiagnosticoPrincipal={onApplyDiagnosticoPrincipal}
+        onAddDiagnosticoSecundario={onAddDiagnosticoSecundario}
       />
     </div>
   );
