@@ -6,6 +6,7 @@ import { AdminHeader } from './AdminHeader';
 import { SubscriptionAlertBanner } from '../saas/SubscriptionAlertBanner';
 import { TemplateCustomizer } from './TemplateCustomizer';
 import { ChatFloatingWidget } from '../chat/ChatFloatingWidget';
+import { InstilacionesFloatingWidget } from '../oftalmologia/InstilacionesFloatingWidget';
 import { useTemplateSettings } from '../../context/TemplateSettingsContext';
 import { cn } from '../../lib/utils';
 
@@ -110,6 +111,9 @@ export const AdminLayout: React.FC = () => {
 
       {/* Chat Clínico Interno Flotante Persistente en Todas las Pantallas */}
       <ChatFloatingWidget />
+
+      {/* Control de Instilaciones Oftálmicas Flotante (Debajo del Chat) */}
+      <InstilacionesFloatingWidget />
     </div>
   );
 };

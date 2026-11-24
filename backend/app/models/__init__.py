@@ -27,6 +27,7 @@ from app.models.landing import LandingPageConfig
 from app.models.landing_contacto import MensajeContactoLanding
 from app.models.caja import Caja, TurnoCaja, Cobro, CobroDetalle, CobroPago, MovimientoCaja
 from app.models.honorario import LiquidacionHonorario
+from app.models.instilacion_oftalmica import InstilacionOftalmica
 
 __all__ = [
     "Base",
@@ -70,5 +71,6 @@ __all__ = [
     "CobroPago",
     "MovimientoCaja",
     "LiquidacionHonorario",
+    "InstilacionOftalmica",
 ]
 

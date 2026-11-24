@@ -24,6 +24,7 @@ from app.api.v1.chat import router as chat_router
 from app.api.v1.landing import router as landing_router
 from app.api.v1.cajas import router as cajas_router
 from app.api.v1.honorarios import router as honorarios_router
+from app.api.v1.instilaciones_oftalmicas import router as instilaciones_router
 
 api_router = APIRouter()
 
@@ -52,5 +53,6 @@ api_router.include_router(chat_router)
 api_router.include_router(landing_router)
 api_router.include_router(cajas_router)
 api_router.include_router(honorarios_router)
+api_router.include_router(instilaciones_router)
 
 
