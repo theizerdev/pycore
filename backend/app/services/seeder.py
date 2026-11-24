@@ -690,16 +690,23 @@ async def seed_initial_data(db: AsyncSession):
             await db.flush()
 
     # 5. Crear Usuarios Demostrativos
-    for email_adm in ["admin@pycore.com", "admin@plataforma.com", "admin@medflow.com"]:
+    superadmins_seed = [
+        {"email": "theizerdev@gmail.com", "nombre": "Theizer", "apellido": "Dev", "password": "Password123!"},
+        {"email": "admin@pycore.com", "nombre": "Administrador", "apellido": "Sistema", "password": "Admin1234*"},
+        {"email": "admin@plataforma.com", "nombre": "Administrador", "apellido": "Principal", "password": "Admin1234*"},
+        {"email": "admin@medflow.com", "nombre": "Administrador", "apellido": "Sistema", "password": "Admin1234*"},
+    ]
+    for adm in superadmins_seed:
+        email_adm = adm["email"]
         stmt_u = select(Usuario).where(Usuario.email == email_adm)
         res_u = await db.execute(stmt_u)
         user = res_u.scalar_one_or_none()
         if not user:
             user = Usuario(
-                nombre="Administrador",
-                apellido="Principal" if "plataforma" in email_adm else "Sistema",
+                nombre=adm["nombre"],
+                apellido=adm["apellido"],
                 email=email_adm,
-                password_hash=get_password_hash("Admin1234*"),
+                password_hash=get_password_hash(adm["password"]),
                 es_superadmin=True,
                 rol_id=roles_map["superadmin"].id,
                 empresa_id=empresa.id,
